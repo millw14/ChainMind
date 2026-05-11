@@ -32,7 +32,7 @@ export default {
         "cm-hero":
           "radial-gradient(ellipse 80% 55% at 50% -25%, var(--cm-hero-glow), transparent 52%)",
         "cm-footer":
-          "radial-gradient(ellipse 60% 40% at 50% 100%, rgba(14, 165, 233, 0.06), transparent 55%)",
+          "radial-gradient(ellipse 60% 40% at 50% 100%, var(--cm-footer-glow), transparent 55%)",
       },
       boxShadow: {
         cm: "0 1px 0 0 var(--cm-border-subtle), 0 18px 48px -12px rgba(0, 0, 0, 0.55)",
