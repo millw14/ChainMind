@@ -8,32 +8,32 @@ export default function HowItWorksPage() {
   return (
     <div className="border-b border-cm-border-subtle">
       <div className="mx-auto w-full max-w-3xl px-4 py-16 sm:px-6 sm:py-24">
-        <p className="text-xs font-semibold uppercase tracking-widest text-cm-accent">Guide</p>
+        <p className="font-[family-name:var(--font-mono)] text-[10px] uppercase tracking-widest text-cm-faint">Guide</p>
         <h1 className="mt-3 text-3xl font-bold tracking-tight text-cm-text sm:text-4xl">How ChainMind fits together</h1>
         <p className="mt-4 text-lg leading-relaxed text-cm-muted">
           Console first, pipeline when you need your own event store and scored windows.
         </p>
 
         <ol className="mt-14 space-y-10">
-          <li className="border-l-2 border-cm-accent/45 pl-6">
+          <li className="border-l border-cm-border pl-5">
             <h2 className="text-lg font-semibold text-cm-text">1. Console</h2>
             <p className="mt-2 text-sm leading-relaxed text-cm-muted">
               The{" "}
-              <Link href="/console" className="font-medium text-cm-accent-bright underline-offset-4 hover:underline">
+              <Link href="/console" className="font-medium text-cm-text underline-offset-4 hover:underline">
                 console
               </Link>{" "}
               hits your configured RPC for health, loads recent signatures for any base58 you enter, and shows scores when
               cloud-backed data exists.
             </p>
           </li>
-          <li className="border-l-2 border-cm-accent/45 pl-6">
+          <li className="border-l border-cm-border pl-5">
             <h2 className="text-lg font-semibold text-cm-text">2. Pipeline</h2>
             <p className="mt-2 text-sm leading-relaxed text-cm-muted">
               On your machine, the CLI backfills signatures, parses transactions into events, and optionally syncs to
               Turso. The hosted UI does not pretend the database is local to Vercel.
             </p>
           </li>
-          <li className="border-l-2 border-cm-accent/45 pl-6">
+          <li className="border-l border-cm-border pl-5">
             <h2 className="text-lg font-semibold text-cm-text">3. v1 score</h2>
             <p className="mt-2 text-sm leading-relaxed text-cm-muted">
               Today’s metric is the maximum distinct fee-paying wallets in one time bucket over your lookback. Useful for

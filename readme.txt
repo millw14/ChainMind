@@ -3,6 +3,7 @@ ChainMind — Next.js product surface + Solana CLI tools
 Web app (Next.js):
   npm run dev  → http://localhost:3000  (marketing + navigation)
   /console     — analysis workspace (dashboard)
+  /docs        — setup, env vars, CLI table (operator reference)
   /how-it-works — product map for visitors
 
 Production build:
