@@ -41,3 +41,9 @@
 body {
   @apply min-h-screen antialiased bg-cm-bg text-cm-text;
 }
+
+@media (prefers-reduced-motion: no-preference) {
+  html {
+    scroll-behavior: smooth;
+  }
+}
