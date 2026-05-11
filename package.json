@@ -1,0 +1,27 @@
+{
+  "name": "chainmind",
+  "private": true,
+  "version": "0.0.1",
+  "type": "module",
+  "description": "ChainMind — Solana-first coordination intelligence",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "ping-solana": "node scripts/ping-solana.mjs",
+    "inspect": "node scripts/inspect-address.mjs",
+    "backfill": "node scripts/backfill-address.mjs",
+    "ingest-events": "node scripts/ingest-events.mjs",
+    "score-window": "node scripts/score-window.mjs",
+    "dashboard": "node server/server.mjs",
+    "turso:schema": "node scripts/turso-init-schema.mjs",
+    "turso:sync": "node scripts/sync-sqlite-to-turso.mjs"
+  },
+  "dependencies": {
+    "@libsql/client": "^0.14.0",
+    "@solana/web3.js": "^1.98.4",
+    "better-sqlite3": "^11.8.1",
+    "dotenv": "^16.4.7",
+    "express": "^4.21.2"
+  }
+}
