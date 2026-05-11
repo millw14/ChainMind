@@ -3,7 +3,7 @@ import { SiteHeader } from "@/components/site/SiteHeader";
 
 export const metadata = {
   title: {
-    default: "ChainMind — Solana coordination intelligence",
+    default: "ChainMind — Solana RPC console and co-activity metrics",
     template: "%s · ChainMind",
   },
   description:
