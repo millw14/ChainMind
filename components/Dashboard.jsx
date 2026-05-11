@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 
 const USDC_MAINNET = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
@@ -33,11 +34,11 @@ function rpcHost(url) {
 
 function Card({ title, subtitle, children, actions }) {
   return (
-    <section className="rounded-2xl border border-cm-border bg-cm-card/50 p-5 shadow-lg shadow-black/20 backdrop-blur-sm">
-      <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
+    <section className="rounded-md border border-cm-border bg-cm-surface p-4 sm:p-5">
+      <div className="mb-3 flex flex-wrap items-start justify-between gap-3 border-b border-cm-border-subtle pb-3">
         <div>
-          <h2 className="text-sm font-semibold uppercase tracking-wide text-cm-accent-bright">{title}</h2>
-          {subtitle ? <p className="mt-1 text-sm text-cm-muted">{subtitle}</p> : null}
+          <h2 className="text-xs font-semibold uppercase tracking-wide text-cm-faint">{title}</h2>
+          {subtitle ? <p className="mt-1 text-xs text-cm-muted">{subtitle}</p> : null}
         </div>
         {actions ? <div className="flex flex-wrap gap-2">{actions}</div> : null}
       </div>
@@ -49,7 +50,7 @@ function Card({ title, subtitle, children, actions }) {
 function ExpandableRaw({ label = "Technical details (JSON)", data }) {
   if (data == null) return null;
   return (
-    <details className="mt-4 rounded-lg border border-cm-border bg-cm-surface/60">
+    <details className="mt-4 rounded-md border border-cm-border bg-cm-surface/60">
       <summary className="cursor-pointer select-none px-3 py-2 text-xs font-medium text-cm-faint hover:text-cm-muted">
         {label}
       </summary>
@@ -62,7 +63,7 @@ function ExpandableRaw({ label = "Technical details (JSON)", data }) {
 
 function ErrorCallout({ message }) {
   return (
-    <div className="rounded-lg border border-cm-bad/50 bg-cm-bad/15 px-4 py-3 text-sm text-cm-subtle">
+    <div className="rounded-md border border-cm-bad/50 bg-cm-bad/15 px-4 py-3 text-sm text-cm-subtle">
       {message}
     </div>
   );
@@ -70,7 +71,7 @@ function ErrorCallout({ message }) {
 
 function InfoCallout({ children }) {
   return (
-    <div className="rounded-lg border border-cm-warn/40 bg-cm-warn/10 px-4 py-3 text-sm leading-relaxed text-cm-subtle">
+    <div className="rounded-md border border-cm-warn/40 bg-cm-warn/10 px-4 py-3 text-sm leading-relaxed text-cm-subtle">
       {children}
     </div>
   );
@@ -78,16 +79,16 @@ function InfoCallout({ children }) {
 
 function PingBody({ data, loading }) {
   if (loading) {
-    return <p className="py-8 text-center text-sm text-cm-faint">Checking connection…</p>;
+    return <p className="py-8 text-center text-sm text-cm-faint">Requesting getHealth / getSlot from RPC…</p>;
   }
   if (!data) {
-    return <p className="py-8 text-center text-sm text-cm-faint">No data yet. Use Refresh.</p>;
+    return <p className="py-8 text-center text-sm text-cm-faint">No ping result. Run Refresh network.</p>;
   }
   if (data.error) {
     return <ErrorCallout message={data.error} />;
   }
   if (!data.ok) {
-    return <ErrorCallout message="Something went wrong." />;
+    return <ErrorCallout message="Ping payload missing ok: true. Inspect Technical details (JSON)." />;
   }
   return (
     <div className="space-y-4">
@@ -98,15 +99,15 @@ function PingBody({ data, loading }) {
         <span className="text-xs text-cm-faint">{data.cluster}</span>
       </div>
       <dl className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-        <div className="rounded-xl border border-cm-border bg-cm-row/60 px-4 py-3">
+        <div className="rounded-md border border-cm-border bg-cm-row/60 px-4 py-3">
           <dt className="text-xs text-cm-faint">Current slot</dt>
           <dd className="mt-1 text-lg font-semibold tabular-nums text-cm-text">{data.slot?.toLocaleString?.() ?? data.slot}</dd>
         </div>
-        <div className="rounded-xl border border-cm-border bg-cm-row/60 px-4 py-3">
+        <div className="rounded-md border border-cm-border bg-cm-row/60 px-4 py-3">
           <dt className="text-xs text-cm-faint">Solana version</dt>
           <dd className="mt-1 text-lg font-semibold text-cm-text">{data.version ?? "—"}</dd>
         </div>
-        <div className="rounded-xl border border-cm-border bg-cm-row/60 px-4 py-3 sm:col-span-2">
+        <div className="rounded-md border border-cm-border bg-cm-row/60 px-4 py-3 sm:col-span-2">
           <dt className="text-xs text-cm-faint">RPC endpoint (redacted)</dt>
           <dd className="mt-1 break-all font-[family-name:var(--font-mono)] text-sm text-cm-subtle">{data.rpcUrl}</dd>
           <p className="mt-1 text-xs text-cm-faint">
@@ -121,17 +122,17 @@ function PingBody({ data, loading }) {
 
 function InspectBody({ data, loading }) {
   if (loading) {
-    return <p className="py-8 text-center text-sm text-cm-faint">Loading transactions…</p>;
+    return <p className="py-8 text-center text-sm text-cm-faint">Fetching signatures (getSignaturesForAddress)…</p>;
   }
   if (!data) {
-    return <p className="py-8 text-center text-sm text-cm-faint">Enter an address and tap Load.</p>;
+    return <p className="py-8 text-center text-sm text-cm-faint">Enter a base58 address and run Load.</p>;
   }
   if (data.error || data.ok === false) {
-    return <ErrorCallout message={data.error || "Request failed."} />;
+    return <ErrorCallout message={data.error || "GET /api/inspect failed (no error body)."} />;
   }
   const rows = data.signatures ?? [];
   if (rows.length === 0) {
-    return <p className="py-6 text-center text-sm text-cm-faint">No recent signatures for this address.</p>;
+    return <p className="py-6 text-center text-sm text-cm-faint">RPC returned zero signatures for this address / limit.</p>;
   }
   return (
     <div className="space-y-3">
@@ -145,7 +146,7 @@ function InspectBody({ data, loading }) {
         ) : null}
         .
       </p>
-      <div className="overflow-x-auto rounded-xl border border-cm-border">
+      <div className="overflow-x-auto rounded-md border border-cm-border">
         <table className="w-full min-w-[32rem] text-left text-sm">
           <thead className="border-b border-cm-border bg-cm-row/80 text-xs font-medium uppercase tracking-wide text-cm-faint">
             <tr>
@@ -178,7 +179,7 @@ function InspectBody({ data, loading }) {
                       href={solscanTx(row.signature)}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="text-cm-accent-bright hover:text-cm-accent hover:underline"
+            className="text-cm-text underline-offset-2 hover:text-cm-accent hover:underline"
                     >
                       Solscan ↗
                     </a>
@@ -196,10 +197,10 @@ function InspectBody({ data, loading }) {
 
 function DbBody({ data, loading }) {
   if (loading) {
-    return <p className="py-8 text-center text-sm text-cm-faint">Loading database info…</p>;
+    return <p className="py-8 text-center text-sm text-cm-faint">GET /api/db-stats…</p>;
   }
   if (!data) {
-    return <p className="py-8 text-center text-sm text-cm-faint">No data yet.</p>;
+    return <p className="py-8 text-center text-sm text-cm-faint">No database summary loaded. Run Refresh database.</p>;
   }
   if (data.error) {
     return <ErrorCallout message={data.error} />;
@@ -208,10 +209,16 @@ function DbBody({ data, loading }) {
     return (
       <div className="space-y-3">
         <InfoCallout>
-          <strong className="text-cm-warn">Cloud database not connected.</strong> Charts and scores on this site use a
-          small Turso database. After you run the pipeline on your computer, sync once with{" "}
-          <code className="rounded bg-cm-elevated px-1 text-cm-warn/90">npm run turso:sync</code> and add Turso keys in
-          Vercel. Until then, RPC checks and transaction lookup still work above.
+          <strong className="text-cm-warn">Cloud database not connected.</strong> Hosted counts and scores use Turso.
+          After local pipeline runs, sync with{" "}
+          <code className="rounded border border-cm-border bg-cm-elevated px-1 font-[family-name:var(--font-mono)] text-[11px] text-cm-subtle">
+            npm run turso:sync
+          </code>{" "}
+          and set Turso env on the host; see{" "}
+          <Link href="/docs" className="font-medium text-cm-text underline underline-offset-2 hover:text-cm-accent">
+            Docs
+          </Link>
+          . Ping and inspect above do not require Turso.
         </InfoCallout>
         {data.hint ? <p className="text-xs text-cm-faint">{data.hint}</p> : null}
         <ExpandableRaw data={data} />
@@ -222,25 +229,25 @@ function DbBody({ data, loading }) {
   return (
     <div className="space-y-4">
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-        <div className="rounded-xl border border-cm-border bg-cm-row/60 px-4 py-3">
+        <div className="rounded-md border border-cm-border bg-cm-row/60 px-4 py-3">
           <dt className="text-xs text-cm-faint">Signatures stored</dt>
           <dd className="mt-1 text-xl font-semibold tabular-nums text-cm-text">
             {(data.signaturesTotal ?? 0).toLocaleString()}
           </dd>
         </div>
-        <div className="rounded-xl border border-cm-border bg-cm-row/60 px-4 py-3">
+        <div className="rounded-md border border-cm-border bg-cm-row/60 px-4 py-3">
           <dt className="text-xs text-cm-faint">Parsed events</dt>
           <dd className="mt-1 text-xl font-semibold tabular-nums text-cm-text">
             {(data.eventsTotal ?? 0).toLocaleString()}
           </dd>
         </div>
-        <div className="col-span-2 rounded-xl border border-cm-border bg-cm-row/60 px-4 py-3 sm:col-span-1">
+        <div className="col-span-2 rounded-md border border-cm-border bg-cm-row/60 px-4 py-3 sm:col-span-1">
           <dt className="text-xs text-cm-faint">Backend</dt>
           <dd className="mt-1 text-sm font-medium capitalize text-cm-text">{data.database ?? "—"}</dd>
         </div>
       </div>
       {scopes.length > 0 ? (
-        <div className="overflow-x-auto rounded-xl border border-cm-border">
+        <div className="overflow-x-auto rounded-md border border-cm-border">
           <table className="w-full text-left text-sm">
             <thead className="border-b border-cm-border bg-cm-row/80 text-xs font-medium uppercase tracking-wide text-cm-faint">
               <tr>
@@ -270,10 +277,10 @@ function DbBody({ data, loading }) {
 
 function ScoreBody({ data, loading }) {
   if (loading) {
-    return <p className="py-8 text-center text-sm text-cm-faint">Computing…</p>;
+    return <p className="py-8 text-center text-sm text-cm-faint">GET /api/score…</p>;
   }
   if (!data) {
-    return <p className="py-8 text-center text-sm text-cm-faint">Set a scope and tap Compute.</p>;
+    return <p className="py-8 text-center text-sm text-cm-faint">Set scope, window, and lookback; run Compute.</p>;
   }
   if (data.error) {
     return <ErrorCallout message={data.error} />;
@@ -281,8 +288,10 @@ function ScoreBody({ data, loading }) {
   if (data.database === "unconfigured") {
     return (
       <InfoCallout>
-        <strong className="text-cm-warn">Score needs cloud data.</strong> Connect Turso (see Database section), sync
-        your events, then try again.
+        <strong className="text-cm-warn">Score needs cloud data.</strong> Configure Turso (see Database panel) and sync events.{" "}
+        <Link href="/docs" className="font-medium text-cm-text underline underline-offset-2 hover:text-cm-accent">
+          Docs
+        </Link>
       </InfoCallout>
     );
   }
@@ -308,7 +317,7 @@ function ScoreBody({ data, loading }) {
           </p>
         </div>
         {data.peakBucketStartsIso ? (
-          <div className="rounded-xl border border-cm-border bg-cm-row/60 px-4 py-3 text-sm">
+          <div className="rounded-md border border-cm-border bg-cm-row/60 px-4 py-3 text-sm">
             <span className="text-cm-faint">Busiest window started</span>
             <p className="mt-0.5 font-medium text-cm-text">{data.peakBucketStartsIso}</p>
             <p className="text-xs text-cm-faint">{data.peakBucketWalletCount} wallets in that slice</p>
@@ -326,7 +335,7 @@ function ScoreBody({ data, loading }) {
         ))}
       </div>
       {data.drivers?.length ? (
-        <div className="rounded-xl border border-cm-border bg-cm-row/40 px-4 py-3">
+        <div className="rounded-md border border-cm-border bg-cm-row/40 px-4 py-3">
         <p className="text-xs font-semibold uppercase tracking-wide text-cm-faint">What this means</p>
         <ul className="mt-2 list-inside list-disc space-y-1.5 text-sm text-cm-subtle">
             {data.drivers.map((line, i) => (
@@ -376,7 +385,11 @@ export function Dashboard() {
     try {
       const r = await fetch(url);
       const j = await r.json().catch(() => ({}));
-      if (!r.ok) throw new Error(j.error || r.statusText || "Request failed");
+      if (!r.ok) {
+        const fromBody = typeof j?.error === "string" ? j.error : null;
+        const statusLine = [r.status, r.statusText].filter(Boolean).join(" ").trim();
+        throw new Error(fromBody || statusLine || "HTTP error");
+      }
       return j;
     } finally {
       setLoad(key, false);
@@ -429,23 +442,23 @@ export function Dashboard() {
 
   return (
     <div className="pb-16">
-      <div className="border-b border-cm-border-subtle bg-cm-elevated/40">
-        <div className="mx-auto flex max-w-5xl flex-wrap items-center justify-end gap-2 px-4 py-3 sm:px-6">
+      <div className="border-b border-cm-border bg-cm-surface">
+        <div className="mx-auto flex max-w-5xl flex-wrap items-center justify-end gap-2 px-4 py-2 sm:px-6">
           <button
             type="button"
             onClick={runPing}
             disabled={loading.ping}
-            className="rounded-lg border border-cm-border bg-cm-elevated px-3 py-2 text-xs font-semibold text-cm-text hover:bg-cm-card disabled:opacity-50"
+            className="rounded-md border border-cm-border bg-cm-elevated px-3 py-2 text-xs font-medium text-cm-text hover:bg-cm-row-hover disabled:opacity-50"
           >
-            {loading.ping ? "Checking…" : "Refresh network"}
+            {loading.ping ? "Ping…" : "Refresh network"}
           </button>
           <button
             type="button"
             onClick={runDb}
             disabled={loading.db}
-            className="rounded-lg border border-cm-border bg-cm-elevated px-3 py-2 text-xs font-semibold text-cm-text hover:bg-cm-card disabled:opacity-50"
+            className="rounded-md border border-cm-border bg-cm-elevated px-3 py-2 text-xs font-medium text-cm-text hover:bg-cm-row-hover disabled:opacity-50"
           >
-            {loading.db ? "Refreshing…" : "Refresh database"}
+            {loading.db ? "DB…" : "Refresh database"}
           </button>
         </div>
       </div>
@@ -458,7 +471,7 @@ export function Dashboard() {
             <button
               type="button"
               onClick={runPing}
-              className="text-xs font-medium text-cm-accent-bright hover:text-cm-accent"
+              className="text-xs font-medium text-cm-muted hover:text-cm-text"
             >
               Refresh
             </button>
@@ -466,7 +479,7 @@ export function Dashboard() {
         >
           <PingBody data={ping} loading={!!loading.ping && ping == null} />
           {ping != null && loading.ping ? (
-            <p className="mt-2 text-center text-xs text-cm-faint">Refreshing…</p>
+            <p className="mt-2 text-center text-xs text-cm-faint">Ping in flight…</p>
           ) : null}
         </Card>
 
@@ -479,9 +492,9 @@ export function Dashboard() {
                 type="button"
                 onClick={runInspect}
                 disabled={loading.inspect}
-                className="rounded-lg bg-cm-accent px-3 py-1.5 text-xs font-semibold text-cm-on-accent transition hover:bg-cm-accent-bright disabled:opacity-50"
+                className="rounded-md bg-cm-accent px-3 py-1.5 text-xs font-semibold text-cm-on-accent transition hover:bg-cm-accent-bright disabled:opacity-50"
               >
-                {loading.inspect ? "Loading…" : "Load"}
+                {loading.inspect ? "Fetch…" : "Load"}
               </button>
             }
           >
@@ -489,7 +502,7 @@ export function Dashboard() {
               <div className="min-w-0 flex-1">
                 <label className="mb-1 block text-xs font-medium text-cm-faint">Solana address (base58)</label>
                 <input
-                  className="w-full rounded-lg border border-cm-border bg-cm-surface px-3 py-2 text-sm text-cm-text outline-none ring-cm-accent-ring focus:ring-2"
+                  className="w-full rounded-md border border-cm-border bg-cm-surface px-3 py-2 text-sm text-cm-text outline-none ring-cm-accent-ring focus:ring-2"
                   value={inspectAddr}
                   onChange={(e) => setInspectAddr(e.target.value)}
                   placeholder="Wallet, mint, or program id"
@@ -502,7 +515,7 @@ export function Dashboard() {
                   type="number"
                   min={1}
                   max={100}
-                  className="w-full rounded-lg border border-cm-border bg-cm-surface px-3 py-2 text-sm text-cm-text outline-none focus:ring-2 focus:ring-cm-accent-ring"
+                  className="w-full rounded-md border border-cm-border bg-cm-surface px-3 py-2 text-sm text-cm-text outline-none focus:ring-2 focus:ring-cm-accent-ring"
                   value={inspectLimit}
                   onChange={(e) => setInspectLimit(e.target.value)}
                 />
@@ -519,9 +532,9 @@ export function Dashboard() {
                 type="button"
                 onClick={runScore}
                 disabled={loading.score}
-                className="rounded-lg bg-cm-accent px-3 py-1.5 text-xs font-semibold text-cm-on-accent transition hover:bg-cm-accent-bright disabled:opacity-50"
+                className="rounded-md bg-cm-accent px-3 py-1.5 text-xs font-semibold text-cm-on-accent transition hover:bg-cm-accent-bright disabled:opacity-50"
               >
-                {loading.score ? "Working…" : "Compute"}
+                {loading.score ? "Score…" : "Compute"}
               </button>
             }
           >
@@ -529,7 +542,7 @@ export function Dashboard() {
               <div className="sm:col-span-3">
                 <label className="mb-1 block text-xs font-medium text-cm-faint">Scope (same as your token or wallet)</label>
                 <input
-                  className="w-full rounded-lg border border-cm-border bg-cm-surface px-3 py-2 text-sm text-cm-text outline-none focus:ring-2 focus:ring-cm-accent-ring"
+                  className="w-full rounded-md border border-cm-border bg-cm-surface px-3 py-2 text-sm text-cm-text outline-none focus:ring-2 focus:ring-cm-accent-ring"
                   value={scoreScope}
                   onChange={(e) => setScoreScope(e.target.value)}
                   spellCheck={false}
@@ -541,7 +554,7 @@ export function Dashboard() {
                   type="number"
                   min={1}
                   max={60}
-                  className="w-full rounded-lg border border-cm-border bg-cm-surface px-3 py-2 text-sm text-cm-text outline-none focus:ring-2 focus:ring-cm-accent-ring"
+                  className="w-full rounded-md border border-cm-border bg-cm-surface px-3 py-2 text-sm text-cm-text outline-none focus:ring-2 focus:ring-cm-accent-ring"
                   value={scoreWindow}
                   onChange={(e) => setScoreWindow(e.target.value)}
                 />
@@ -552,7 +565,7 @@ export function Dashboard() {
                   type="number"
                   min={1}
                   max={720}
-                  className="w-full rounded-lg border border-cm-border bg-cm-surface px-3 py-2 text-sm text-cm-text outline-none focus:ring-2 focus:ring-cm-accent-ring"
+                  className="w-full rounded-md border border-cm-border bg-cm-surface px-3 py-2 text-sm text-cm-text outline-none focus:ring-2 focus:ring-cm-accent-ring"
                   value={scoreHours}
                   onChange={(e) => setScoreHours(e.target.value)}
                 />
@@ -566,14 +579,14 @@ export function Dashboard() {
           title="Your data (cloud)"
           subtitle="Counts after you sync from the ChainMind CLI"
           actions={
-            <button type="button" onClick={runDb} className="text-xs font-medium text-cm-accent-bright hover:text-cm-accent">
+            <button type="button" onClick={runDb} className="text-xs font-medium text-cm-muted hover:text-cm-text">
               Refresh
             </button>
           }
         >
           <DbBody data={dbStats} loading={loading.db && dbStats == null} />
           {dbStats != null && loading.db ? (
-            <p className="mt-2 text-center text-xs text-cm-faint">Refreshing…</p>
+            <p className="mt-2 text-center text-xs text-cm-faint">DB request in flight…</p>
           ) : null}
         </Card>
       </main>
