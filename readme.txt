@@ -1,33 +1,35 @@
-ChainMind repo — Solana + Groq scaffold.
+ChainMind — Next.js product surface + Solana CLI tools
 
-Open locally: C:\Users\LENOVO\Mami Projects\ChainMind (or your clone path)
+Local dev (main UI):
+  npm install
+  npm run dev
+  Open http://localhost:3000
 
-=== Deploy to Vercel (GitHub) ===
-1. Push this folder to GitHub (standalone repo, or monorepo with Root Directory = ChainMind).
-2. Vercel → Add Project → import the repo.
-3. If the repo root is NOT ChainMind, set Project Settings → General → Root Directory → ChainMind.
-4. Environment Variables (Production + Preview):
-   - SOLANA_RPC_URL = your RPC (Helius / QuickNode / etc.) — required for Ping + Inspect.
-   Optional for DB stats + Score on the web:
-   - TURSO_DATABASE_URL = from turso.tech (libsql URL)
-   - TURSO_AUTH_TOKEN = Turso token
-5. Deploy. Open the site URL — same UI as public/index.html.
-6. First-time Turso: locally run  npm run turso:schema  (with TURSO_* in .env.local).
-7. After local backfill + ingest-events, push data up:  npm run turso:sync
+Production build:
+  npm run build
+  npm start
 
-API routes (serverless): /api/ping  /api/inspect  /api/db-stats  /api/score
+Vercel + GitHub:
+  - Connect the repo; Vercel detects Next.js (no vercel.json needed).
+  - Set SOLANA_RPC_URL (and optional TURSO_* for DB panels).
+  - Framework Preset: Next.js
 
-=== Local only ===
-  npm run dashboard  → http://127.0.0.1:3847/
-
-CLI (from repo root):
+CLI / data pipeline (unchanged):
   npm run ping-solana
-  npm run inspect -- <base58> [--verbose]
+  npm run inspect -- <base58>
   npm run backfill -- <base58> [--max=200]
   npm run ingest-events -- <base58> [--limit=40] [--throttle=1500]
   npm run score-window -- <base58> [--window=5] [--hours=24]
+  npm run turso:schema
+  npm run turso:sync
 
-Pipeline: backfill → ingest-events → score-window (local SQLite data/chainmind.db).
-Then optional: npm run turso:sync  (copies SQLite → Turso for the live site).
+Optional legacy Express dashboard (same APIs, no React):
+  npm run dashboard-legacy  → http://127.0.0.1:3847/
 
-Data: local SQLite data/chainmind.db | production mirror optional via Turso
+Paths:
+  app/          Next.js App Router (page + app/api/* routes)
+  components/   React UI
+  lib/          Shared Solana/Turso/scoring (used by API routes + scripts)
+  scripts/      Node CLIs (SQLite local)
+
+Data: data/chainmind.db local · Turso for serverless mirror (see .env.example)

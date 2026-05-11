@@ -8,12 +8,15 @@
     "node": ">=20"
   },
   "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
     "ping-solana": "node scripts/ping-solana.mjs",
     "inspect": "node scripts/inspect-address.mjs",
     "backfill": "node scripts/backfill-address.mjs",
     "ingest-events": "node scripts/ingest-events.mjs",
     "score-window": "node scripts/score-window.mjs",
-    "dashboard": "node server/server.mjs",
+    "dashboard-legacy": "node server/server.mjs",
     "turso:schema": "node scripts/turso-init-schema.mjs",
     "turso:sync": "node scripts/sync-sqlite-to-turso.mjs"
   },
@@ -22,6 +25,14 @@
     "@solana/web3.js": "^1.98.4",
     "better-sqlite3": "^11.8.1",
     "dotenv": "^16.4.7",
-    "express": "^4.21.2"
+    "express": "^4.21.2",
+    "next": "^15.1.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
+  },
+  "devDependencies": {
+    "autoprefixer": "^10.4.20",
+    "postcss": "^8.4.49",
+    "tailwindcss": "^3.4.15"
   }
 }

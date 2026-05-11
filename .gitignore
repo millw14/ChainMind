@@ -1,6 +1,8 @@
 node_modules/
 dist/
 data/
+.next/
+out/
 .env
 .env.*
 !.env.example
