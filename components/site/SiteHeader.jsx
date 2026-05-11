@@ -1,8 +1,8 @@
 import Link from "next/link";
 
 const nav = [
+  { href: "/#how-it-works", label: "How it works" },
   { href: "/#capabilities", label: "Capabilities" },
-  { href: "/how-it-works", label: "How it works" },
   { href: "/console", label: "Console" },
 ];
 

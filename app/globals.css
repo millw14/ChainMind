@@ -30,8 +30,8 @@
   --cm-on-accent: #0a090c;
 
   --cm-accent-ring: rgba(139, 92, 246, 0.42);
-  --cm-hero-glow: rgba(196, 181, 253, 0.2);
-  --cm-footer-glow: rgba(139, 92, 246, 0.1);
+  --cm-hero-glow: rgba(196, 181, 253, 0.14);
+  --cm-footer-glow: rgba(139, 92, 246, 0.08);
 
   --cm-ok: #34d399;
   --cm-warn: #fbbf24;

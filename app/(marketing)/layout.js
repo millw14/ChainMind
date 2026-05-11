@@ -7,7 +7,7 @@ export const metadata = {
     template: "%s · ChainMind",
   },
   description:
-    "Operational intelligence for Solana: network health, address activity, and co-activity scoring for analysts.",
+    "Solana RPC checks, per-address transaction history, and optional co-activity scoring from data you sync. Outputs are analytical, not evidence of intent.",
 };
 
 export default function MarketingLayout({ children }) {

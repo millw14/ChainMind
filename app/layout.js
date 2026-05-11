@@ -13,7 +13,8 @@ const jetbrains = JetBrains_Mono({
 
 export const metadata = {
   title: "ChainMind",
-  description: "Solana-first coordination intelligence — signals, not verdicts.",
+  description:
+    "Solana RPC checks, address transaction history, and optional co-activity scoring from data you control.",
 };
 
 export default function RootLayout({ children }) {

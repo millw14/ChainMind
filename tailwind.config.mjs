@@ -30,9 +30,9 @@ export default {
       },
       backgroundImage: {
         "cm-hero":
-          "radial-gradient(ellipse 80% 55% at 50% -25%, var(--cm-hero-glow), transparent 52%)",
+          "radial-gradient(ellipse 125% 72% at 50% -14%, var(--cm-hero-glow), transparent 68%), radial-gradient(ellipse 88% 52% at 94% -6%, rgba(139, 92, 246, 0.065), transparent 58%), radial-gradient(ellipse 72% 48% at 4% 2%, rgba(196, 181, 253, 0.04), transparent 52%)",
         "cm-footer":
-          "radial-gradient(ellipse 60% 40% at 50% 100%, var(--cm-footer-glow), transparent 55%)",
+          "radial-gradient(ellipse 70% 45% at 50% 100%, var(--cm-footer-glow), transparent 58%)",
       },
       boxShadow: {
         cm: "0 1px 0 0 var(--cm-border-subtle), 0 18px 48px -12px rgba(0, 0, 0, 0.55)",
