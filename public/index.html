@@ -1,0 +1,277 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>ChainMind — local dashboard</title>
+    <style>
+      :root {
+        font-family: "Segoe UI", system-ui, sans-serif;
+        --bg: #0f1419;
+        --card: #1a2332;
+        --text: #e7edf4;
+        --muted: #8b9cb3;
+        --accent: #38b2ff;
+        --ok: #48bb78;
+        --warn: #ecc94b;
+        --border: #2d3a4d;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        background: var(--bg);
+        color: var(--text);
+        line-height: 1.5;
+        min-height: 100vh;
+      }
+      header {
+        padding: 1.25rem 1.5rem;
+        border-bottom: 1px solid var(--border);
+      }
+      header h1 {
+        margin: 0;
+        font-size: 1.25rem;
+        font-weight: 600;
+      }
+      header p {
+        margin: 0.35rem 0 0;
+        color: var(--muted);
+        font-size: 0.9rem;
+      }
+      main {
+        max-width: 960px;
+        margin: 0 auto;
+        padding: 1.5rem;
+        display: flex;
+        flex-direction: column;
+        gap: 1rem;
+      }
+      section {
+        background: var(--card);
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        padding: 1rem 1.25rem;
+      }
+      section h2 {
+        margin: 0 0 0.75rem;
+        font-size: 1rem;
+        color: var(--accent);
+      }
+      label {
+        display: block;
+        font-size: 0.75rem;
+        color: var(--muted);
+        margin-bottom: 0.25rem;
+      }
+      input {
+        width: 100%;
+        max-width: 32rem;
+        padding: 0.45rem 0.6rem;
+        border-radius: 6px;
+        border: 1px solid var(--border);
+        background: var(--bg);
+        color: var(--text);
+      }
+      .row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.75rem;
+        align-items: flex-end;
+        margin-bottom: 0.75rem;
+      }
+      .field {
+        flex: 1;
+        min-width: 140px;
+      }
+      button {
+        padding: 0.45rem 1rem;
+        border-radius: 6px;
+        border: none;
+        background: var(--accent);
+        color: #0f1419;
+        font-weight: 600;
+        cursor: pointer;
+      }
+      button:hover {
+        filter: brightness(1.08);
+      }
+      button.secondary {
+        background: var(--border);
+        color: var(--text);
+      }
+      pre {
+        margin: 0;
+        padding: 0.75rem;
+        background: var(--bg);
+        border-radius: 6px;
+        font-size: 0.78rem;
+        overflow: auto;
+        max-height: 320px;
+        border: 1px solid var(--border);
+      }
+      .badge {
+        display: inline-block;
+        padding: 0.15rem 0.5rem;
+        border-radius: 4px;
+        font-size: 0.75rem;
+        background: var(--border);
+        color: var(--muted);
+      }
+      .badge.ok {
+        background: rgba(72, 187, 120, 0.2);
+        color: var(--ok);
+      }
+      .hint {
+        font-size: 0.8rem;
+        color: var(--muted);
+        margin-top: 0.5rem;
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1>ChainMind</h1>
+      <p>
+        Local: <code>npm run dashboard</code> → <code>127.0.0.1:3847</code>. Deployed: open your Vercel URL —
+        set <code>SOLANA_RPC_URL</code> in Vercel env. DB + score on the server need Turso (see readme).
+      </p>
+    </header>
+    <main>
+      <section>
+        <h2>RPC ping</h2>
+        <p class="badge" id="pingStatus">Not loaded</p>
+        <button type="button" id="btnPing">Run ping</button>
+        <pre id="outPing">{}</pre>
+      </section>
+
+      <section>
+        <h2>Inspect address</h2>
+        <div class="row">
+          <div class="field" style="flex: 2">
+            <label for="addrInspect">Base58 address (mint / wallet / program)</label>
+            <input
+              id="addrInspect"
+              type="text"
+              placeholder="EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"
+              autocomplete="off"
+            />
+          </div>
+          <div class="field">
+            <label for="limInspect">Limit</label>
+            <input id="limInspect" type="number" min="1" max="100" value="12" />
+          </div>
+          <button type="button" id="btnInspect">Load</button>
+        </div>
+        <pre id="outInspect">{}</pre>
+      </section>
+
+      <section>
+        <h2>SQLite stats</h2>
+        <button type="button" class="secondary" id="btnDb">Refresh DB stats</button>
+        <pre id="outDb">{}</pre>
+        <p class="hint">Shows <code>signatures</code> and <code>events</code> counts after you run backfill / ingest from the CLI.</p>
+      </section>
+
+      <section>
+        <h2>Co-activity score (v1)</h2>
+        <div class="row">
+          <div class="field" style="flex: 2">
+            <label for="addrScore">Scope (same as mint/wallet you ingested)</label>
+            <input id="addrScore" type="text" placeholder="EPjF…" autocomplete="off" />
+          </div>
+          <div class="field">
+            <label for="winScore">Window (min)</label>
+            <input id="winScore" type="number" min="1" max="60" value="5" />
+          </div>
+          <div class="field">
+            <label for="hrsScore">Hours</label>
+            <input id="hrsScore" type="number" min="1" max="720" value="168" />
+          </div>
+          <button type="button" id="btnScore">Compute</button>
+        </div>
+        <pre id="outScore">{}</pre>
+      </section>
+    </main>
+    <script>
+      const $ = (id) => document.getElementById(id);
+
+      async function getJson(url) {
+        const r = await fetch(url);
+        const data = await r.json().catch(() => ({}));
+        if (!r.ok) throw new Error(data.error || r.statusText || "request failed");
+        return data;
+      }
+
+      function show(preId, obj) {
+        $(preId).textContent = JSON.stringify(obj, null, 2);
+      }
+
+      $("btnPing").onclick = async () => {
+        $("pingStatus").textContent = "Loading…";
+        try {
+          const d = await getJson("/api/ping");
+          $("pingStatus").textContent = d.ok ? "OK" : "Error";
+          $("pingStatus").className = "badge " + (d.ok ? "ok" : "");
+          show("outPing", d);
+        } catch (e) {
+          $("pingStatus").textContent = "Error";
+          show("outPing", { error: String(e.message) });
+        }
+      };
+
+      $("btnInspect").onclick = async () => {
+        const address = $("addrInspect").value.trim();
+        const limit = $("limInspect").value || "12";
+        if (!address) {
+          show("outInspect", { error: "Enter an address" });
+          return;
+        }
+        try {
+          const d = await getJson(
+            "/api/inspect?address=" + encodeURIComponent(address) + "&limit=" + encodeURIComponent(limit),
+          );
+          show("outInspect", d);
+        } catch (e) {
+          show("outInspect", { error: String(e.message) });
+        }
+      };
+
+      $("btnDb").onclick = async () => {
+        try {
+          const d = await getJson("/api/db-stats");
+          show("outDb", d);
+        } catch (e) {
+          show("outDb", { error: String(e.message) });
+        }
+      };
+
+      $("btnScore").onclick = async () => {
+        const scope = $("addrScore").value.trim();
+        const window = $("winScore").value || "5";
+        const hours = $("hrsScore").value || "24";
+        if (!scope) {
+          show("outScore", { error: "Enter scope address" });
+          return;
+        }
+        try {
+          const d = await getJson(
+            "/api/score?scope=" +
+              encodeURIComponent(scope) +
+              "&window=" +
+              encodeURIComponent(window) +
+              "&hours=" +
+              encodeURIComponent(hours),
+          );
+          show("outScore", d);
+        } catch (e) {
+          show("outScore", { error: String(e.message) });
+        }
+      };
+
+      $("btnPing").click();
+      $("btnDb").click();
+    </script>
+  </body>
+</html>
