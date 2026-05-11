@@ -2,10 +2,41 @@
 @tailwind components;
 @tailwind utilities;
 
+/*
+ * ChainMind theme — cool dark base + sky accent (analyst / infra product)
+ * Tweak only these variables to reskin.
+ */
 :root {
   color-scheme: dark;
+
+  --cm-bg: #060608;
+  --cm-surface: #0c0c0f;
+  --cm-elevated: #121218;
+  --cm-card: #15151c;
+  --cm-row: #0e0e12;
+  --cm-row-hover: #18181f;
+
+  --cm-border: rgba(255, 255, 255, 0.09);
+  --cm-border-subtle: rgba(255, 255, 255, 0.05);
+
+  --cm-text: #f4f4f5;
+  --cm-subtle: #d4d4d8;
+  --cm-muted: #a1a1aa;
+  --cm-faint: #71717a;
+
+  --cm-accent: #0ea5e9;
+  --cm-accent-bright: #38bdf8;
+  --cm-accent-dim: #0369a1;
+  --cm-on-accent: #0a0a0b;
+
+  --cm-accent-ring: rgba(14, 165, 233, 0.35);
+  --cm-hero-glow: rgba(14, 165, 233, 0.14);
+
+  --cm-ok: #34d399;
+  --cm-warn: #fbbf24;
+  --cm-bad: #f87171;
 }
 
 body {
-  @apply antialiased;
+  @apply min-h-screen antialiased bg-cm-bg text-cm-text;
 }

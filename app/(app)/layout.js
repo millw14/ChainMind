@@ -6,7 +6,7 @@ export const metadata = {
 
 export default function AppShellLayout({ children }) {
   return (
-    <div className="min-h-screen bg-zinc-950">
+    <div className="min-h-screen bg-cm-bg">
       <ConsoleHeader />
       {children}
     </div>
