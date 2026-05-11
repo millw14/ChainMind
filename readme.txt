@@ -13,6 +13,12 @@ Vercel + GitHub:
   - Connect the repo; Vercel detects Next.js (no vercel.json needed).
   - Set SOLANA_RPC_URL (and optional TURSO_* for DB panels).
   - Framework Preset: Next.js
+  - IMPORTANT: Do NOT set Output Directory to "public" (that was for the old static page).
+    Next.js outputs to .next — leave Output Directory empty / default.
+
+If the build says "No Output Directory named public found":
+  Your Vercel project still has a static-site output override. Clear Output Directory
+  and set Framework Preset to Next.js, then redeploy.
 
 CLI / data pipeline (unchanged):
   npm run ping-solana
