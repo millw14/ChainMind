@@ -3,38 +3,39 @@
 @tailwind utilities;
 
 /*
- * ChainMind theme — cool dark base + sky accent (analyst / infra product)
- * Tweak only these variables to reskin.
+ * ChainMind theme — cool slate-blue surfaces + cyan accent (distinct from default zinc/sky)
+ * Prior palette matched Tailwind zinc/sky hex codes, so the UI looked unchanged after token migration.
  */
 :root {
   color-scheme: dark;
 
-  --cm-bg: #060608;
-  --cm-surface: #0c0c0f;
-  --cm-elevated: #121218;
-  --cm-card: #15151c;
-  --cm-row: #0e0e12;
-  --cm-row-hover: #18181f;
+  --cm-bg: #060a10;
+  --cm-surface: #0b111a;
+  --cm-elevated: #121c2a;
+  --cm-card: #162536;
+  --cm-row: #0d1520;
+  --cm-row-hover: #1b2d42;
 
-  --cm-border: rgba(255, 255, 255, 0.09);
-  --cm-border-subtle: rgba(255, 255, 255, 0.05);
+  --cm-border: rgba(125, 211, 252, 0.11);
+  --cm-border-subtle: rgba(148, 163, 184, 0.07);
 
-  --cm-text: #f4f4f5;
-  --cm-subtle: #d4d4d8;
-  --cm-muted: #a1a1aa;
-  --cm-faint: #71717a;
+  --cm-text: #e8f0fa;
+  --cm-subtle: #c8d4e4;
+  --cm-muted: #8fa3bc;
+  --cm-faint: #5a6b82;
 
-  --cm-accent: #0ea5e9;
-  --cm-accent-bright: #38bdf8;
-  --cm-accent-dim: #0369a1;
-  --cm-on-accent: #0a0a0b;
+  --cm-accent: #06b6d4;
+  --cm-accent-bright: #22d3ee;
+  --cm-accent-dim: #0e7490;
+  --cm-on-accent: #041016;
 
-  --cm-accent-ring: rgba(14, 165, 233, 0.35);
-  --cm-hero-glow: rgba(14, 165, 233, 0.14);
+  --cm-accent-ring: rgba(6, 182, 212, 0.38);
+  --cm-hero-glow: rgba(34, 211, 238, 0.22);
+  --cm-footer-glow: rgba(6, 182, 212, 0.09);
 
-  --cm-ok: #34d399;
-  --cm-warn: #fbbf24;
-  --cm-bad: #f87171;
+  --cm-ok: #2dd4bf;
+  --cm-warn: #facc15;
+  --cm-bad: #fb7185;
 }
 
 body {
