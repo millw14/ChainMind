@@ -428,35 +428,27 @@ export function Dashboard() {
   };
 
   return (
-    <div className="min-h-screen">
-      <header className="border-b border-zinc-800/80 bg-zinc-950/80">
-        <div className="mx-auto max-w-5xl px-4 py-10 sm:px-6">
-          <p className="text-xs font-semibold uppercase tracking-widest text-sky-500">Solana intelligence</p>
-          <h1 className="mt-2 text-3xl font-bold tracking-tight text-white sm:text-4xl">ChainMind</h1>
-          <p className="mt-3 max-w-2xl text-base leading-relaxed text-zinc-400">
-            See whether the chain is reachable, browse recent activity for an address, and (when your cloud database is
-            connected) run a simple co-activity score. Numbers here are clues for analysts — not legal findings.
-          </p>
-          <div className="mt-6 flex flex-wrap gap-3">
-            <button
-              type="button"
-              onClick={runPing}
-              disabled={loading.ping}
-              className="rounded-lg bg-sky-500 px-4 py-2 text-sm font-semibold text-zinc-950 transition hover:bg-sky-400 disabled:opacity-50"
-            >
-              {loading.ping ? "Checking…" : "Check connection"}
-            </button>
-            <button
-              type="button"
-              onClick={runDb}
-              disabled={loading.db}
-              className="rounded-lg border border-zinc-600 bg-zinc-900 px-4 py-2 text-sm font-semibold text-zinc-100 transition hover:bg-zinc-800 disabled:opacity-50"
-            >
-              {loading.db ? "Refreshing…" : "Refresh database"}
-            </button>
-          </div>
+    <div className="pb-16">
+      <div className="border-b border-white/5 bg-zinc-900/30">
+        <div className="mx-auto flex max-w-5xl flex-wrap items-center justify-end gap-2 px-4 py-3 sm:px-6">
+          <button
+            type="button"
+            onClick={runPing}
+            disabled={loading.ping}
+            className="rounded-lg border border-zinc-600 bg-zinc-900 px-3 py-2 text-xs font-semibold text-zinc-100 hover:bg-zinc-800 disabled:opacity-50"
+          >
+            {loading.ping ? "Checking…" : "Refresh network"}
+          </button>
+          <button
+            type="button"
+            onClick={runDb}
+            disabled={loading.db}
+            className="rounded-lg border border-zinc-600 bg-zinc-900 px-3 py-2 text-xs font-semibold text-zinc-100 hover:bg-zinc-800 disabled:opacity-50"
+          >
+            {loading.db ? "Refreshing…" : "Refresh database"}
+          </button>
         </div>
-      </header>
+      </div>
 
       <main className="mx-auto max-w-5xl space-y-6 px-4 py-8 sm:px-6">
         <Card
@@ -585,13 +577,6 @@ export function Dashboard() {
           ) : null}
         </Card>
       </main>
-
-      <footer className="border-t border-zinc-800/80 py-8 text-center text-xs leading-relaxed text-zinc-600">
-        <p>
-          For faster, more reliable lookups, set <code className="text-zinc-500">SOLANA_RPC_URL</code> in Vercel. Raw API
-          responses stay available under “Technical details” on each card.
-        </p>
-      </footer>
     </div>
   );
 }
