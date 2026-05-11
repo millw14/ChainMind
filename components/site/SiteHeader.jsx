@@ -17,9 +17,9 @@ export function SiteHeader() {
   return (
     <motion.header
       className="sticky top-0 z-50 border-b border-cm-border-subtle bg-cm-surface/80 backdrop-blur-md"
-      initial={reduceMotion ? false : { y: -14, opacity: 0 }}
+      initial={reduceMotion ? false : { y: -28, opacity: 0 }}
       animate={{ y: 0, opacity: 1 }}
-      transition={{ duration: 0.45, ease: easeOut }}
+      transition={{ duration: 0.55, ease: easeOut }}
     >
       <div className="mx-auto flex h-14 max-w-6xl items-center justify-between gap-4 px-4 sm:px-6">
         <Link href="/" className="flex items-center gap-2 text-sm font-semibold tracking-tight text-cm-text">
@@ -37,9 +37,9 @@ export function SiteHeader() {
           {nav.map((item, i) => (
             <motion.div
               key={item.href}
-              initial={reduceMotion ? false : { opacity: 0, y: -6 }}
+              initial={reduceMotion ? false : { opacity: 0, y: -10 }}
               animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: reduceMotion ? 0 : 0.06 + i * 0.05, duration: 0.35, ease: easeOut }}
+              transition={{ delay: reduceMotion ? 0 : 0.08 + i * 0.07, duration: 0.45, ease: easeOut }}
             >
               <Link
                 href={item.href}
