@@ -7,37 +7,11 @@ const shell = "mx-auto w-full max-w-6xl px-4 sm:px-6";
 
 const easeOut = [0.22, 1, 0.36, 1];
 
-function HeroAmbience({ disabled }) {
-  if (disabled) return null;
-  return (
-    <>
-      <motion.div
-        aria-hidden
-        className="pointer-events-none absolute -left-[20%] top-[-30%] h-[min(85vh,720px)] w-[min(85vw,720px)] rounded-full bg-cm-accent/18 blur-[100px]"
-        animate={{ scale: [1, 1.12, 1], opacity: [0.35, 0.5, 0.35] }}
-        transition={{ duration: 14, repeat: Infinity, ease: "easeInOut" }}
-      />
-      <motion.div
-        aria-hidden
-        className="pointer-events-none absolute -right-[25%] top-[5%] h-[min(70vh,560px)] w-[min(75vw,620px)] rounded-full bg-cm-accent-dim/20 blur-[90px]"
-        animate={{ scale: [1.08, 1, 1.08], opacity: [0.28, 0.42, 0.28] }}
-        transition={{ duration: 18, repeat: Infinity, ease: "easeInOut", delay: 1.5 }}
-      />
-      <motion.div
-        aria-hidden
-        className="pointer-events-none absolute left-[30%] bottom-[-40%] h-[50vh] w-[90%] max-w-4xl rounded-full bg-cm-accent-bright/10 blur-[80px]"
-        animate={{ opacity: [0.2, 0.32, 0.2] }}
-        transition={{ duration: 11, repeat: Infinity, ease: "easeInOut", delay: 0.8 }}
-      />
-    </>
-  );
-}
-
-function Pill({ children, variants }) {
+function Pill({ children, variants, reduced }) {
   return (
     <motion.span
       variants={variants}
-      className="inline-flex items-center rounded-full border border-cm-accent/20 bg-cm-accent/10 px-3 py-1 text-xs font-medium text-cm-accent-bright"
+      className={`inline-flex items-center rounded-full border border-cm-accent/20 bg-cm-accent/10 px-3 py-1 text-xs font-medium text-cm-accent-bright ${reduced ? "" : "cm-pill-pulse"}`}
     >
       {children}
     </motion.span>
@@ -48,9 +22,9 @@ function CtaLink({ href, className, children, reduceMotion }) {
   return (
     <motion.div
       className="w-full sm:w-auto"
-      whileHover={reduceMotion ? undefined : { scale: 1.02, y: -2 }}
-      whileTap={reduceMotion ? undefined : { scale: 0.98 }}
-      transition={{ type: "spring", stiffness: 420, damping: 22 }}
+      whileHover={reduceMotion ? undefined : { scale: 1.06, y: -4 }}
+      whileTap={reduceMotion ? undefined : { scale: 0.97 }}
+      transition={{ type: "spring", stiffness: 380, damping: 20 }}
     >
       <Link href={href} className={className}>
         {children}
@@ -66,31 +40,31 @@ export function LandingPage() {
     hidden: {},
     visible: {
       transition: {
-        staggerChildren: reduceMotion ? 0 : 0.09,
-        delayChildren: reduceMotion ? 0 : 0.04,
+        staggerChildren: reduceMotion ? 0 : 0.14,
+        delayChildren: reduceMotion ? 0 : 0.1,
       },
     },
   };
 
   const fadeUp = {
-    hidden: { opacity: 0, y: reduceMotion ? 0 : 18 },
+    hidden: { opacity: 0, y: reduceMotion ? 0 : 48 },
     visible: {
       opacity: 1,
       y: 0,
-      transition: { duration: 0.5, ease: easeOut },
+      transition: { duration: reduceMotion ? 0.22 : 0.78, ease: easeOut },
     },
   };
 
   const sectionBlock = {
-    hidden: { opacity: 0, y: reduceMotion ? 0 : 26 },
+    hidden: { opacity: 0, y: reduceMotion ? 0 : 56 },
     visible: {
       opacity: 1,
       y: 0,
       transition: {
-        duration: 0.52,
+        duration: reduceMotion ? 0.22 : 0.72,
         ease: easeOut,
-        staggerChildren: reduceMotion ? 0 : 0.09,
-        delayChildren: reduceMotion ? 0 : 0.06,
+        staggerChildren: reduceMotion ? 0 : 0.12,
+        delayChildren: reduceMotion ? 0 : 0.08,
       },
     },
   };
@@ -98,8 +72,8 @@ export function LandingPage() {
   const cardHover = reduceMotion
     ? {}
     : {
-        y: -6,
-        transition: { type: "spring", stiffness: 400, damping: 24 },
+        y: -10,
+        transition: { type: "spring", stiffness: 360, damping: 22 },
       };
 
   const cardHighlight = reduceMotion
@@ -111,8 +85,7 @@ export function LandingPage() {
 
   return (
     <>
-      <section className="relative overflow-hidden border-b border-cm-border-subtle bg-cm-bg bg-cm-hero">
-        <HeroAmbience disabled={reduceMotion} />
+      <section className="relative overflow-hidden border-b border-cm-border-subtle bg-cm-bg bg-cm-hero cm-hero-live">
         <div className={`relative z-[1] ${shell} pb-20 pt-14 sm:pb-28 sm:pt-20`}>
           <motion.div
             className="mx-auto max-w-2xl text-center"
@@ -120,7 +93,9 @@ export function LandingPage() {
             initial="hidden"
             animate="visible"
           >
-            <Pill variants={fadeUp}>Solana · on-chain analytics</Pill>
+            <Pill variants={fadeUp} reduced={Boolean(reduceMotion)}>
+              Solana · on-chain analytics
+            </Pill>
             <motion.h1
               variants={fadeUp}
               className="mt-6 text-4xl font-bold tracking-tight text-cm-text sm:text-5xl sm:leading-tight"
