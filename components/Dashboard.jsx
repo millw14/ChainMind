@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { motion, useReducedMotion } from "framer-motion";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   AlertStrip,
@@ -14,6 +15,7 @@ import {
   RpcActivityTimeline,
   WalletGraphSvg,
 } from "@/components/dashboard/intel-widgets";
+import { staggerContainer, fadeUp, springGentle } from "@/components/motion/presets";
 
 const USDC_MAINNET = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
 
@@ -479,6 +481,9 @@ export function Dashboard() {
   };
 
   const syncing = Boolean(loading.ping || loading.db || loading.inspect || loading.score);
+  const reduceMotion = useReducedMotion() ?? false;
+  const mainStagger = staggerContainer(reduceMotion, { stagger: 0.06, delayChildren: 0.03 });
+  const panelV = fadeUp(reduceMotion);
 
   return (
     <div className="relative pb-24 cm-war-grid">
@@ -510,11 +515,28 @@ export function Dashboard() {
               Auto sweep <span className="text-cm-muted">{LIVE_POLL_MS / 1000}s</span>
             </p>
           </div>
-          <button
+          <motion.button
             type="button"
             onClick={() => void runAllSync()}
             disabled={syncing}
             className="inline-flex items-center justify-center gap-2 rounded-md border border-cm-accent/40 bg-cm-accent px-4 py-2.5 text-xs font-bold uppercase tracking-wide text-cm-on-accent shadow-[0_0_24px_-4px_rgba(139,92,246,0.55)] transition hover:bg-cm-accent-bright disabled:opacity-45"
+            whileHover={syncing || reduceMotion ? undefined : { scale: 1.04 }}
+            whileTap={reduceMotion ? undefined : { scale: 0.96 }}
+            animate={
+              syncing || reduceMotion
+                ? {}
+                : {
+                    boxShadow: [
+                      "0 0 22px -4px rgba(139,92,246,0.5)",
+                      "0 0 36px -2px rgba(196,181,253,0.45)",
+                      "0 0 22px -4px rgba(139,92,246,0.5)",
+                    ],
+                  }
+            }
+            transition={{
+              boxShadow: { duration: 2.4, repeat: Infinity, ease: "easeInOut" },
+              layout: springGentle,
+            }}
           >
             {syncing ? (
               <>
@@ -524,13 +546,21 @@ export function Dashboard() {
             ) : (
               <>Full resync</>
             )}
-          </button>
+          </motion.button>
         </div>
       </div>
 
-      <main className="mx-auto max-w-[88rem] space-y-6 px-4 py-8 sm:px-6">
-        <AlertStrip alerts={intelAlerts} />
+      <motion.main
+        className="mx-auto max-w-[88rem] space-y-6 px-4 py-8 sm:px-6"
+        initial="hidden"
+        animate="show"
+        variants={mainStagger}
+      >
+        <motion.div variants={panelV}>
+          <AlertStrip alerts={intelAlerts} />
+        </motion.div>
 
+        <motion.div variants={panelV}>
         <Panel
           kicker="Investigation"
           title="Watch target & scan parameters"
@@ -593,8 +623,9 @@ export function Dashboard() {
             </div>
           </div>
         </Panel>
+        </motion.div>
 
-        <div className="grid gap-6 lg:grid-cols-12">
+        <motion.div variants={panelV} className="grid gap-6 lg:grid-cols-12">
           <div className="space-y-6 lg:col-span-8">
             <Panel
               kicker="Telemetry"
@@ -630,9 +661,9 @@ export function Dashboard() {
               <ScoreBody data={score} loading={loading.score} hideMainScore />
             </Panel>
           </div>
-        </div>
+        </motion.div>
 
-        <div className="grid gap-6 lg:grid-cols-2">
+        <motion.div variants={panelV} className="grid gap-6 lg:grid-cols-2">
           <Panel kicker="Corpus" title="Synced datastore" subtitle="Signatures & parsed events mirrored for analysis">
             <DbBody data={dbStats} loading={loading.db && dbStats == null} />
             {dbStats != null && loading.db ? (
@@ -657,8 +688,8 @@ export function Dashboard() {
           >
             <BriefBody text={groqBrief} error={groqErr} loading={loadingGroq} />
           </Panel>
-        </div>
-      </main>
+        </motion.div>
+      </motion.main>
     </div>
   );
 }
