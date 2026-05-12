@@ -43,6 +43,63 @@ export default function HowItWorksPage() {
           </li>
         </ol>
 
+        <section id="roadmap" className="mt-16 scroll-mt-20 border-t border-cm-border-subtle pt-14">
+          <h2 className="text-xl font-semibold tracking-tight text-cm-text sm:text-2xl">Product direction</h2>
+          <p className="mt-3 text-sm leading-relaxed text-cm-muted">
+            v1 is intentionally narrow: one scalar co-activity score on ingested events—a trip wire, not a finished
+            investigation. To back the positioning you care about—<strong className="font-medium text-cm-text">detect</strong>,{" "}
+            <strong className="font-medium text-cm-text">explain</strong>, and{" "}
+            <strong className="font-medium text-cm-text">get ahead</strong> of coordination—the roadmap clusters into
+            three layers. Nothing below is implied to be fully shipped yet; it is the build target.
+          </p>
+
+          <div className="mt-10 space-y-10">
+            <div className="border-l border-cm-border pl-5">
+              <h3 className="text-base font-semibold text-cm-text">Detection layer</h3>
+              <ul className="mt-3 list-inside list-disc space-y-2 text-sm leading-relaxed text-cm-muted">
+                <li>
+                  <strong className="font-medium text-cm-text">Wallet clustering</strong> — relate addresses by shared
+                  funding paths, synchronized timing, and repeatable fee/Program patterns—not only “many payers in a
+                  bucket.”
+                </li>
+                <li>
+                  <strong className="font-medium text-cm-text">Named pattern library</strong> — curated detectors for
+                  wash-like sequences, coordinated accumulation, pump-squad clustering, spoofing-shaped flow—each with
+                  explicit definitions and false-positive notes.
+                </li>
+                <li>
+                  <strong className="font-medium text-cm-text">Velocity scoring</strong> — track not just level but{" "}
+                  <em>acceleration</em> (participation and concentration ramping into a window).
+                </li>
+              </ul>
+            </div>
+
+            <div className="border-l border-cm-border pl-5">
+              <h3 className="text-base font-semibold text-cm-text">Evidence layer</h3>
+              <ul className="mt-3 list-inside list-disc space-y-2 text-sm leading-relaxed text-cm-muted">
+                <li>
+                  <strong className="font-medium text-cm-text">Narrative output</strong> — compliance and investment
+                  users need the story: which wallets, which linking transfers or behaviors, which time slices, how
+                  often in the lookback—not a lone number.
+                </li>
+                <li>
+                  <strong className="font-medium text-cm-text">Exportable reports</strong> — PDF/CSV bundles suitable for
+                  internal review and audit trails, not only a live console.
+                </li>
+              </ul>
+            </div>
+
+            <div className="border-l border-cm-border pl-5">
+              <h3 className="text-base font-semibold text-cm-text">Prediction / leading indicators</h3>
+              <p className="mt-3 text-sm leading-relaxed text-cm-muted">
+                “Before it becomes visible” requires features aimed at <em>pre</em>-tape signals: pre-positioning
+                clusters, liquidity withdrawal or rotation patterns, unusual fee-payer compression ahead of volume
+                spikes—features that deliberately move ChainMind away from being “another explorer with a chart.”
+              </p>
+            </div>
+          </div>
+        </section>
+
         <div className="mt-14 flex flex-col gap-3 sm:flex-row sm:items-center">
           <Link
             href="/dashboard"
