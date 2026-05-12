@@ -18,7 +18,9 @@
     "score-window": "node scripts/score-window.mjs",
     "dashboard-legacy": "node server/server.mjs",
     "turso:schema": "node scripts/turso-init-schema.mjs",
-    "turso:sync": "node scripts/sync-sqlite-to-turso.mjs"
+    "turso:sync": "node scripts/sync-sqlite-to-turso.mjs",
+    "pipeline": "node scripts/pipeline-worker.mjs",
+    "pipeline:once": "node scripts/pipeline-worker.mjs --once"
   },
   "dependencies": {
     "@libsql/client": "^0.14.0",

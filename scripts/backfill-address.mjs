@@ -34,12 +34,15 @@ const maxTotal = Math.min(
   Math.max(1, Number(flags.max ?? process.env.BACKFILL_MAX ?? "200") || 200),
 );
 
+const resume = flags.resume === true || String(process.env.BACKFILL_RESUME ?? "") === "1";
+
 if (!address) {
   console.error(`
 Usage:
-  npm run backfill -- <base58-address> [--max=200]
+  npm run backfill -- <base58-address> [--max=200] [--resume]
 
 Or set TARGET_ADDRESS and BACKFILL_MAX in .env.local
+  --resume    continue deep pagination from ingest_state.last_before_signature
 `);
   process.exit(1);
 }
@@ -70,6 +73,11 @@ const upsertCursor = db.prepare(`
 const connection = getSolanaConnection();
 let fetched = 0;
 let before = undefined;
+if (resume) {
+  const cur = db.prepare(`SELECT last_before_signature FROM ingest_state WHERE scope_key = ?`).get(scope);
+  before = cur?.last_before_signature ? String(cur.last_before_signature) : undefined;
+  if (before) console.log("Resuming deep backfill from cursor:", before.slice(0, 16) + "…");
+}
 const batchSize = 100;
 
 console.log("Backfill signatures");
