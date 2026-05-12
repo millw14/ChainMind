@@ -1,37 +1,32 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import {
+  AlertStrip,
+  buildAlerts,
+  CoordinationTimeline,
+  deriveRiskProfile,
+  inspectFallbackGraph,
+  IntelDocsHint,
+  LiveActivityFeed,
+  RiskHero,
+  RpcActivityTimeline,
+  WalletGraphSvg,
+} from "@/components/dashboard/intel-widgets";
 
 const USDC_MAINNET = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
 
 const INSPECT_DEBOUNCE_MS = 350;
+const LIVE_POLL_MS = 42_000;
 
 function solscanTx(signature) {
   return `https://solscan.io/tx/${signature}`;
 }
 
-function formatTime(unix) {
-  if (unix == null || unix === "") return "—";
-  const n = Number(unix);
-  if (!Number.isFinite(n)) return "—";
-  return new Date(n * 1000).toLocaleString(undefined, {
-    dateStyle: "medium",
-    timeStyle: "short",
-  });
-}
-
 function shortSig(s) {
   if (!s || s.length < 12) return s || "—";
   return `${s.slice(0, 6)}…${s.slice(-4)}`;
-}
-
-function rpcHost(url) {
-  try {
-    return new URL(url).hostname;
-  } catch {
-    return "—";
-  }
 }
 
 function Card({ title, subtitle, children, actions }) {
@@ -79,133 +74,34 @@ function InfoCallout({ children }) {
   );
 }
 
-function PingBody({ data, loading }) {
-  if (loading) {
-    return <p className="py-8 text-center text-sm text-cm-faint">Requesting getHealth / getSlot from RPC…</p>;
-  }
-  if (!data) {
-    return <p className="py-8 text-center text-sm text-cm-faint">No ping result. Run Refresh network.</p>;
-  }
-  if (data.error) {
-    return <ErrorCallout message={data.error} />;
-  }
-  if (!data.ok) {
-    return <ErrorCallout message="Ping payload missing ok: true. Inspect Technical details (JSON)." />;
-  }
-  return (
-    <div className="space-y-4">
-      <div className="flex flex-wrap items-center gap-2">
-        <span className="rounded-full bg-cm-ok/15 px-3 py-1 text-xs font-semibold text-cm-ok">
-          Connected
-        </span>
-        <span className="text-xs text-cm-faint">{data.cluster}</span>
-      </div>
-      <dl className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-        <div className="rounded-md border border-cm-border bg-cm-row/60 px-4 py-3">
-          <dt className="text-xs text-cm-faint">Current slot</dt>
-          <dd className="mt-1 text-lg font-semibold tabular-nums text-cm-text">{data.slot?.toLocaleString?.() ?? data.slot}</dd>
-        </div>
-        <div className="rounded-md border border-cm-border bg-cm-row/60 px-4 py-3">
-          <dt className="text-xs text-cm-faint">Solana version</dt>
-          <dd className="mt-1 text-lg font-semibold text-cm-text">{data.version ?? "—"}</dd>
-        </div>
-        <div className="rounded-md border border-cm-border bg-cm-row/60 px-4 py-3 sm:col-span-2">
-          <dt className="text-xs text-cm-faint">RPC endpoint (redacted)</dt>
-          <dd className="mt-1 break-all font-[family-name:var(--font-mono)] text-sm text-cm-subtle">{data.rpcUrl}</dd>
-          <p className="mt-1 text-xs text-cm-faint">
-            Host: <span className="text-cm-muted">{rpcHost(data.rpcUrl)}</span>
-          </p>
-        </div>
-      </dl>
-      <ExpandableRaw data={data} />
-    </div>
-  );
-}
-
-function InspectBody({ data, loading, hasFocus }) {
-  if (loading) {
-    return <p className="py-8 text-center text-sm text-cm-faint">Loading recent transactions…</p>;
-  }
+function InspectBody({ data, loading, hasFocus, solscanTx }) {
   if (!hasFocus) {
     return (
       <p className="py-8 text-center text-sm text-cm-faint">
-        Add a token, wallet, or program in <strong className="font-medium text-cm-muted">What you&apos;re watching</strong>{" "}
+        Add a token, wallet, or program in <strong className="font-medium text-cm-muted">Watchlist target</strong>{" "}
         above—recent activity fills in automatically.
       </p>
     );
   }
-  if (!data) {
+  if (!data && !loading) {
     return (
       <p className="py-8 text-center text-sm text-cm-faint">
         Recent transactions for your focus address load on their own. If this stays empty, check the address above or
-        click Load to retry.
+        click Refresh feed.
       </p>
     );
   }
-  if (data.error || data.ok === false) {
+  if (data && (data.error || data.ok === false)) {
     return <ErrorCallout message={data.error || "GET /api/inspect failed (no error body)."} />;
   }
-  const rows = data.signatures ?? [];
-  if (rows.length === 0) {
+  const rows = data?.signatures ?? [];
+  if (!loading && rows.length === 0 && data?.ok) {
     return <p className="py-6 text-center text-sm text-cm-faint">RPC returned zero signatures for this address / limit.</p>;
   }
   return (
     <div className="space-y-3">
-      <p className="text-sm text-cm-muted">
-        Showing <strong className="text-cm-text">{rows.length}</strong> recent transactions
-        {data.address ? (
-          <>
-            {" "}
-            for <span className="font-[family-name:var(--font-mono)] text-xs text-cm-subtle">{shortSig(data.address)}</span>
-          </>
-        ) : null}
-        .
-      </p>
-      <div className="overflow-x-auto rounded-md border border-cm-border">
-        <table className="w-full min-w-[32rem] text-left text-sm">
-          <thead className="border-b border-cm-border bg-cm-row/80 text-xs font-medium uppercase tracking-wide text-cm-faint">
-            <tr>
-              <th className="px-3 py-2">Time</th>
-              <th className="px-3 py-2">Slot</th>
-              <th className="px-3 py-2">Status</th>
-              <th className="px-3 py-2">View</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-cm-border">
-            {rows.map((row) => {
-              const ok = !row.err;
-              return (
-                <tr key={row.signature} className="bg-cm-row/30 hover:bg-cm-row-hover/55">
-                  <td className="whitespace-nowrap px-3 py-2 text-cm-subtle">{formatTime(row.blockTime)}</td>
-                  <td className="whitespace-nowrap px-3 py-2 tabular-nums text-cm-muted">
-                    {row.slot != null ? row.slot.toLocaleString() : "—"}
-                  </td>
-                  <td className="px-3 py-2">
-                    {ok ? (
-                      <span className="text-cm-ok/90">Succeeded</span>
-                    ) : (
-                      <span className="text-cm-warn/90" title={JSON.stringify(row.err)}>
-                        Failed
-                      </span>
-                    )}
-                  </td>
-                  <td className="px-3 py-2">
-                    <a
-                      href={solscanTx(row.signature)}
-                      target="_blank"
-                      rel="noopener noreferrer"
-            className="text-cm-text underline-offset-2 hover:text-cm-accent hover:underline"
-                    >
-                      Solscan ↗
-                    </a>
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </div>
-      <ExpandableRaw label="Raw API response" data={data} />
+      <LiveActivityFeed rows={rows} loading={loading} solscanTx={solscanTx} />
+      {data?.ok ? <ExpandableRaw label="Raw RPC sample (JSON)" data={data} /> : null}
     </div>
   );
 }
@@ -290,12 +186,12 @@ function DbBody({ data, loading }) {
   );
 }
 
-function ScoreBody({ data, loading }) {
+function ScoreBody({ data, loading, hideMainScore }) {
   if (loading) {
     return <p className="py-8 text-center text-sm text-cm-faint">Computing coordination score…</p>;
   }
   if (!data) {
-    return <p className="py-8 text-center text-sm text-cm-faint">Choose time window and lookback, then Compute.</p>;
+    return <p className="py-8 text-center text-sm text-cm-faint">Adjust lookback below; analysis runs automatically.</p>;
   }
   if (data.error) {
     return <ErrorCallout message={data.error} />;
@@ -324,23 +220,25 @@ function ScoreBody({ data, loading }) {
   const programs = data.topPrograms ?? [];
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap items-end gap-4">
-        <div>
-          <p className="text-xs uppercase tracking-wide text-cm-faint">Coordination score (v1)</p>
-          <p className="mt-1 text-4xl font-bold tracking-tight text-cm-text tabular-nums">{data.score ?? "—"}</p>
-          <p className="mt-1 max-w-md text-xs text-cm-faint">
-            Peak distinct fee-paying wallets in one {data.windowMinutes}-minute slice—dense windows deserve a second
-            look before the tape catches up.
-          </p>
-        </div>
-        {data.peakBucketStartsIso ? (
-          <div className="rounded-md border border-cm-border bg-cm-row/60 px-4 py-3 text-sm">
-            <span className="text-cm-faint">Busiest window started</span>
-            <p className="mt-0.5 font-medium text-cm-text">{data.peakBucketStartsIso}</p>
-            <p className="text-xs text-cm-faint">{data.peakBucketWalletCount} wallets in that slice</p>
+      {!hideMainScore ? (
+        <div className="flex flex-wrap items-end gap-4">
+          <div>
+            <p className="text-xs uppercase tracking-wide text-cm-faint">Coordination score (v1)</p>
+            <p className="mt-1 text-4xl font-bold tracking-tight text-cm-text tabular-nums">{data.score ?? "—"}</p>
+            <p className="mt-1 max-w-md text-xs text-cm-faint">
+              Peak distinct fee-paying wallets in one {data.windowMinutes}-minute slice—dense windows deserve a second
+              look before the tape catches up.
+            </p>
           </div>
-        ) : null}
-      </div>
+          {data.peakBucketStartsIso ? (
+            <div className="rounded-md border border-cm-border bg-cm-row/60 px-4 py-3 text-sm">
+              <span className="text-cm-faint">Busiest window started</span>
+              <p className="mt-0.5 font-medium text-cm-text">{data.peakBucketStartsIso}</p>
+              <p className="text-xs text-cm-faint">{data.peakBucketWalletCount} wallets in that slice</p>
+            </div>
+          ) : null}
+        </div>
+      ) : null}
       <div className="flex flex-wrap gap-2">
         {types.map(([k, v]) => (
           <span
@@ -441,13 +339,13 @@ export function Dashboard() {
     }
   }, []);
 
-  const runPing = async () => {
+  const runPing = useCallback(async () => {
     try {
       setPing(await fetchJson("/api/ping", "ping"));
     } catch (e) {
       setPing({ error: String(e.message) });
     }
-  };
+  }, [fetchJson]);
 
   const runInspect = useCallback(async () => {
     const a = focusAddress.trim();
@@ -460,19 +358,29 @@ export function Dashboard() {
     }
   }, [focusAddress, inspectLimit, fetchJson]);
 
-  const runDb = async () => {
+  const runDb = useCallback(async () => {
     try {
       setDbStats(await fetchJson("/api/db-stats", "db"));
     } catch (e) {
       setDbStats({ ok: false, error: String(e.message) });
     }
-  };
+  }, [fetchJson]);
+
+  const runScore = useCallback(async () => {
+    const s = focusAddress.trim();
+    if (!s) return;
+    const u = `/api/score?scope=${encodeURIComponent(s)}&window=${encodeURIComponent(scoreWindow || "5")}&hours=${encodeURIComponent(scoreHours || "24")}`;
+    try {
+      setScore(await fetchJson(u, "score"));
+    } catch (e) {
+      setScore({ ok: false, error: String(e.message) });
+    }
+  }, [focusAddress, scoreWindow, scoreHours, fetchJson]);
 
   useEffect(() => {
     void runPing();
     void runDb();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [runPing, runDb]);
 
   useEffect(() => {
     const a = focusAddress.trim();
@@ -488,16 +396,37 @@ export function Dashboard() {
     return () => clearTimeout(id);
   }, [focusAddress, inspectLimit, runInspect]);
 
-  const runScore = async () => {
-    const s = focusAddress.trim();
-    if (!s) return;
-    const u = `/api/score?scope=${encodeURIComponent(s)}&window=${encodeURIComponent(scoreWindow || "5")}&hours=${encodeURIComponent(scoreHours || "24")}`;
-    try {
-      setScore(await fetchJson(u, "score"));
-    } catch (e) {
-      setScore({ ok: false, error: String(e.message) });
+  useEffect(() => {
+    const a = focusAddress.trim();
+    if (!a) {
+      setScore(null);
+      return;
     }
-  };
+    const id = setTimeout(() => {
+      void runScore();
+    }, INSPECT_DEBOUNCE_MS + 120);
+    return () => clearTimeout(id);
+  }, [focusAddress, scoreWindow, scoreHours, runScore]);
+
+  useEffect(() => {
+    const a = focusAddress.trim();
+    if (!a) return;
+    const tick = () => {
+      void runInspect();
+      void runPing();
+      void runDb();
+      void runScore();
+    };
+    const id = setInterval(tick, LIVE_POLL_MS);
+    return () => clearInterval(id);
+  }, [focusAddress, runInspect, runPing, runDb, runScore]);
+
+  const intelAlerts = useMemo(() => buildAlerts({ inspect, score, ping }), [inspect, score, ping]);
+  const risk = useMemo(() => deriveRiskProfile(score), [score]);
+  const walletGraphVisual = useMemo(() => {
+    if (score?.walletGraph?.nodes?.length > 1) return score.walletGraph;
+    return inspectFallbackGraph(focusAddress.trim(), inspect?.ok ? inspect.signatures : null);
+  }, [score?.walletGraph, focusAddress, inspect?.ok, inspect?.signatures]);
 
   const runBrief = async () => {
     setGroqErr(null);
@@ -538,51 +467,58 @@ export function Dashboard() {
   };
 
   return (
-    <div className="pb-16">
-      <div className="border-b border-cm-border bg-cm-surface">
-        <div className="mx-auto flex max-w-5xl flex-wrap items-center justify-end gap-2 px-4 py-2 sm:px-6">
-          <button
-            type="button"
-            onClick={runPing}
-            disabled={loading.ping}
-            className="rounded-md border border-cm-border bg-cm-elevated px-3 py-2 text-xs font-medium text-cm-text hover:bg-cm-row-hover disabled:opacity-50"
-          >
-            {loading.ping ? "Ping…" : "Refresh network"}
-          </button>
-          <button
-            type="button"
-            onClick={runDb}
-            disabled={loading.db}
-            className="rounded-md border border-cm-border bg-cm-elevated px-3 py-2 text-xs font-medium text-cm-text hover:bg-cm-row-hover disabled:opacity-50"
-          >
-            {loading.db ? "Sync…" : "Refresh synced data"}
-          </button>
-        </div>
-      </div>
-
-      <main className="mx-auto max-w-5xl space-y-6 px-4 py-8 sm:px-6">
-        <Card
-          title="Network status"
-          subtitle="Live read from the Solana connection in your environment"
-          actions={
+    <div className="pb-20">
+      <div className="border-b border-cm-border bg-cm-surface/95">
+        <div className="mx-auto flex max-w-6xl flex-col gap-3 px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:px-6">
+          <div className="flex flex-wrap items-center gap-3">
+            <span className="relative flex h-2.5 w-2.5 shrink-0">
+              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-cm-ok opacity-40" />
+              <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-cm-ok" />
+            </span>
+            <div>
+              <p className="text-[11px] font-semibold uppercase tracking-wider text-cm-faint">Live operations</p>
+              <p className="text-xs text-cm-muted">
+                {ping?.error ? (
+                  <span className="text-cm-bad">RPC fault — retry refresh</span>
+                ) : ping?.ok ? (
+                  <>
+                    <span className="text-cm-text">{ping.cluster}</span>
+                    <span className="text-cm-faint"> · slot </span>
+                    <span className="tabular-nums text-cm-text">{ping.slot?.toLocaleString?.() ?? ping.slot}</span>
+                  </>
+                ) : (
+                  "Warming RPC endpoint…"
+                )}
+              </p>
+            </div>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
             <button
               type="button"
               onClick={runPing}
-              className="text-xs font-medium text-cm-muted hover:text-cm-text"
+              disabled={loading.ping}
+              className="rounded-md border border-cm-border bg-cm-elevated px-3 py-2 text-xs font-medium text-cm-text hover:bg-cm-row-hover disabled:opacity-50"
             >
-              Refresh
+              {loading.ping ? "RPC…" : "Refresh RPC"}
             </button>
-          }
-        >
-          <PingBody data={ping} loading={!!loading.ping && ping == null} />
-          {ping != null && loading.ping ? (
-            <p className="mt-2 text-center text-xs text-cm-faint">Ping in flight…</p>
-          ) : null}
-        </Card>
+            <button
+              type="button"
+              onClick={runDb}
+              disabled={loading.db}
+              className="rounded-md border border-cm-border bg-cm-elevated px-3 py-2 text-xs font-medium text-cm-text hover:bg-cm-row-hover disabled:opacity-50"
+            >
+              {loading.db ? "Sync…" : "Sync stats"}
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <main className="mx-auto max-w-6xl space-y-6 px-4 py-8 sm:px-6">
+        <AlertStrip alerts={intelAlerts} />
 
         <Card
-          title="What you’re watching"
-          subtitle="One token, wallet, or program drives activity and coordination below."
+          title="Watchlist target"
+          subtitle="One mint, wallet, or program — every panel keys off this address."
         >
           <label className="mb-1 block text-xs font-medium text-cm-faint">Solana address</label>
           <input
@@ -595,86 +531,112 @@ export function Dashboard() {
           />
         </Card>
 
-        <div className="grid gap-6 lg:grid-cols-2">
-          <Card
-            title="Recent activity"
-            subtitle="Latest on-chain touches for the address above"
-            actions={
-              <button
-                type="button"
-                onClick={runInspect}
-                disabled={loading.inspect}
-                className="rounded-md bg-cm-accent px-3 py-1.5 text-xs font-semibold text-cm-on-accent transition hover:bg-cm-accent-bright disabled:opacity-50"
-              >
-                {loading.inspect ? "Load…" : "Load"}
-              </button>
-            }
-          >
-            <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-end">
-              <div className="w-full sm:w-28">
-                <label className="mb-1 block text-xs font-medium text-cm-faint">How many rows</label>
-                <input
-                  type="number"
-                  min={1}
-                  max={100}
-                  className="w-full rounded-md border border-cm-border bg-cm-surface px-3 py-2 text-sm text-cm-text outline-none focus:ring-2 focus:ring-cm-accent-ring"
-                  value={inspectLimit}
-                  onChange={(e) => setInspectLimit(e.target.value)}
-                />
+        <div className="grid gap-6 lg:grid-cols-12">
+          <div className="space-y-6 lg:col-span-7">
+            <Card
+              title="Live activity feed"
+              subtitle="RPC-backed tail · auto refresh on an interval"
+              actions={
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="hidden text-[10px] text-cm-faint sm:inline">{LIVE_POLL_MS / 1000}s poll</span>
+                  <button
+                    type="button"
+                    onClick={runInspect}
+                    disabled={loading.inspect}
+                    className="rounded-md bg-cm-accent px-3 py-1.5 text-xs font-semibold text-cm-on-accent transition hover:bg-cm-accent-bright disabled:opacity-50"
+                  >
+                    {loading.inspect ? "Refreshing…" : "Refresh feed"}
+                  </button>
+                </div>
+              }
+            >
+              <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-end">
+                <div className="w-full sm:w-28">
+                  <label className="mb-1 block text-xs font-medium text-cm-faint">Sample depth</label>
+                  <input
+                    type="number"
+                    min={1}
+                    max={100}
+                    className="w-full rounded-md border border-cm-border bg-cm-surface px-3 py-2 text-sm text-cm-text outline-none focus:ring-2 focus:ring-cm-accent-ring"
+                    value={inspectLimit}
+                    onChange={(e) => setInspectLimit(e.target.value)}
+                  />
+                </div>
               </div>
-            </div>
-            <InspectBody
-              data={inspect}
-              loading={loading.inspect}
-              hasFocus={Boolean(focusAddress.trim())}
-            />
-          </Card>
+              <InspectBody
+                data={inspect}
+                loading={loading.inspect}
+                hasFocus={Boolean(focusAddress.trim())}
+                solscanTx={solscanTx}
+              />
+            </Card>
+          </div>
 
-          <Card
-            title="Coordination score"
-            subtitle="Flags when many wallets bunch into the same short window—uses synced events, not RPC alone."
-            actions={
-              <button
-                type="button"
-                onClick={runScore}
-                disabled={loading.score}
-                className="rounded-md bg-cm-accent px-3 py-1.5 text-xs font-semibold text-cm-on-accent transition hover:bg-cm-accent-bright disabled:opacity-50"
-              >
-                {loading.score ? "Compute…" : "Compute"}
-              </button>
-            }
-          >
-            <div className="mb-4 grid gap-3 sm:grid-cols-2">
-              <div>
-                <label className="mb-1 block text-xs font-medium text-cm-faint">Window (minutes)</label>
-                <input
-                  type="number"
-                  min={1}
-                  max={60}
-                  className="w-full rounded-md border border-cm-border bg-cm-surface px-3 py-2 text-sm text-cm-text outline-none focus:ring-2 focus:ring-cm-accent-ring"
-                  value={scoreWindow}
-                  onChange={(e) => setScoreWindow(e.target.value)}
-                />
+          <div className="space-y-6 lg:col-span-5">
+            <RiskHero profile={risk} scopeLabel={shortSig(focusAddress.trim()) || "—"} />
+
+            <Card
+              title="Wallet graph"
+              subtitle="Top fee payers linked to your scope — falls back to live tx satellites without Turso."
+            >
+              <WalletGraphSvg graph={walletGraphVisual} />
+              <IntelDocsHint />
+            </Card>
+
+            <Card title="Coordination timeline" subtitle="Payer density by bucket, or RPC confirmation markers.">
+              {score?.timelineBuckets?.length ? (
+                <CoordinationTimeline buckets={score.timelineBuckets} />
+              ) : (
+                <RpcActivityTimeline signatures={inspect?.signatures} />
+              )}
+            </Card>
+
+            <Card
+              title="Coordination analysis"
+              subtitle="Windowed scan of ingested events — refreshes with live polling"
+              actions={
+                <button
+                  type="button"
+                  onClick={runScore}
+                  disabled={loading.score}
+                  className="rounded-md bg-cm-accent px-3 py-1.5 text-xs font-semibold text-cm-on-accent transition hover:bg-cm-accent-bright disabled:opacity-50"
+                >
+                  {loading.score ? "Scanning…" : "Rescan now"}
+                </button>
+              }
+            >
+              <div className="mb-4 grid gap-3 sm:grid-cols-2">
+                <div>
+                  <label className="mb-1 block text-xs font-medium text-cm-faint">Window (minutes)</label>
+                  <input
+                    type="number"
+                    min={1}
+                    max={60}
+                    className="w-full rounded-md border border-cm-border bg-cm-surface px-3 py-2 text-sm text-cm-text outline-none focus:ring-2 focus:ring-cm-accent-ring"
+                    value={scoreWindow}
+                    onChange={(e) => setScoreWindow(e.target.value)}
+                  />
+                </div>
+                <div>
+                  <label className="mb-1 block text-xs font-medium text-cm-faint">Lookback (hours)</label>
+                  <input
+                    type="number"
+                    min={1}
+                    max={720}
+                    className="w-full rounded-md border border-cm-border bg-cm-surface px-3 py-2 text-sm text-cm-text outline-none focus:ring-2 focus:ring-cm-accent-ring"
+                    value={scoreHours}
+                    onChange={(e) => setScoreHours(e.target.value)}
+                  />
+                </div>
               </div>
-              <div>
-                <label className="mb-1 block text-xs font-medium text-cm-faint">Lookback (hours)</label>
-                <input
-                  type="number"
-                  min={1}
-                  max={720}
-                  className="w-full rounded-md border border-cm-border bg-cm-surface px-3 py-2 text-sm text-cm-text outline-none focus:ring-2 focus:ring-cm-accent-ring"
-                  value={scoreHours}
-                  onChange={(e) => setScoreHours(e.target.value)}
-                />
-              </div>
-            </div>
-            <ScoreBody data={score} loading={loading.score} />
-          </Card>
+              <ScoreBody data={score} loading={loading.score} hideMainScore />
+            </Card>
+          </div>
         </div>
 
         <Card
-          title="Synced events"
-          subtitle="What you’ve mirrored from your machine—signatures and parsed activity in cloud storage."
+          title="Synced corpus"
+          subtitle="Mirrored signatures and parsed events in cloud storage."
           actions={
             <button type="button" onClick={runDb} className="text-xs font-medium text-cm-muted hover:text-cm-text">
               Refresh
@@ -689,7 +651,7 @@ export function Dashboard() {
 
         <Card
           title="Analyst brief"
-          subtitle="Optional AI summary of everything loaded above—setup in Docs."
+          subtitle="Optional narrative across everything loaded — enable in Docs."
           actions={
             <button
               type="button"
