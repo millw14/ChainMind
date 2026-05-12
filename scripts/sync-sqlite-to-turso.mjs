@@ -15,6 +15,10 @@ const local = openDb();
 const sigs = local.prepare(`SELECT * FROM signatures`).all();
 const evs = local.prepare(`SELECT * FROM events`).all();
 const state = local.prepare(`SELECT * FROM ingest_state`).all();
+const signers = local.prepare(`SELECT * FROM signers`).all();
+const transfers = local.prepare(`SELECT * FROM transfers`).all();
+const programCalls = local.prepare(`SELECT * FROM program_calls`).all();
+const edges = local.prepare(`SELECT * FROM edges`).all();
 local.close();
 
 let n = 0;
@@ -60,6 +64,81 @@ for (const r of evs) {
   n++;
 }
 console.log("Uploaded events:", n);
+
+n = 0;
+for (const r of signers) {
+  await turso.execute({
+    sql: `INSERT OR REPLACE INTO signers (tx_sig, scope_address, address, role, ingested_at)
+      VALUES (?, ?, ?, ?, ?)`,
+    args: [r.tx_sig, r.scope_address, r.address, r.role, r.ingested_at],
+  });
+  n++;
+}
+console.log("Uploaded signers:", n);
+
+n = 0;
+for (const r of transfers) {
+  await turso.execute({
+    sql: `INSERT OR REPLACE INTO transfers
+      (tx_sig, scope_address, idx, from_address, to_address, mint, amount, slot, ingested_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    args: [
+      r.tx_sig,
+      r.scope_address,
+      r.idx,
+      r.from_address,
+      r.to_address,
+      r.mint,
+      r.amount,
+      r.slot,
+      r.ingested_at,
+    ],
+  });
+  n++;
+}
+console.log("Uploaded transfers:", n);
+
+n = 0;
+for (const r of programCalls) {
+  await turso.execute({
+    sql: `INSERT OR REPLACE INTO program_calls
+      (tx_sig, scope_address, idx, program_id, instruction_name, slot, ingested_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    args: [
+      r.tx_sig,
+      r.scope_address,
+      r.idx,
+      r.program_id,
+      r.instruction_name,
+      r.slot,
+      r.ingested_at,
+    ],
+  });
+  n++;
+}
+console.log("Uploaded program_calls:", n);
+
+n = 0;
+for (const r of edges) {
+  await turso.execute({
+    sql: `INSERT OR REPLACE INTO edges
+      (id, scope_address, from_address, to_address, tx_sig, slot, edge_type, mint, ingested_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    args: [
+      r.id,
+      r.scope_address,
+      r.from_address,
+      r.to_address,
+      r.tx_sig,
+      r.slot,
+      r.edge_type,
+      r.mint,
+      r.ingested_at,
+    ],
+  });
+  n++;
+}
+console.log("Uploaded edges:", n);
 
 n = 0;
 for (const r of state) {

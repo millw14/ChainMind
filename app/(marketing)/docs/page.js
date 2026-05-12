@@ -76,13 +76,19 @@ export default function DocsPage() {
 
         <h2 className="mt-10 text-sm font-semibold uppercase tracking-wide text-cm-faint">CLI / pipeline</h2>
         <p className="mt-3 text-sm leading-relaxed text-cm-muted">
-          Roadmap for continuous ingestion, richer event types, graph storage, and scale:{" "}
+          Each parsed transaction writes graph rows{" "}
+          <code className="font-mono text-xs">signers</code>,{" "}
+          <code className="font-mono text-xs">transfers</code>,{" "}
+          <code className="font-mono text-xs">program_calls</code>, and{" "}
+          <code className="font-mono text-xs">edges</code> — see{" "}
+          <code className="font-mono text-xs">lib/parse-tx-graph.js</code>. Roadmap for scaling ingestion and analytics:{" "}
           <code className="rounded border border-cm-border bg-cm-elevated px-1 font-[family-name:var(--font-mono)] text-xs text-cm-subtle">
             docs/strategic-plan-data-pipeline.md
           </code>
-          . New <strong className="font-medium text-cm-text">Turso</strong> projects should use the updated schema
-          (composite key on <code className="font-mono text-xs">signatures</code>); existing databases can run{" "}
-          <code className="font-mono text-xs">schema/migrations/001_signatures_composite_pk.sql</code> once.
+          . New <strong className="font-medium text-cm-text">Turso</strong> projects should apply{" "}
+          <code className="font-mono text-xs">npm run turso:schema</code>; older databases may need{" "}
+          <code className="font-mono text-xs">schema/migrations/001_signatures_composite_pk.sql</code> and{" "}
+          <code className="font-mono text-xs">schema/migrations/002_graph_tables.sql</code> once each.
         </p>
         <div className="mt-4 overflow-x-auto border border-cm-border">
           <table className="w-full min-w-[20rem] text-left text-xs sm:text-sm">
