@@ -13,7 +13,7 @@ export function ConsoleHeader() {
           </Link>
           <span className="hidden h-3.5 w-px bg-cm-border sm:block" />
           <span className="truncate font-[family-name:var(--font-mono)] text-[10px] font-medium uppercase tracking-wide text-cm-faint sm:text-xs">
-            Console
+            Solana dashboard
           </span>
         </div>
         <nav className="flex shrink-0 items-center gap-3 text-sm">

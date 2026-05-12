@@ -11,16 +11,16 @@ export default function HowItWorksPage() {
         <p className="font-[family-name:var(--font-mono)] text-[10px] uppercase tracking-widest text-cm-faint">Guide</p>
         <h1 className="mt-3 text-3xl font-bold tracking-tight text-cm-text sm:text-4xl">How ChainMind fits together</h1>
         <p className="mt-4 text-lg leading-relaxed text-cm-muted">
-          Console first, pipeline when you need your own event store and scored windows.
+          Dashboard first, pipeline when you need your own event store and scored windows.
         </p>
 
         <ol className="mt-14 space-y-10">
           <li className="border-l border-cm-border pl-5">
-            <h2 className="text-lg font-semibold text-cm-text">1. Console</h2>
+            <h2 className="text-lg font-semibold text-cm-text">1. Solana dashboard</h2>
             <p className="mt-2 text-sm leading-relaxed text-cm-muted">
               The{" "}
-              <Link href="/console" className="font-medium text-cm-text underline-offset-4 hover:underline">
-                console
+              <Link href="/dashboard" className="font-medium text-cm-text underline-offset-4 hover:underline">
+                dashboard
               </Link>{" "}
               hits your configured RPC for health, loads recent signatures for any base58 you enter, and shows scores when
               cloud-backed data exists.
@@ -44,10 +44,10 @@ export default function HowItWorksPage() {
 
         <div className="mt-14 flex flex-col gap-3 sm:flex-row sm:items-center">
           <Link
-            href="/console"
+            href="/dashboard"
             className="inline-flex h-12 items-center justify-center rounded-xl bg-cm-accent px-6 text-sm font-semibold text-cm-on-accent transition hover:bg-cm-accent-bright sm:min-w-[10.5rem]"
           >
-            Open console
+            Open dashboard
           </Link>
           <Link
             href="/"

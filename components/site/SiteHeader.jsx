@@ -4,7 +4,7 @@ const nav = [
   { href: "/#how-it-works", label: "How it works" },
   { href: "/#capabilities", label: "Capabilities" },
   { href: "/docs", label: "Docs" },
-  { href: "/console", label: "Console" },
+  { href: "/dashboard", label: "Dashboard" },
 ];
 
 export function SiteHeader() {
@@ -29,10 +29,10 @@ export function SiteHeader() {
           ))}
         </nav>
         <Link
-          href="/console"
+          href="/dashboard"
           className="rounded-md bg-cm-accent px-3 py-1.5 text-sm font-semibold text-cm-on-accent hover:bg-cm-accent-bright sm:py-2"
         >
-          Console
+          Dashboard
         </Link>
       </div>
       <nav className="flex border-t border-cm-border-subtle px-3 py-2 sm:hidden">

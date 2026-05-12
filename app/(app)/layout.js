@@ -1,7 +1,7 @@
 import { ConsoleHeader } from "@/components/console/ConsoleHeader";
 
 export const metadata = {
-  title: "Console",
+  title: "Dashboard",
 };
 
 export default function AppShellLayout({ children }) {
