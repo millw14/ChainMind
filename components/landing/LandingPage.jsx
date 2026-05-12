@@ -166,7 +166,11 @@ export function LandingPage() {
             <h2 className="text-lg font-semibold text-cm-text">Operational reality</h2>
             <p className="mt-3 text-xs leading-relaxed text-cm-muted sm:text-sm">
               Public RPCs throttle; fat books distort naive buckets. Production means a dedicated endpoint, disciplined
-              ingest, and your own QA. See the site footer for important limitations on outputs.
+              ingest, and your own QA. See the site footer for important limitations on outputs.{" "}
+              <Link href="/how-it-works#roadmap" className="font-medium text-cm-text underline-offset-4 hover:underline">
+                Product direction
+              </Link>{" "}
+              outlines detection, evidence, and leading-indicator layers beyond v1.
             </p>
             <div className="mt-6 flex flex-wrap gap-3">
               <Link
