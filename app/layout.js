@@ -12,9 +12,9 @@ const jetbrains = JetBrains_Mono({
 });
 
 export const metadata = {
-  title: "ChainMind",
+  title: "ChainMind — Solana manipulation detection",
   description:
-    "Detect coordinated manipulation on Solana early—live reads, mirrored event scores, and optional AI analyst briefs.",
+    "Catch coordinated manipulation on Solana before tape and narrative reprice it. Early coordination signals for teams that need to move first—with full verification in the dashboard.",
 };
 
 export default function RootLayout({ children }) {

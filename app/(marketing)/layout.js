@@ -3,11 +3,11 @@ import { SiteHeader } from "@/components/site/SiteHeader";
 
 export const metadata = {
   title: {
-    default: "ChainMind — detect coordinated manipulation on Solana early",
+    default: "ChainMind — Solana manipulation detection",
     template: "%s · ChainMind",
   },
   description:
-    "Surface early coordination signals on Solana—wallet clustering, synchronized flows, and concentration in time—before liquidity and narrative catch up.",
+    "Catch coordinated manipulation on Solana before tape and narrative reprice it. Early coordination signals for teams that need to move first—with full verification in the dashboard.",
 };
 
 export default function MarketingLayout({ children }) {
