@@ -16,16 +16,14 @@ export default function SolanaDashboardPage() {
               Setup / Docs →
             </Link>
           </div>
-          <p className="mt-2 max-w-2xl text-xs leading-relaxed text-cm-muted sm:text-sm">
-            Run operational checks on the assets you track: live network health, signature flows, cloud-backed
-            coordination windows, and optional Groq briefs. Production needs{" "}
-            <code className="rounded border border-cm-border bg-cm-elevated px-1 font-[family-name:var(--font-mono)] text-[11px] text-cm-subtle">
-              SOLANA_RPC_URL
-            </code>
-            ; Turso env for hosted scores;{" "}
-            <code className="font-mono text-[11px] text-cm-subtle">GROQ_API_KEY</code> for narratives. Footer covers
-            output limitations.
-          </p>
+        <p className="mt-2 max-w-2xl text-xs leading-relaxed text-cm-muted sm:text-sm">
+          See whether Solana activity around a token or wallet is bunching up in time—load recent transactions, review
+          synced events, and run a coordination score from one focus. First-time setup lives in{" "}
+          <Link href="/docs" className="font-medium text-cm-text underline-offset-2 hover:underline">
+            Docs
+          </Link>
+          .
+        </p>
         </div>
       </div>
       <Dashboard />
