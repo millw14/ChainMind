@@ -46,11 +46,11 @@ export default function HowItWorksPage() {
         <section id="roadmap" className="mt-16 scroll-mt-20 border-t border-cm-border-subtle pt-14">
           <h2 className="text-xl font-semibold tracking-tight text-cm-text sm:text-2xl">Product direction</h2>
           <p className="mt-3 text-sm leading-relaxed text-cm-muted">
-            v1 is intentionally narrow: one scalar co-activity score on ingested events—a trip wire, not a finished
-            investigation. To back the positioning you care about—<strong className="font-medium text-cm-text">detect</strong>,{" "}
+            v1 is narrow on purpose: one co-activity score on ingested events—a fast trip wire, not the full case file.
+            The trajectory is <strong className="font-medium text-cm-text">detect</strong>,{" "}
             <strong className="font-medium text-cm-text">explain</strong>, and{" "}
-            <strong className="font-medium text-cm-text">get ahead</strong> of coordination—the roadmap clusters into
-            three layers. Nothing below is implied to be fully shipped yet; it is the build target.
+            <strong className="font-medium text-cm-text">get ahead</strong>.{" "}
+            <strong className="font-medium text-cm-text">This is what we&apos;re building toward.</strong>
           </p>
 
           <div className="mt-10 space-y-10">
@@ -58,18 +58,19 @@ export default function HowItWorksPage() {
               <h3 className="text-base font-semibold text-cm-text">Detection layer</h3>
               <ul className="mt-3 list-inside list-disc space-y-2 text-sm leading-relaxed text-cm-muted">
                 <li>
-                  <strong className="font-medium text-cm-text">Wallet clustering</strong> — relate addresses by shared
-                  funding paths, synchronized timing, and repeatable fee/Program patterns—not only “many payers in a
-                  bucket.”
+                  <strong className="font-medium text-cm-text">Funding-graph clusters</strong> — link wallets with
+                  explicit edges (shared funder, labeled transfer hops within N days, repeated small-route patterns) so
+                  groups are evidence-backed, not single-address anecdotes.
                 </li>
                 <li>
-                  <strong className="font-medium text-cm-text">Named pattern library</strong> — curated detectors for
-                  wash-like sequences, coordinated accumulation, pump-squad clustering, spoofing-shaped flow—each with
-                  explicit definitions and false-positive notes.
+                  <strong className="font-medium text-cm-text">Versioned pattern packs</strong> — named detectors (e.g.
+                  wash-shaped round-trips, accumulation ladders, time-synchronized bursts) each shipped as a rule pack
+                  with thresholds, changelog, and documented false-positive modes—not a black box “AI said so.”
                 </li>
                 <li>
-                  <strong className="font-medium text-cm-text">Velocity scoring</strong> — track not just level but{" "}
-                  <em>acceleration</em> (participation and concentration ramping into a window).
+                  <strong className="font-medium text-cm-text">Velocity &amp; acceleration</strong> — same windowed
+                  counts as v1, plus week-over-week (or regime-normalized) deltas: rising unique payers, rising
+                  programs touched, rising event rate into a bucket—<em>not</em> a static “high score” only.
                 </li>
               </ul>
             </div>
@@ -78,13 +79,14 @@ export default function HowItWorksPage() {
               <h3 className="text-base font-semibold text-cm-text">Evidence layer</h3>
               <ul className="mt-3 list-inside list-disc space-y-2 text-sm leading-relaxed text-cm-muted">
                 <li>
-                  <strong className="font-medium text-cm-text">Narrative output</strong> — compliance and investment
-                  users need the story: which wallets, which linking transfers or behaviors, which time slices, how
-                  often in the lookback—not a lone number.
+                  <strong className="font-medium text-cm-text">Case timeline &amp; wallet table</strong> — for each
+                  scope: enumerated wallets, the linking funding txs (signatures + amounts + timestamps), each flagged
+                  coordination window (UTC range, duration), and recurrence count inside the lookback.
                 </li>
                 <li>
-                  <strong className="font-medium text-cm-text">Exportable reports</strong> — PDF/CSV bundles suitable for
-                  internal review and audit trails, not only a live console.
+                  <strong className="font-medium text-cm-text">Exports for review</strong> — CSV/JSON graph (nodes +
+                  edges), evidence bundle zip (key txs + parsed fields), and a one-page PDF summary suitable for internal
+                  committees—not screenshots of a console.
                 </li>
               </ul>
             </div>
@@ -92,32 +94,36 @@ export default function HowItWorksPage() {
             <div className="border-l border-cm-border pl-5">
               <h3 className="text-base font-semibold text-cm-text">Prediction / leading indicators (“get ahead”)</h3>
               <p className="mt-3 text-sm leading-relaxed text-cm-muted">
-                This layer is the hardest to build and the clearest differentiator: not “what happened” but what tends to
-                happen <em>next</em>. It needs baselines, history, and explicit definitions of “before it’s visible” per
-                asset—otherwise it collapses into vibes. Target signals include:
+                This layer is the hardest and the clearest differentiator: not <em>what the chain already printed</em> but
+                what tends to show up <em>before</em> tape and narrative catch up. It requires per-asset rolling baselines,
+                enough history to know “normal,” and tight definitions of “early”—otherwise you are selling astrology.
+                Concretely, we are targeting:
               </p>
               <ul className="mt-3 list-inside list-disc space-y-2 text-sm leading-relaxed text-cm-muted">
                 <li>
-                  <strong className="font-medium text-cm-text">Pre-positioning clusters</strong> — coordinated wallets
-                  accumulating or rotating inventory quietly before public volume or social attention spikes; detect
-                  divergence between “stealth” participation and headline tape.
+                  <strong className="font-medium text-cm-text">Pre-positioning clusters</strong> — rising normalized
+                  participation from a stable wallet cohort <em>before</em> public volume or attention inflects; measure
+                  divergence between stealth activity and headline-ready tape.
                 </li>
                 <li>
-                  <strong className="font-medium text-cm-text">Liquidity &amp; venue rotation</strong> — unusual
-                  withdrawal of depth, pool rebalancing, or route changes that precede volatility—especially when timed
-                  with fee-payer compression elsewhere.
+                  <strong className="font-medium text-cm-text">Liquidity &amp; route stress</strong> — DEX/pool depth
+                  or route-mix shifts (withdrawal of resting liquidity, sudden venue/route concentration) in a bounded
+                  pre-window vs trailing median.
                 </li>
                 <li>
-                  <strong className="font-medium text-cm-text">Fee-payer &amp; timing compression (leading)</strong> —
-                  the same structural signal as v1, but scored on <em>delta and acceleration vs a rolling baseline</em>,
-                  not a static threshold—unusual crowding before the market moves, not only after.
-                </li>
-                <li>
-                  <strong className="font-medium text-cm-text">Cross-signal corroboration</strong> — only elevate a
-                  leading hypothesis when clustering, velocity, and pre-tape pressure agree; publish confidence bands
-                  instead of binary alerts.
+                  <strong className="font-medium text-cm-text">Leading fee-payer compression</strong> — v1-style
+                  crowding expressed as z-score or delta vs a rolling baseline for that asset and time-of-week regime—so
+                  “spike” is <em>unusual for this name</em>, not globally arbitrary.
                 </li>
               </ul>
+              <p className="mt-4 text-sm leading-relaxed text-cm-muted">
+                <strong className="font-medium text-cm-text">Cross-signal corroboration is the moat.</strong> Any single
+                metric can be farmed or mistaken for alpha. When detection (who clusters), evidence (what chained
+                on-chain), and leading indicators (what is early vs baseline) have to agree before ChainMind elevates a
+                hypothesis—and when they don&apos;t, the product should stay quiet—that is both the anti-noise story and
+                the anti-gaming story. Confidence bands and forced multi-signal agreement are how this stays credible in
+                front of funds and compliance, not just another pretty explorer chart.
+              </p>
             </div>
           </div>
         </section>
