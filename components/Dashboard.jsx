@@ -363,6 +363,31 @@ function ScoreBody({ data, loading }) {
   );
 }
 
+function BriefBody({ text, error, loading }) {
+  if (loading) {
+    return <p className="py-8 text-center text-sm text-cm-faint">POST /api/groq-brief…</p>;
+  }
+  if (error) {
+    return <ErrorCallout message={error} />;
+  }
+  if (!text) {
+    return (
+      <p className="text-sm text-cm-muted">
+        Optional: set{" "}
+        <code className="rounded border border-cm-border bg-cm-elevated px-1 font-[family-name:var(--font-mono)] text-[11px] text-cm-subtle">
+          GROQ_API_KEY
+        </code>{" "}
+        (see <Link href="/docs">Docs</Link>). Load the panels above, then generate a brief from this snapshot.
+      </p>
+    );
+  }
+  return (
+    <div className="rounded-md border border-cm-border-subtle bg-cm-row/30 px-4 py-3">
+      <p className="whitespace-pre-wrap text-sm leading-relaxed text-cm-subtle">{text}</p>
+    </div>
+  );
+}
+
 export function Dashboard() {
   const [ping, setPing] = useState(null);
   const [inspectAddr, setInspectAddr] = useState(USDC_MAINNET);
@@ -376,7 +401,11 @@ export function Dashboard() {
 
   const [dbStats, setDbStats] = useState(null);
 
+  const [groqBrief, setGroqBrief] = useState(null);
+  const [groqErr, setGroqErr] = useState(null);
+
   const [loading, setLoading] = useState({});
+  const [loadingGroq, setLoadingGroq] = useState(false);
 
   const setLoad = (key, v) => setLoading((s) => ({ ...s, [key]: v }));
 
@@ -437,6 +466,44 @@ export function Dashboard() {
       setScore(await fetchJson(u, "score"));
     } catch (e) {
       setScore({ ok: false, error: String(e.message) });
+    }
+  };
+
+  const runBrief = async () => {
+    setGroqErr(null);
+    setLoadingGroq(true);
+    try {
+      const snapshot = {
+        generatedAt: new Date().toISOString(),
+        network: ping,
+        inspect: { address: inspectAddr.trim(), limit: inspectLimit, result: inspect },
+        score: {
+          scope: scoreScope.trim(),
+          windowMinutes: scoreWindow,
+          lookbackHours: scoreHours,
+          result: score,
+        },
+        database: dbStats,
+      };
+      const r = await fetch("/api/groq-brief", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          data: snapshot,
+          focus: "Solana on-chain triage from ChainMind dashboard panels; no legal conclusions.",
+        }),
+      });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) {
+        const msg = typeof j?.error === "string" ? j.error : [r.status, r.statusText].filter(Boolean).join(" ").trim();
+        throw new Error(msg || "Brief request failed");
+      }
+      setGroqBrief(j.text ?? "");
+    } catch (e) {
+      setGroqBrief(null);
+      setGroqErr(String(e.message));
+    } finally {
+      setLoadingGroq(false);
     }
   };
 
@@ -588,6 +655,23 @@ export function Dashboard() {
           {dbStats != null && loading.db ? (
             <p className="mt-2 text-center text-xs text-cm-faint">DB request in flight…</p>
           ) : null}
+        </Card>
+
+        <Card
+          title="Analyst brief (Groq)"
+          subtitle="LLM reads the snapshot from the panels above — triage language only"
+          actions={
+            <button
+              type="button"
+              onClick={runBrief}
+              disabled={loadingGroq}
+              className="rounded-md border border-cm-border bg-cm-elevated px-3 py-1.5 text-xs font-semibold text-cm-text hover:bg-cm-row-hover disabled:opacity-50"
+            >
+              {loadingGroq ? "Generating…" : "Generate brief"}
+            </button>
+          }
+        >
+          <BriefBody text={groqBrief} error={groqErr} loading={loadingGroq} />
         </Card>
       </main>
     </div>

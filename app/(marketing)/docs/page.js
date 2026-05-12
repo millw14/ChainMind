@@ -49,7 +49,12 @@ export default function DocsPage() {
           </li>
           <li>
             <strong className="font-medium text-cm-text">TURSO_*</strong> — optional; without them, database counts and
-            scores in the hosted console stay unconfigured while RPC paths still run.
+            scores in the hosted dashboard stay unconfigured while RPC paths still run.
+          </li>
+          <li>
+            <strong className="font-medium text-cm-text">GROQ_API_KEY</strong> — optional; enables{" "}
+            <code className="font-mono text-xs">POST /api/groq-brief</code> and the &quot;Analyst brief&quot; panel on{" "}
+            <code className="font-mono text-xs">/dashboard</code>.
           </li>
         </ul>
 
@@ -123,10 +128,10 @@ export default function DocsPage() {
 
         <div className="mt-12 flex flex-wrap gap-3 border-t border-cm-border-subtle pt-8">
           <Link
-            href="/console"
+            href="/dashboard"
             className="inline-flex h-9 items-center rounded-md bg-cm-accent px-4 text-sm font-semibold text-cm-on-accent hover:bg-cm-accent-bright"
           >
-            Console
+            Dashboard
           </Link>
           <Link
             href="/"

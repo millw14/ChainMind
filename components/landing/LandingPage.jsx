@@ -19,10 +19,10 @@ export function LandingPage() {
             </p>
             <div className="mt-8 flex flex-col items-stretch justify-center gap-2 sm:flex-row sm:items-center sm:justify-center sm:gap-3">
               <Link
-                href="/console"
+                href="/dashboard"
                 className="inline-flex h-10 items-center justify-center rounded-md bg-cm-accent px-6 text-sm font-semibold text-cm-on-accent transition-colors hover:bg-cm-accent-bright sm:min-w-[9rem]"
               >
-                Open console
+                Open dashboard
               </Link>
               <Link
                 href="/#how-it-works"
@@ -169,10 +169,10 @@ export function LandingPage() {
             </p>
             <div className="mt-6 flex flex-wrap gap-3">
               <Link
-                href="/console"
+                href="/dashboard"
                 className="inline-flex h-9 items-center justify-center rounded-md bg-cm-accent px-4 text-xs font-semibold text-cm-on-accent hover:bg-cm-accent-bright"
               >
-                Open console
+                Open dashboard
               </Link>
               <Link
                 href="/docs"
