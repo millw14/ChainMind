@@ -51,11 +51,16 @@ This document aligns engineering work with the coordination-intelligence vision.
 
 **Goal:** answer wallet–wallet questions (shared activity, funding-like flows, clusters) without full-table scans.
 
-**Work:**
+**In repo today (baseline):**
 
-- `wallet_links` / `edges` table: `src`, `dst`, `kind`, `evidence_sig`, `block_time`, optional amount/mint; indexes on time + endpoint.
-- Writers derived from classified events (same-tx participants, SPL transfers, etc.).
-- API or SQL views for “neighbors,” “top counterparties in window,” bounded-depth path (with limits).
+- Tables `signers`, `transfers`, `program_calls`, and `edges` (scoped by `scope_address`, keyed by `tx_sig`).
+- Ingest path fills rows from RPC parsed txs: SPL transfer / mintTo / burn (JSON-parsed + compiled decode via `@solana/spl-token`), outer + inner instructions, coarse program invocation trace, fee payer ↔ co-signer edges (`fee_payer_cosigner`), token edges (`token_transfer`, `mint_to`, `burn`). Implementation: `lib/parse-tx-graph.js`, `lib/persist-tx-graph.js`.
+
+**Still to do:**
+
+- SOL-system transfers and richer program-specific decoding (DEX routes as named swaps).
+- Wallet resolution polish (multisig / PDAs); funding-graph semantics beyond fee payer + SPL flows.
+- APIs / SQL views for neighborhood queries and bounded traversals.
 
 **Note:** Turso/libSQL can hold adjacency lists; move to a dedicated graph engine only if traversal patterns justify it.
 
