@@ -13,10 +13,9 @@ export function LandingPage() {
               Detect coordinated manipulation on Solana before it moves the market
             </h1>
             <p className="mt-5 text-base leading-relaxed text-cm-muted">
-              Coordinated wallets and synchronized flow can clear inventory, warp tape, and front-run narrative before
-              the broader market catches up. ChainMind surfaces those manipulation-shaped patterns early—concentration,
-              clustering, and crowded windows—so you investigate while price action is still settling, not after the
-              story is obvious.
+              Coordinated wallets move in concert — same windows, same flow, same timing — before price reacts. ChainMind
+              surfaces the concentration and clustering patterns that precede manipulation, so you're investigating
+              while it&apos;s forming, not explaining it after the fact.
             </p>
             <div className="mt-8 flex flex-col items-stretch justify-center gap-2 sm:flex-row sm:items-center sm:justify-center sm:gap-3">
               <Link
