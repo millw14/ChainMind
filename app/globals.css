@@ -36,10 +36,71 @@
   --cm-ok: #34d399;
   --cm-warn: #fbbf24;
   --cm-bad: #fb7185;
+  --cm-threat: #f43f5e;
+  --cm-threat-glow: rgba(244, 63, 94, 0.12);
+  --cm-terminal: #4ade80;
+  --cm-scanline: rgba(255, 255, 255, 0.03);
+
+  --cm-grid-major: rgba(139, 92, 246, 0.06);
+  --cm-grid-minor: rgba(255, 255, 255, 0.04);
 }
 
 body {
   @apply min-h-screen antialiased bg-cm-bg text-cm-text;
+}
+
+/* Investigation / war-room surfaces */
+.cm-war-grid {
+  background-image:
+    linear-gradient(var(--cm-grid-major) 1px, transparent 1px),
+    linear-gradient(90deg, var(--cm-grid-minor) 1px, transparent 1px);
+  background-size: 48px 48px, 24px 24px;
+  background-position: center top;
+}
+
+.cm-panel-edge {
+  box-shadow: inset 3px 0 0 0 var(--cm-accent-dim);
+}
+
+.cm-scanlines::before {
+  content: "";
+  pointer-events: none;
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  background: repeating-linear-gradient(
+    0deg,
+    transparent,
+    transparent 2px,
+    var(--cm-scanline) 2px,
+    var(--cm-scanline) 3px
+  );
+  opacity: 0.25;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cm-pulse-live {
+    animation: none !important;
+  }
+  .cm-scanlines::before {
+    display: none;
+  }
+}
+
+.cm-pulse-live {
+  animation: cmPulse 2.4s ease-in-out infinite;
+}
+
+@keyframes cmPulse {
+  0%,
+  100% {
+    opacity: 1;
+    box-shadow: 0 0 0 0 rgba(52, 211, 153, 0.35);
+  }
+  50% {
+    opacity: 0.85;
+    box-shadow: 0 0 0 6px rgba(52, 211, 153, 0);
+  }
 }
 
 @media (prefers-reduced-motion: no-preference) {

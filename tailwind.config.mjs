@@ -26,7 +26,16 @@ export default {
           ok: "var(--cm-ok)",
           warn: "var(--cm-warn)",
           bad: "var(--cm-bad)",
+          threat: "var(--cm-threat)",
+          "threat-glow": "var(--cm-threat-glow)",
+          terminal: "var(--cm-terminal)",
         },
+      },
+      fontFamily: {
+        mono: ["var(--font-mono)", "ui-monospace", "monospace"],
+      },
+      animation: {
+        "pulse-slow": "cmPulse 2.4s ease-in-out infinite",
       },
       backgroundImage: {
         "cm-hero":

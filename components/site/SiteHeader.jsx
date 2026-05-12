@@ -1,28 +1,31 @@
 import Link from "next/link";
 
 const nav = [
-  { href: "/#how-it-works", label: "How it works" },
+  { href: "/#how-it-works", label: "Signal flow" },
   { href: "/#capabilities", label: "Capabilities" },
   { href: "/docs", label: "Docs" },
-  { href: "/dashboard", label: "Dashboard" },
+  { href: "/dashboard", label: "Console" },
 ];
 
 export function SiteHeader() {
   return (
-    <header className="sticky top-0 z-50 border-b border-cm-border bg-cm-surface">
-      <div className="mx-auto flex h-12 max-w-6xl items-center justify-between gap-3 px-4 sm:h-14 sm:px-6">
-        <Link href="/" className="flex items-center gap-2 text-sm font-semibold tracking-tight text-cm-text">
-          <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-sm bg-cm-accent font-[family-name:var(--font-mono)] text-[10px] font-bold text-cm-on-accent sm:h-8 sm:w-8 sm:text-xs">
+    <header className="sticky top-0 z-50 border-b border-cm-border bg-cm-card/90 backdrop-blur-md">
+      <div className="mx-auto flex h-12 max-w-[88rem] items-center justify-between gap-3 px-4 sm:h-14 sm:px-6">
+        <Link href="/" className="flex min-w-0 items-center gap-2.5 text-sm font-semibold tracking-tight text-cm-text">
+          <span className="relative flex h-8 w-8 shrink-0 items-center justify-center rounded border border-cm-accent/35 bg-gradient-to-br from-cm-accent to-cm-accent-dim font-mono text-[11px] font-bold text-cm-on-accent shadow-[0_0_20px_-6px_rgba(139,92,246,0.75)]">
             CM
+            <span className="absolute -right-0.5 -top-0.5 h-2 w-2 rounded-full bg-cm-terminal shadow-[0_0_8px_rgba(74,222,128,0.6)]" />
           </span>
-          ChainMind
+          <span className="truncate">
+            ChainMind <span className="hidden font-normal text-cm-faint sm:inline">· manipulation intelligence</span>
+          </span>
         </Link>
-        <nav className="hidden items-center gap-0.5 sm:flex">
+        <nav className="hidden items-center gap-0.5 md:flex">
           {nav.map((item) => (
             <Link
               key={item.href}
               href={item.href}
-              className="rounded-sm px-2.5 py-2 text-sm text-cm-muted hover:bg-cm-row-hover hover:text-cm-text"
+              className="rounded-sm px-2.5 py-2 font-mono text-xs text-cm-muted hover:bg-cm-row-hover hover:text-cm-text"
             >
               {item.label}
             </Link>
@@ -30,13 +33,13 @@ export function SiteHeader() {
         </nav>
         <Link
           href="/dashboard"
-          className="rounded-md bg-cm-accent px-3 py-1.5 text-sm font-semibold text-cm-on-accent hover:bg-cm-accent-bright sm:py-2"
+          className="shrink-0 rounded-md border border-cm-accent/30 bg-cm-accent px-3 py-1.5 font-mono text-xs font-bold uppercase tracking-wide text-cm-on-accent hover:bg-cm-accent-bright sm:py-2"
         >
-          Dashboard
+          Console
         </Link>
       </div>
-      <nav className="flex border-t border-cm-border-subtle px-3 py-2 sm:hidden">
-        <div className="flex w-full flex-wrap justify-around gap-x-2 gap-y-1 text-[11px]">
+      <nav className="flex border-t border-cm-border-subtle px-3 py-2 md:hidden">
+        <div className="flex w-full flex-wrap justify-around gap-x-2 gap-y-1 font-mono text-[10px]">
           {nav.map((item) => (
             <Link key={item.href} href={item.href} className="text-cm-muted hover:text-cm-text">
               {item.label}

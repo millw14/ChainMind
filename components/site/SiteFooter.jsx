@@ -39,12 +39,10 @@ export function SiteFooter() {
               </ul>
             </div>
             <div className="max-w-md">
-              <p className="text-xs font-semibold uppercase tracking-wide text-cm-faint">Important</p>
+              <p className="text-xs font-semibold uppercase tracking-wide text-cm-faint">Compliance & limitations</p>
               <p className="mt-2 text-xs leading-relaxed text-cm-muted">
-                ChainMind outputs are statistical and investigative tools. They do not establish intent, wrongdoing, or
-                legal liability, and are not a substitute for compliance review, legal counsel, or ground truth off
-                chain. Scores and AI briefs prioritize triage, not findings of fact. You are responsible for how you
-                use and communicate results.
+                Outputs are probabilistic signals for investigation — not findings of fact or legal conclusions. Pair with
+                your own diligence and counsel. Detail-level caveats appear alongside scores and exports in the console.
               </p>
             </div>
           </div>

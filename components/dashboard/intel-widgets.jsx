@@ -110,11 +110,28 @@ export function buildAlerts({ inspect, score, ping }) {
 }
 
 const severityStyle = {
-  critical: "border-cm-bad/55 bg-cm-bad/12 text-cm-subtle",
-  high: "border-orange-400/40 bg-orange-500/10 text-cm-subtle",
-  medium: "border-cm-warn/45 bg-cm-warn/10 text-cm-subtle",
-  low: "border-cm-border bg-cm-row/50 text-cm-muted",
-  info: "border-cm-accent/35 bg-cm-accent/8 text-cm-subtle",
+  critical:
+    "border-l-4 border-l-cm-threat bg-gradient-to-r from-cm-threat-glow to-cm-bad/10 text-cm-subtle shadow-[inset_0_0_0_1px_rgba(244,63,94,0.2)]",
+  high: "border-l-4 border-l-orange-400 bg-gradient-to-r from-orange-500/10 to-transparent text-cm-subtle",
+  medium: "border-l-4 border-l-cm-warn bg-cm-warn/10 text-cm-subtle",
+  low: "border-l-4 border-l-cm-border bg-cm-row/60 text-cm-muted",
+  info: "border-l-4 border-l-cm-accent bg-cm-accent/8 text-cm-subtle",
+};
+
+const severityBadge = {
+  critical: "bg-cm-threat/20 text-cm-bad ring-1 ring-cm-bad/40",
+  high: "bg-orange-500/15 text-orange-200 ring-1 ring-orange-400/35",
+  medium: "bg-cm-warn/15 text-cm-warn ring-1 ring-cm-warn/30",
+  low: "bg-cm-row text-cm-muted ring-1 ring-cm-border",
+  info: "bg-cm-accent/15 text-cm-accent-bright ring-1 ring-cm-accent/30",
+};
+
+const severityLabel = {
+  critical: "SEV-1",
+  high: "SEV-2",
+  medium: "SEV-3",
+  low: "INFO",
+  info: "NOTE",
 };
 
 /**
@@ -123,19 +140,31 @@ const severityStyle = {
 export function AlertStrip({ alerts }) {
   if (!alerts?.length) return null;
   return (
-    <div className="rounded-md border border-cm-border bg-cm-surface/90 px-4 py-3 sm:px-5">
-      <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-        <p className="text-[11px] font-semibold uppercase tracking-wider text-cm-faint">Alerts</p>
-        <p className="text-[10px] text-cm-faint">Auto · near-live</p>
+    <div className="rounded-md border border-cm-border bg-cm-card/80 px-4 py-4 sm:px-5">
+      <div className="mb-4 flex flex-wrap items-end justify-between gap-2">
+        <div>
+          <p className="font-mono text-[10px] font-semibold uppercase tracking-[0.22em] text-cm-faint">Signal queue</p>
+          <p className="mt-1 text-xs text-cm-muted">Automated triage · updates with live polling</p>
+        </div>
+        <span className="rounded border border-cm-border-subtle bg-cm-row/80 px-2 py-0.5 font-mono text-[10px] text-cm-terminal">
+          {alerts.length} active
+        </span>
       </div>
-      <ul className="flex max-h-48 flex-col gap-2 overflow-y-auto sm:max-h-none sm:flex-row sm:flex-wrap">
+      <ul className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
         {alerts.map((a) => (
           <li
             key={a.id}
-            className={`min-w-0 flex-1 rounded-md border px-3 py-2 text-xs sm:min-w-[14rem] ${severityStyle[a.severity]}`}
+            className={`cm-panel-edge min-w-0 rounded-md border border-y border-r border-cm-border/80 bg-cm-surface/90 px-4 py-3 ${severityStyle[a.severity]}`}
           >
-            <p className="font-semibold text-cm-text">{a.title}</p>
-            {a.detail ? <p className="mt-1 leading-snug opacity-90">{a.detail}</p> : null}
+            <div className="flex items-start justify-between gap-2">
+              <p className="text-sm font-semibold leading-snug text-cm-text">{a.title}</p>
+              <span
+                className={`shrink-0 rounded px-1.5 py-0.5 font-mono text-[9px] font-bold uppercase tracking-wide ${severityBadge[a.severity]}`}
+              >
+                {severityLabel[a.severity]}
+              </span>
+            </div>
+            {a.detail ? <p className="mt-2 text-xs leading-relaxed text-cm-muted">{a.detail}</p> : null}
           </li>
         ))}
       </ul>
@@ -186,32 +215,54 @@ const tierColor = {
   unknown: "text-cm-muted",
 };
 
+const tierLabel = {
+  critical: "CRITICAL",
+  high: "HIGH",
+  elevated: "ELEVATED",
+  low: "NOMINAL",
+  unknown: "NO DATA",
+};
+
 /**
  * @param {{ profile: ReturnType<typeof deriveRiskProfile>, scopeLabel: string }} props
  */
 export function RiskHero({ profile, scopeLabel }) {
-  const label = profile.tier.charAt(0).toUpperCase() + profile.tier.slice(1);
+  const label = tierLabel[profile.tier] ?? profile.tier.toUpperCase();
   return (
-    <div className="rounded-md border border-cm-border bg-gradient-to-br from-cm-elevated/90 to-cm-surface px-4 py-4 sm:px-5">
-      <p className="text-[11px] font-semibold uppercase tracking-wider text-cm-faint">Coordination risk</p>
-      <p className="mt-1 truncate font-[family-name:var(--font-mono)] text-xs text-cm-muted">{scopeLabel}</p>
-      <div className="mt-4 flex flex-wrap items-end gap-6">
-        <div>
-          <p className={`text-4xl font-bold tabular-nums tracking-tight ${tierColor[profile.tier] ?? "text-cm-text"}`}>
-            {profile.score0_100 != null ? profile.score0_100 : "—"}
-          </p>
-          <p className="text-[11px] text-cm-faint">index · 0–100</p>
+    <div className="relative overflow-hidden rounded-md border border-cm-border bg-gradient-to-br from-cm-card via-cm-elevated to-cm-surface px-4 py-4 sm:px-5">
+      <div className="pointer-events-none absolute -right-10 -top-10 h-32 w-32 rounded-full bg-cm-threat/10 blur-2xl" aria-hidden />
+      <div className="relative">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <p className="font-mono text-[10px] font-semibold uppercase tracking-[0.22em] text-cm-faint">Threat index</p>
+          <span className="rounded border border-cm-border bg-cm-row/70 px-2 py-0.5 font-mono text-[9px] uppercase tracking-wider text-cm-muted">
+            Coordination pressure
+          </span>
         </div>
-        <div className="pb-1">
-          <p className={`text-sm font-semibold ${tierColor[profile.tier] ?? "text-cm-muted"}`}>{label}</p>
-          <p className="mt-1 max-w-sm text-xs leading-relaxed text-cm-muted">{profile.blurb}</p>
+        <p className="mt-2 truncate font-mono text-xs text-cm-accent-bright">{scopeLabel}</p>
+        <div className="mt-5 flex flex-wrap items-end gap-6">
+          <div>
+            <p className={`text-4xl font-bold tabular-nums tracking-tight ${tierColor[profile.tier] ?? "text-cm-text"}`}>
+              {profile.score0_100 != null ? profile.score0_100 : "—"}
+            </p>
+            <p className="font-mono text-[10px] uppercase tracking-wider text-cm-faint">0–100 composite</p>
+          </div>
+          <div className="pb-0.5">
+            <p className={`font-mono text-sm font-bold tracking-wide ${tierColor[profile.tier] ?? "text-cm-muted"}`}>
+              {label}
+            </p>
+            <p className="mt-1 max-w-sm text-xs leading-relaxed text-cm-muted">{profile.blurb}</p>
+          </div>
         </div>
-      </div>
-      <div className="mt-4 h-2 overflow-hidden rounded-full bg-cm-row">
-        <div
-          className="h-full rounded-full bg-gradient-to-r from-cm-accent-dim to-cm-accent"
-          style={{ width: `${profile.score0_100 != null ? profile.score0_100 : 0}%` }}
-        />
+        <div className="mt-4 h-2 overflow-hidden rounded-sm bg-cm-row ring-1 ring-cm-border/80">
+          <div
+            className={`h-full rounded-sm bg-gradient-to-r ${
+              profile.tier === "critical" || profile.tier === "high"
+                ? "from-cm-threat to-orange-400"
+                : "from-cm-accent-dim to-cm-accent"
+            }`}
+            style={{ width: `${profile.score0_100 != null ? profile.score0_100 : 0}%` }}
+          />
+        </div>
       </div>
     </div>
   );
@@ -228,7 +279,7 @@ export function LiveActivityFeed({ rows, loading, solscanTx }) {
     return <p className="py-12 text-center text-sm text-cm-faint">No rows yet for this focus.</p>;
   }
   return (
-    <div className="relative max-h-[28rem] space-y-0 overflow-y-auto pr-1">
+    <div className="relative max-h-[28rem] space-y-0 overflow-y-auto rounded-md border border-cm-border bg-cm-row/25 pr-1 ring-1 ring-cm-border-subtle">
       <div className="absolute bottom-0 left-[7px] top-0 w-px bg-cm-border" aria-hidden />
       <ul className="space-y-0">
         {rows.map((row, i) => {
