@@ -8,13 +8,14 @@ CREATE TABLE IF NOT EXISTS ingest_state (
 );
 
 CREATE TABLE IF NOT EXISTS signatures (
-  signature TEXT PRIMARY KEY,
+  signature TEXT NOT NULL,
   scope_address TEXT NOT NULL,
   slot INTEGER,
   block_time INTEGER,
   err TEXT,
   summary_json TEXT,
-  ingested_at TEXT NOT NULL
+  ingested_at TEXT NOT NULL,
+  PRIMARY KEY (signature, scope_address)
 );
 
 CREATE INDEX IF NOT EXISTS idx_signatures_scope_slot

@@ -53,6 +53,15 @@ export default function DocsPage() {
             scores in the hosted dashboard stay unconfigured while RPC paths still run.
           </li>
           <li>
+            <strong className="font-medium text-cm-text">DATABASE_PATH</strong> — optional path to SQLite (defaults to{" "}
+            <code className="font-mono text-xs">data/chainmind.db</code>).
+          </li>
+          <li>
+            <strong className="font-medium text-cm-text">CHAINMIND_WATCHLIST</strong> — optional path to a JSON
+            watchlist; default <code className="font-mono text-xs">config/watchlist.json</code> (see example file in
+            repo). Alternatively set <code className="font-mono text-xs">CHAINMIND_SCOPE</code> for a single address.
+          </li>
+          <li>
             <strong className="font-medium text-cm-text">GROQ_API_KEY</strong> — optional; enables{" "}
             <code className="font-mono text-xs">POST /api/groq-brief</code> and the &quot;Analyst brief&quot; panel on{" "}
             <code className="font-mono text-xs">/dashboard</code>.
@@ -66,9 +75,14 @@ export default function DocsPage() {
         </ul>
 
         <h2 className="mt-10 text-sm font-semibold uppercase tracking-wide text-cm-faint">CLI / pipeline</h2>
-        <p className="mt-3 text-sm text-cm-muted">
-          Local SQLite default: <code className="font-mono text-xs text-cm-subtle">data/chainmind.db</code>. Run from
-          repo root after install.
+        <p className="mt-3 text-sm leading-relaxed text-cm-muted">
+          Roadmap for continuous ingestion, richer event types, graph storage, and scale:{" "}
+          <code className="rounded border border-cm-border bg-cm-elevated px-1 font-[family-name:var(--font-mono)] text-xs text-cm-subtle">
+            docs/strategic-plan-data-pipeline.md
+          </code>
+          . New <strong className="font-medium text-cm-text">Turso</strong> projects should use the updated schema
+          (composite key on <code className="font-mono text-xs">signatures</code>); existing databases can run{" "}
+          <code className="font-mono text-xs">schema/migrations/001_signatures_composite_pk.sql</code> once.
         </p>
         <div className="mt-4 overflow-x-auto border border-cm-border">
           <table className="w-full min-w-[20rem] text-left text-xs sm:text-sm">
@@ -88,12 +102,25 @@ export default function DocsPage() {
                 <td className="px-3 py-2">Address signatures (CLI)</td>
               </tr>
               <tr>
-                <td className="px-3 py-2 font-[family-name:var(--font-mono)] text-cm-subtle">npm run backfill -- &lt;base58&gt;</td>
-                <td className="px-3 py-2">Backfill signatures into SQLite</td>
+                <td className="px-3 py-2 font-[family-name:var(--font-mono)] text-cm-subtle">
+                  npm run backfill -- &lt;base58&gt; [--resume]
+                </td>
+                <td className="px-3 py-2">Backfill signatures; <code className="font-mono text-[10px]">--resume</code> continues deep pagination from cursor</td>
               </tr>
               <tr>
                 <td className="px-3 py-2 font-[family-name:var(--font-mono)] text-cm-subtle">npm run ingest-events -- &lt;base58&gt;</td>
                 <td className="px-3 py-2">Parse txs → events</td>
+              </tr>
+              <tr>
+                <td className="px-3 py-2 font-[family-name:var(--font-mono)] text-cm-subtle">npm run pipeline</td>
+                <td className="px-3 py-2">
+                  Continuous worker: all watchlist scopes → head signature catch-up → parse batch (add{" "}
+                  <code className="font-mono text-[10px]">--turso-sync</code> to push each round)
+                </td>
+              </tr>
+              <tr>
+                <td className="px-3 py-2 font-[family-name:var(--font-mono)] text-cm-subtle">npm run pipeline:once</td>
+                <td className="px-3 py-2">Single pipeline round (same as worker + --once)</td>
               </tr>
               <tr>
                 <td className="px-3 py-2 font-[family-name:var(--font-mono)] text-cm-subtle">npm run score-window -- &lt;base58&gt;</td>

@@ -1,0 +1,117 @@
+import { execSync } from "node:child_process";
+import { loadEnv } from "../lib/load-env.js";
+loadEnv();
+
+import { openDb } from "../lib/db.js";
+import { getSolanaConnection } from "../lib/solana.js";
+import { loadWatchlist } from "../lib/watchlist.js";
+import { ingestPendingEventsForScope, syncHeadSignaturesForScope } from "../lib/pipeline-sync.js";
+
+function parseFlags(argv) {
+  /** @type {Record<string, string | boolean>} */
+  const flags = {};
+  for (const a of argv) {
+    if (!a.startsWith("--")) continue;
+    const raw = a.slice(2);
+    const eq = raw.indexOf("=");
+    if (eq === -1) flags[raw] = true;
+    else flags[raw.slice(0, eq)] = raw.slice(eq + 1);
+  }
+  return flags;
+}
+
+const flags = parseFlags(process.argv.slice(2));
+const once = flags.once === true;
+const tursoSync = flags["turso-sync"] === true;
+
+const roundIntervalMs = Math.max(
+  5000,
+  Number(flags["round-interval-ms"] ?? process.env.PIPELINE_ROUND_MS ?? "90000") || 90_000,
+);
+const scopeDelayMs = Math.max(0, Number(flags["scope-delay-ms"] ?? "1500") || 1500);
+const headMax = Math.min(5000, Math.max(5, Number(flags["head-max"] ?? "400") || 400));
+const headPage = Math.min(150, Math.max(10, Number(flags["head-page"] ?? "80") || 80));
+const ingestLimit = Math.min(
+  500,
+  Math.max(1, Number(flags["ingest-limit"] ?? process.env.INGEST_PARSE_LIMIT ?? "35") || 35),
+);
+const ingestThrottleMs = Math.max(0, Number(flags["ingest-throttle"] ?? process.env.INGEST_THROTTLE_MS ?? "900") || 900);
+
+function sleep(ms) {
+  return new Promise((r) => setTimeout(r, ms));
+}
+
+async function main() {
+  const scopes = loadWatchlist();
+  if (scopes.length === 0) {
+    console.error(`
+No watchlist scopes found.
+
+  • Copy config/watchlist.example.json → config/watchlist.json and add base58 addresses, or
+  • Set CHAINMIND_WATCHLIST=/path/to.json, or
+  • Set CHAINMIND_SCOPE / TARGET_ADDRESS for a single scope.
+
+See docs/strategic-plan-data-pipeline.md (Phase 1).
+`);
+    process.exit(1);
+  }
+
+  const db = openDb();
+  const connection = getSolanaConnection();
+
+  console.log("ChainMind pipeline worker");
+  console.log("---------------------------");
+  console.log("Scopes        :", scopes.length);
+  console.log("Mode          :", once ? "single round (--once)" : `repeat every ${roundIntervalMs}ms`);
+  console.log("Head catch-up : max", headMax, "new sigs / scope / round, page", headPage);
+  console.log("Parse         : up to", ingestLimit, "txs / scope / round, throttle", ingestThrottleMs, "ms");
+  console.log("Turso sync    :", tursoSync ? "yes (end of each round)" : "no (pass --turso-sync)");
+  console.log("");
+
+  let round = 0;
+  do {
+    round++;
+    console.log(`=== Round ${round} @ ${new Date().toISOString()} ===`);
+
+    for (const s of scopes) {
+      const label = s.note ? `${s.address} — ${s.note}` : s.address;
+      console.log(`— ${label}`);
+
+      try {
+        const head = await syncHeadSignaturesForScope(connection, db, s.address, {
+          maxNew: headMax,
+          pageSize: headPage,
+        });
+        console.log(`    signatures +${head.inserted} (stop: ${head.stopReason}, pages: ${head.pages})`);
+
+        const ing = await ingestPendingEventsForScope(connection, db, s.address, {
+          limit: ingestLimit,
+          throttleMs: ingestThrottleMs,
+        });
+        console.log(`    events parsed ${ing.parsed}`);
+      } catch (e) {
+        console.error(`    error: ${String(e?.message ?? e)}`);
+      }
+
+      if (scopeDelayMs > 0) await sleep(scopeDelayMs);
+    }
+
+    if (tursoSync) {
+      try {
+        execSync("node scripts/sync-sqlite-to-turso.mjs", { stdio: "inherit", cwd: process.cwd() });
+      } catch {
+        console.error("Turso sync failed (see log above). Continuing.");
+      }
+    }
+
+    if (once) break;
+
+    console.log(`Sleep ${roundIntervalMs}ms until next round…\n`);
+    await sleep(roundIntervalMs);
+  } while (true);
+
+  db.close();
+  console.log("Pipeline worker stopped.");
+}
+
+await main();
