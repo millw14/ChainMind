@@ -29,17 +29,20 @@ function shortSig(s) {
   return `${s.slice(0, 6)}…${s.slice(-4)}`;
 }
 
-function Card({ title, subtitle, children, actions }) {
+function Panel({ kicker, title, subtitle, children, actions }) {
   return (
-    <section className="rounded-md border border-cm-border bg-cm-surface p-4 sm:p-5">
-      <div className="mb-3 flex flex-wrap items-start justify-between gap-3 border-b border-cm-border-subtle pb-3">
-        <div>
-          <h2 className="text-xs font-semibold uppercase tracking-wide text-cm-faint">{title}</h2>
+    <section className="cm-panel-edge rounded-md border border-cm-border bg-cm-surface/95 shadow-cm">
+      <div className="flex flex-wrap items-start justify-between gap-3 border-b border-cm-border-subtle px-4 py-3 sm:px-5">
+        <div className="min-w-0">
+          {kicker ? (
+            <p className="font-mono text-[10px] font-semibold uppercase tracking-[0.18em] text-cm-faint">{kicker}</p>
+          ) : null}
+          <h2 className={`text-sm font-semibold tracking-tight text-cm-text ${kicker ? "mt-1" : ""}`}>{title}</h2>
           {subtitle ? <p className="mt-1 text-xs text-cm-muted">{subtitle}</p> : null}
         </div>
         {actions ? <div className="flex flex-wrap gap-2">{actions}</div> : null}
       </div>
-      {children}
+      <div className="p-4 sm:p-5">{children}</div>
     </section>
   );
 }
@@ -77,9 +80,8 @@ function InfoCallout({ children }) {
 function InspectBody({ data, loading, hasFocus, solscanTx }) {
   if (!hasFocus) {
     return (
-      <p className="py-8 text-center text-sm text-cm-faint">
-        Add a token, wallet, or program in <strong className="font-medium text-cm-muted">Watchlist target</strong>{" "}
-        above—recent activity fills in automatically.
+      <p className="py-10 text-center font-mono text-xs text-cm-faint">
+        Set a <span className="text-cm-muted">watch target</span> below — signatures stream here automatically.
       </p>
     );
   }
@@ -177,9 +179,8 @@ function DbBody({ data, loading }) {
           </table>
         </div>
       ) : null}
-      <p className="mt-4 text-xs leading-relaxed text-cm-faint">
-        Funding-graph clustering, named pattern detectors, and exportable case files are on the roadmap—today these
-        counts feed the coordination score and raw JSON below.
+      <p className="mt-4 border-t border-cm-border-subtle pt-4 font-mono text-[10px] leading-relaxed text-cm-faint">
+        Funding-graph clustering and exportable case bundles ship next — counts below feed coordination scoring today.
       </p>
       <ExpandableRaw data={data} />
     </div>
@@ -272,7 +273,14 @@ function ScoreBody({ data, loading, hideMainScore }) {
           </ul>
         </div>
       ) : null}
-      {data.limitation ? <p className="text-xs leading-relaxed text-cm-faint">{data.limitation}</p> : null}
+      {data.limitation ? (
+        <details className="mt-3 rounded border border-cm-border-subtle bg-cm-row/30">
+          <summary className="cursor-pointer px-3 py-2 font-mono text-[10px] text-cm-faint hover:text-cm-muted">
+            Interpretation note (expand)
+          </summary>
+          <p className="border-t border-cm-border-subtle px-3 py-2 text-xs leading-relaxed text-cm-muted">{data.limitation}</p>
+        </details>
+      ) : null}
       <ExpandableRaw data={data} />
     </div>
   );
@@ -377,6 +385,13 @@ export function Dashboard() {
     }
   }, [focusAddress, scoreWindow, scoreHours, fetchJson]);
 
+  const runAllSync = useCallback(async () => {
+    await runPing();
+    await runDb();
+    await runInspect();
+    await runScore();
+  }, [runPing, runDb, runInspect, runScore]);
+
   useEffect(() => {
     void runPing();
     void runDb();
@@ -412,14 +427,11 @@ export function Dashboard() {
     const a = focusAddress.trim();
     if (!a) return;
     const tick = () => {
-      void runInspect();
-      void runPing();
-      void runDb();
-      void runScore();
+      void runAllSync();
     };
     const id = setInterval(tick, LIVE_POLL_MS);
     return () => clearInterval(id);
-  }, [focusAddress, runInspect, runPing, runDb, runScore]);
+  }, [focusAddress, runAllSync]);
 
   const intelAlerts = useMemo(() => buildAlerts({ inspect, score, ping }), [inspect, score, ping]);
   const risk = useMemo(() => deriveRiskProfile(score), [score]);
@@ -466,205 +478,186 @@ export function Dashboard() {
     }
   };
 
+  const syncing = Boolean(loading.ping || loading.db || loading.inspect || loading.score);
+
   return (
-    <div className="pb-20">
-      <div className="border-b border-cm-border bg-cm-surface/95">
-        <div className="mx-auto flex max-w-6xl flex-col gap-3 px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:px-6">
-          <div className="flex flex-wrap items-center gap-3">
-            <span className="relative flex h-2.5 w-2.5 shrink-0">
-              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-cm-ok opacity-40" />
-              <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-cm-ok" />
+    <div className="relative pb-24 cm-war-grid">
+      <div className="border-b border-cm-border bg-cm-card/95 backdrop-blur-md">
+        <div className="mx-auto flex max-w-[88rem] flex-col gap-4 px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-6">
+          <div className="flex min-w-0 flex-wrap items-center gap-4">
+            <span className="relative flex h-3 w-3 shrink-0">
+              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-cm-terminal/50 opacity-35" />
+              <span className="relative inline-flex h-3 w-3 rounded-full bg-cm-terminal shadow-[0_0_12px_rgba(74,222,128,0.45)]" />
             </span>
-            <div>
-              <p className="text-[11px] font-semibold uppercase tracking-wider text-cm-faint">Live operations</p>
-              <p className="text-xs text-cm-muted">
+            <div className="min-w-0">
+              <p className="font-mono text-[10px] font-semibold uppercase tracking-[0.22em] text-cm-faint">Chain · live</p>
+              <p className="mt-0.5 truncate font-mono text-xs text-cm-muted">
                 {ping?.error ? (
-                  <span className="text-cm-bad">RPC fault — retry refresh</span>
+                  <span className="text-cm-bad">RPC unreachable — check endpoint</span>
                 ) : ping?.ok ? (
                   <>
                     <span className="text-cm-text">{ping.cluster}</span>
                     <span className="text-cm-faint"> · slot </span>
-                    <span className="tabular-nums text-cm-text">{ping.slot?.toLocaleString?.() ?? ping.slot}</span>
+                    <span className="tabular-nums text-cm-accent-bright">{ping.slot?.toLocaleString?.() ?? ping.slot}</span>
                   </>
                 ) : (
-                  "Warming RPC endpoint…"
+                  <span className="text-cm-faint">Negotiating RPC…</span>
                 )}
               </p>
             </div>
+            <div className="hidden h-8 w-px bg-cm-border sm:block" />
+            <p className="font-mono text-[10px] text-cm-faint">
+              Auto sweep <span className="text-cm-muted">{LIVE_POLL_MS / 1000}s</span>
+            </p>
           </div>
-          <div className="flex flex-wrap items-center gap-2">
-            <button
-              type="button"
-              onClick={runPing}
-              disabled={loading.ping}
-              className="rounded-md border border-cm-border bg-cm-elevated px-3 py-2 text-xs font-medium text-cm-text hover:bg-cm-row-hover disabled:opacity-50"
-            >
-              {loading.ping ? "RPC…" : "Refresh RPC"}
-            </button>
-            <button
-              type="button"
-              onClick={runDb}
-              disabled={loading.db}
-              className="rounded-md border border-cm-border bg-cm-elevated px-3 py-2 text-xs font-medium text-cm-text hover:bg-cm-row-hover disabled:opacity-50"
-            >
-              {loading.db ? "Sync…" : "Sync stats"}
-            </button>
-          </div>
+          <button
+            type="button"
+            onClick={() => void runAllSync()}
+            disabled={syncing}
+            className="inline-flex items-center justify-center gap-2 rounded-md border border-cm-accent/40 bg-cm-accent px-4 py-2.5 text-xs font-bold uppercase tracking-wide text-cm-on-accent shadow-[0_0_24px_-4px_rgba(139,92,246,0.55)] transition hover:bg-cm-accent-bright disabled:opacity-45"
+          >
+            {syncing ? (
+              <>
+                <span className="inline-block h-3 w-3 animate-spin rounded-full border-2 border-cm-on-accent border-t-transparent" />
+                Pulling…
+              </>
+            ) : (
+              <>Full resync</>
+            )}
+          </button>
         </div>
       </div>
 
-      <main className="mx-auto max-w-6xl space-y-6 px-4 py-8 sm:px-6">
+      <main className="mx-auto max-w-[88rem] space-y-6 px-4 py-8 sm:px-6">
         <AlertStrip alerts={intelAlerts} />
 
-        <Card
-          title="Watchlist target"
-          subtitle="One mint, wallet, or program — every panel keys off this address."
+        <Panel
+          kicker="Investigation"
+          title="Watch target & scan parameters"
+          subtitle="Everything downstream keys off this pubkey — mint, wallet, or program."
         >
-          <label className="mb-1 block text-xs font-medium text-cm-faint">Solana address</label>
-          <input
-            className="w-full rounded-md border border-cm-border bg-cm-surface px-3 py-2 text-sm text-cm-text outline-none ring-cm-accent-ring focus:ring-2"
-            value={focusAddress}
-            onChange={(e) => setFocusAddress(e.target.value)}
-            placeholder="Token (mint), wallet, or program id"
-            spellCheck={false}
-            autoComplete="off"
-          />
-        </Card>
+          <div className="grid gap-4 lg:grid-cols-12 lg:gap-6">
+            <div className="lg:col-span-6">
+              <label className="mb-1.5 block font-mono text-[10px] font-semibold uppercase tracking-wider text-cm-faint">
+                Solana address (base58)
+              </label>
+              <input
+                className="w-full rounded-md border border-cm-border bg-cm-row/80 px-3 py-2.5 font-mono text-sm text-cm-text outline-none ring-cm-accent-ring focus:ring-2"
+                value={focusAddress}
+                onChange={(e) => setFocusAddress(e.target.value)}
+                placeholder="Mint · wallet · program"
+                spellCheck={false}
+                autoComplete="off"
+              />
+            </div>
+            <div className="grid grid-cols-3 gap-3 lg:col-span-6 lg:gap-4">
+              <div>
+                <label className="mb-1.5 block font-mono text-[10px] font-semibold uppercase tracking-wider text-cm-faint">
+                  Sig depth
+                </label>
+                <input
+                  type="number"
+                  min={1}
+                  max={100}
+                  className="w-full rounded-md border border-cm-border bg-cm-row/80 px-2 py-2 font-mono text-sm text-cm-text outline-none focus:ring-2 focus:ring-cm-accent-ring"
+                  value={inspectLimit}
+                  onChange={(e) => setInspectLimit(e.target.value)}
+                />
+              </div>
+              <div>
+                <label className="mb-1.5 block font-mono text-[10px] font-semibold uppercase tracking-wider text-cm-faint">
+                  Window (m)
+                </label>
+                <input
+                  type="number"
+                  min={1}
+                  max={60}
+                  className="w-full rounded-md border border-cm-border bg-cm-row/80 px-2 py-2 font-mono text-sm text-cm-text outline-none focus:ring-2 focus:ring-cm-accent-ring"
+                  value={scoreWindow}
+                  onChange={(e) => setScoreWindow(e.target.value)}
+                />
+              </div>
+              <div>
+                <label className="mb-1.5 block font-mono text-[10px] font-semibold uppercase tracking-wider text-cm-faint">
+                  Lookback (h)
+                </label>
+                <input
+                  type="number"
+                  min={1}
+                  max={720}
+                  className="w-full rounded-md border border-cm-border bg-cm-row/80 px-2 py-2 font-mono text-sm text-cm-text outline-none focus:ring-2 focus:ring-cm-accent-ring"
+                  value={scoreHours}
+                  onChange={(e) => setScoreHours(e.target.value)}
+                />
+              </div>
+            </div>
+          </div>
+        </Panel>
 
         <div className="grid gap-6 lg:grid-cols-12">
-          <div className="space-y-6 lg:col-span-7">
-            <Card
-              title="Live activity feed"
-              subtitle="RPC-backed tail · auto refresh on an interval"
-              actions={
-                <div className="flex flex-wrap items-center gap-2">
-                  <span className="hidden text-[10px] text-cm-faint sm:inline">{LIVE_POLL_MS / 1000}s poll</span>
-                  <button
-                    type="button"
-                    onClick={runInspect}
-                    disabled={loading.inspect}
-                    className="rounded-md bg-cm-accent px-3 py-1.5 text-xs font-semibold text-cm-on-accent transition hover:bg-cm-accent-bright disabled:opacity-50"
-                  >
-                    {loading.inspect ? "Refreshing…" : "Refresh feed"}
-                  </button>
-                </div>
-              }
+          <div className="space-y-6 lg:col-span-8">
+            <Panel
+              kicker="Telemetry"
+              title="Signature stream"
+              subtitle={`RPC-backed tail · refreshes every ${LIVE_POLL_MS / 1000}s with network sweep`}
             >
-              <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-end">
-                <div className="w-full sm:w-28">
-                  <label className="mb-1 block text-xs font-medium text-cm-faint">Sample depth</label>
-                  <input
-                    type="number"
-                    min={1}
-                    max={100}
-                    className="w-full rounded-md border border-cm-border bg-cm-surface px-3 py-2 text-sm text-cm-text outline-none focus:ring-2 focus:ring-cm-accent-ring"
-                    value={inspectLimit}
-                    onChange={(e) => setInspectLimit(e.target.value)}
-                  />
-                </div>
-              </div>
               <InspectBody
                 data={inspect}
                 loading={loading.inspect}
                 hasFocus={Boolean(focusAddress.trim())}
                 solscanTx={solscanTx}
               />
-            </Card>
+            </Panel>
           </div>
 
-          <div className="space-y-6 lg:col-span-5">
-            <RiskHero profile={risk} scopeLabel={shortSig(focusAddress.trim()) || "—"} />
+          <div className="space-y-6 lg:col-span-4">
+            <RiskHero profile={risk} scopeLabel={focusAddress.trim() ? shortSig(focusAddress.trim()) : "—"} />
 
-            <Card
-              title="Wallet graph"
-              subtitle="Top fee payers linked to your scope — falls back to live tx satellites without Turso."
-            >
+            <Panel kicker="Topology" title="Scope graph" subtitle="Fee payers from ingest · RPC satellites fallback">
               <WalletGraphSvg graph={walletGraphVisual} />
               <IntelDocsHint />
-            </Card>
+            </Panel>
 
-            <Card title="Coordination timeline" subtitle="Payer density by bucket, or RPC confirmation markers.">
+            <Panel kicker="Temporal" title="Activity density" subtitle="Ingest buckets or RPC confirmation density">
               {score?.timelineBuckets?.length ? (
                 <CoordinationTimeline buckets={score.timelineBuckets} />
               ) : (
                 <RpcActivityTimeline signatures={inspect?.signatures} />
               )}
-            </Card>
+            </Panel>
 
-            <Card
-              title="Coordination analysis"
-              subtitle="Windowed scan of ingested events — refreshes with live polling"
-              actions={
-                <button
-                  type="button"
-                  onClick={runScore}
-                  disabled={loading.score}
-                  className="rounded-md bg-cm-accent px-3 py-1.5 text-xs font-semibold text-cm-on-accent transition hover:bg-cm-accent-bright disabled:opacity-50"
-                >
-                  {loading.score ? "Scanning…" : "Rescan now"}
-                </button>
-              }
-            >
-              <div className="mb-4 grid gap-3 sm:grid-cols-2">
-                <div>
-                  <label className="mb-1 block text-xs font-medium text-cm-faint">Window (minutes)</label>
-                  <input
-                    type="number"
-                    min={1}
-                    max={60}
-                    className="w-full rounded-md border border-cm-border bg-cm-surface px-3 py-2 text-sm text-cm-text outline-none focus:ring-2 focus:ring-cm-accent-ring"
-                    value={scoreWindow}
-                    onChange={(e) => setScoreWindow(e.target.value)}
-                  />
-                </div>
-                <div>
-                  <label className="mb-1 block text-xs font-medium text-cm-faint">Lookback (hours)</label>
-                  <input
-                    type="number"
-                    min={1}
-                    max={720}
-                    className="w-full rounded-md border border-cm-border bg-cm-surface px-3 py-2 text-sm text-cm-text outline-none focus:ring-2 focus:ring-cm-accent-ring"
-                    value={scoreHours}
-                    onChange={(e) => setScoreHours(e.target.value)}
-                  />
-                </div>
-              </div>
+            <Panel kicker="Signals" title="Coordination decomposition" subtitle="Driver lines from scored windows">
               <ScoreBody data={score} loading={loading.score} hideMainScore />
-            </Card>
+            </Panel>
           </div>
         </div>
 
-        <Card
-          title="Synced corpus"
-          subtitle="Mirrored signatures and parsed events in cloud storage."
-          actions={
-            <button type="button" onClick={runDb} className="text-xs font-medium text-cm-muted hover:text-cm-text">
-              Refresh
-            </button>
-          }
-        >
-          <DbBody data={dbStats} loading={loading.db && dbStats == null} />
-          {dbStats != null && loading.db ? (
-            <p className="mt-2 text-center text-xs text-cm-faint">Refreshing synced counts…</p>
-          ) : null}
-        </Card>
+        <div className="grid gap-6 lg:grid-cols-2">
+          <Panel kicker="Corpus" title="Synced datastore" subtitle="Signatures & parsed events mirrored for analysis">
+            <DbBody data={dbStats} loading={loading.db && dbStats == null} />
+            {dbStats != null && loading.db ? (
+              <p className="mt-3 text-center font-mono text-[10px] text-cm-faint">Refreshing counts…</p>
+            ) : null}
+          </Panel>
 
-        <Card
-          title="Analyst brief"
-          subtitle="Optional narrative across everything loaded — enable in Docs."
-          actions={
-            <button
-              type="button"
-              onClick={runBrief}
-              disabled={loadingGroq}
-              className="rounded-md border border-cm-border bg-cm-elevated px-3 py-1.5 text-xs font-semibold text-cm-text hover:bg-cm-row-hover disabled:opacity-50"
-            >
-              {loadingGroq ? "Generating…" : "Generate brief"}
-            </button>
-          }
-        >
-          <BriefBody text={groqBrief} error={groqErr} loading={loadingGroq} />
-        </Card>
+          <Panel
+            kicker="Synthesis"
+            title="Analyst narrative"
+            subtitle="Optional AI summary — configure per Docs."
+            actions={
+              <button
+                type="button"
+                onClick={runBrief}
+                disabled={loadingGroq}
+                className="rounded-md border border-cm-border bg-cm-elevated px-3 py-1.5 font-mono text-[10px] font-bold uppercase tracking-wide text-cm-text hover:bg-cm-row-hover disabled:opacity-50"
+              >
+                {loadingGroq ? "Working…" : "Generate"}
+              </button>
+            }
+          >
+            <BriefBody text={groqBrief} error={groqErr} loading={loadingGroq} />
+          </Panel>
+        </div>
       </main>
     </div>
   );
