@@ -5,6 +5,8 @@ import { useCallback, useEffect, useState } from "react";
 
 const USDC_MAINNET = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
 
+const INSPECT_DEBOUNCE_MS = 350;
+
 function solscanTx(signature) {
   return `https://solscan.io/tx/${signature}`;
 }
@@ -120,12 +122,25 @@ function PingBody({ data, loading }) {
   );
 }
 
-function InspectBody({ data, loading }) {
+function InspectBody({ data, loading, hasFocus }) {
   if (loading) {
     return <p className="py-8 text-center text-sm text-cm-faint">Loading recent transactions…</p>;
   }
+  if (!hasFocus) {
+    return (
+      <p className="py-8 text-center text-sm text-cm-faint">
+        Add a token, wallet, or program in <strong className="font-medium text-cm-muted">What you&apos;re watching</strong>{" "}
+        above—recent activity fills in automatically.
+      </p>
+    );
+  }
   if (!data) {
-    return <p className="py-8 text-center text-sm text-cm-faint">Enter a base58 address and run Load.</p>;
+    return (
+      <p className="py-8 text-center text-sm text-cm-faint">
+        Recent transactions for your focus address load on their own. If this stays empty, check the address above or
+        click Load to retry.
+      </p>
+    );
   }
   if (data.error || data.ok === false) {
     return <ErrorCallout message={data.error || "GET /api/inspect failed (no error body)."} />;
@@ -434,7 +449,7 @@ export function Dashboard() {
     }
   };
 
-  const runInspect = async () => {
+  const runInspect = useCallback(async () => {
     const a = focusAddress.trim();
     if (!a) return;
     const u = `/api/inspect?address=${encodeURIComponent(a)}&limit=${encodeURIComponent(inspectLimit || "12")}`;
@@ -443,7 +458,7 @@ export function Dashboard() {
     } catch (e) {
       setInspect({ ok: false, error: String(e.message) });
     }
-  };
+  }, [focusAddress, inspectLimit, fetchJson]);
 
   const runDb = async () => {
     try {
@@ -458,6 +473,20 @@ export function Dashboard() {
     void runDb();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  useEffect(() => {
+    const a = focusAddress.trim();
+    if (!a) {
+      setInspect(null);
+      setLoad("inspect", false);
+      return;
+    }
+    setLoad("inspect", true);
+    const id = setTimeout(() => {
+      void runInspect();
+    }, INSPECT_DEBOUNCE_MS);
+    return () => clearTimeout(id);
+  }, [focusAddress, inspectLimit, runInspect]);
 
   const runScore = async () => {
     const s = focusAddress.trim();
@@ -594,7 +623,11 @@ export function Dashboard() {
                 />
               </div>
             </div>
-            <InspectBody data={inspect} loading={loading.inspect} />
+            <InspectBody
+              data={inspect}
+              loading={loading.inspect}
+              hasFocus={Boolean(focusAddress.trim())}
+            />
           </Card>
 
           <Card
