@@ -1,6 +1,9 @@
 "use client";
 
 import Link from "next/link";
+import { motion, useReducedMotion } from "framer-motion";
+
+import { fadeUp, staggerContainer, springGentle } from "@/components/motion/presets";
 
 export function shortAddr(s) {
   if (!s || s.length < 12) return s || "—";
@@ -138,22 +141,41 @@ const severityLabel = {
  * @param {{ alerts: IntelAlert[] }} props
  */
 export function AlertStrip({ alerts }) {
+  const reduce = useReducedMotion() ?? false;
+  const v = fadeUp(reduce);
   if (!alerts?.length) return null;
   return (
-    <div className="rounded-md border border-cm-border bg-cm-card/80 px-4 py-4 sm:px-5">
+    <motion.div
+      className="rounded-md border border-cm-border bg-cm-card/80 px-4 py-4 sm:px-5"
+      initial={{ opacity: 0, y: 10 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={reduce ? { duration: 0 } : springGentle}
+    >
       <div className="mb-4 flex flex-wrap items-end justify-between gap-2">
         <div>
           <p className="font-mono text-[10px] font-semibold uppercase tracking-[0.22em] text-cm-faint">Signal queue</p>
           <p className="mt-1 text-xs text-cm-muted">Automated triage · updates with live polling</p>
         </div>
-        <span className="rounded border border-cm-border-subtle bg-cm-row/80 px-2 py-0.5 font-mono text-[10px] text-cm-terminal">
+        <motion.span
+          className="rounded border border-cm-border-subtle bg-cm-row/80 px-2 py-0.5 font-mono text-[10px] text-cm-terminal"
+          animate={reduce ? undefined : { scale: [1, 1.04, 1] }}
+          transition={{ duration: 2.8, repeat: Infinity, ease: "easeInOut" }}
+        >
           {alerts.length} active
-        </span>
+        </motion.span>
       </div>
-      <ul className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+      <motion.ul
+        className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3"
+        initial="hidden"
+        animate="show"
+        variants={staggerContainer(reduce, { stagger: 0.09, delayChildren: 0.04 })}
+      >
         {alerts.map((a) => (
-          <li
+          <motion.li
             key={a.id}
+            layout
+            variants={v}
+            whileHover={reduce ? undefined : { y: -3, transition: springGentle }}
             className={`cm-panel-edge min-w-0 rounded-md border border-y border-r border-cm-border/80 bg-cm-surface/90 px-4 py-3 ${severityStyle[a.severity]}`}
           >
             <div className="flex items-start justify-between gap-2">
@@ -165,10 +187,10 @@ export function AlertStrip({ alerts }) {
               </span>
             </div>
             {a.detail ? <p className="mt-2 text-xs leading-relaxed text-cm-muted">{a.detail}</p> : null}
-          </li>
+          </motion.li>
         ))}
-      </ul>
-    </div>
+      </motion.ul>
+    </motion.div>
   );
 }
 
@@ -227,9 +249,16 @@ const tierLabel = {
  * @param {{ profile: ReturnType<typeof deriveRiskProfile>, scopeLabel: string }} props
  */
 export function RiskHero({ profile, scopeLabel }) {
+  const reduce = useReducedMotion() ?? false;
   const label = tierLabel[profile.tier] ?? profile.tier.toUpperCase();
   return (
-    <div className="relative overflow-hidden rounded-md border border-cm-border bg-gradient-to-br from-cm-card via-cm-elevated to-cm-surface px-4 py-4 sm:px-5">
+    <motion.div
+      className="relative overflow-hidden rounded-md border border-cm-border bg-gradient-to-br from-cm-card via-cm-elevated to-cm-surface px-4 py-4 sm:px-5"
+      initial={reduce ? false : { opacity: 0, y: 16, scale: 0.98 }}
+      animate={{ opacity: 1, y: 0, scale: 1 }}
+      transition={reduce ? { duration: 0 } : springGentle}
+      whileHover={reduce ? undefined : { scale: 1.01, transition: springGentle }}
+    >
       <div className="pointer-events-none absolute -right-10 -top-10 h-32 w-32 rounded-full bg-cm-threat/10 blur-2xl" aria-hidden />
       <div className="relative">
         <div className="flex flex-wrap items-center justify-between gap-2">
@@ -264,7 +293,7 @@ export function RiskHero({ profile, scopeLabel }) {
           />
         </div>
       </div>
-    </div>
+    </motion.div>
   );
 }
 
@@ -272,6 +301,7 @@ export function RiskHero({ profile, scopeLabel }) {
  * @param {{ rows: { signature: string, blockTime: number | null, err: any, slot: number | null }[], loading: boolean, solscanTx: (sig: string) => string }} props
  */
 export function LiveActivityFeed({ rows, loading, solscanTx }) {
+  const reduce = useReducedMotion() ?? false;
   if (loading && (!rows || rows.length === 0)) {
     return <p className="py-12 text-center text-sm text-cm-faint">Pulling mempool-adjacent confirmations…</p>;
   }
@@ -281,11 +311,21 @@ export function LiveActivityFeed({ rows, loading, solscanTx }) {
   return (
     <div className="relative max-h-[28rem] space-y-0 overflow-y-auto rounded-md border border-cm-border bg-cm-row/25 pr-1 ring-1 ring-cm-border-subtle">
       <div className="absolute bottom-0 left-[7px] top-0 w-px bg-cm-border" aria-hidden />
-      <ul className="space-y-0">
+      <motion.ul
+        className="space-y-0"
+        initial="hidden"
+        animate="show"
+        variants={staggerContainer(reduce, { stagger: 0.04, delayChildren: 0.02 })}
+      >
         {rows.map((row, i) => {
           const ok = !row.err;
           return (
-            <li key={row.signature} className="relative flex gap-3 py-2.5 pl-5">
+            <motion.li
+              key={row.signature}
+              variants={fadeUp(reduce)}
+              className="relative flex gap-3 py-2.5 pl-5"
+              whileHover={reduce ? undefined : { x: 3, transition: springGentle }}
+            >
               <span
                 className={`absolute left-[4px] top-1/2 z-[1] h-2.5 w-2.5 -translate-y-1/2 rounded-full ring-2 ring-cm-surface ${
                   ok ? "bg-cm-ok" : "bg-cm-bad"
@@ -318,10 +358,10 @@ export function LiveActivityFeed({ rows, loading, solscanTx }) {
                   </a>
                 </div>
               </div>
-            </li>
+            </motion.li>
           );
         })}
-      </ul>
+      </motion.ul>
     </div>
   );
 }
