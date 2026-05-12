@@ -38,6 +38,9 @@ CREATE TABLE IF NOT EXISTS events (
 CREATE INDEX IF NOT EXISTS idx_events_scope_time
   ON events (scope_address, block_time DESC);
 
+CREATE INDEX IF NOT EXISTS idx_events_scope_fee_payer
+  ON events (scope_address, fee_payer);
+
 CREATE TABLE IF NOT EXISTS signers (
   tx_sig TEXT NOT NULL,
   scope_address TEXT NOT NULL,
@@ -64,6 +67,7 @@ CREATE TABLE IF NOT EXISTS transfers (
 );
 
 CREATE INDEX IF NOT EXISTS idx_transfers_scope ON transfers (scope_address);
+CREATE INDEX IF NOT EXISTS idx_transfers_scope_mint ON transfers (scope_address, mint);
 CREATE INDEX IF NOT EXISTS idx_transfers_from ON transfers (from_address);
 CREATE INDEX IF NOT EXISTS idx_transfers_to ON transfers (to_address);
 
@@ -98,3 +102,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_edges_natural_u
 CREATE INDEX IF NOT EXISTS idx_edges_from ON edges (from_address);
 CREATE INDEX IF NOT EXISTS idx_edges_to ON edges (to_address);
 CREATE INDEX IF NOT EXISTS idx_edges_scope ON edges (scope_address);
+CREATE INDEX IF NOT EXISTS idx_edges_scope_from ON edges (scope_address, from_address);
+CREATE INDEX IF NOT EXISTS idx_edges_scope_to ON edges (scope_address, to_address);
+CREATE INDEX IF NOT EXISTS idx_signers_scope_tx ON signers (scope_address, tx_sig);
+CREATE INDEX IF NOT EXISTS idx_program_calls_sig ON program_calls (scope_address, tx_sig);
