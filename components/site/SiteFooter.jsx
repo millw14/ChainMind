@@ -8,7 +8,8 @@ export function SiteFooter() {
           <div className="max-w-sm">
             <p className="text-sm font-semibold text-cm-text">ChainMind</p>
             <p className="mt-2 text-xs leading-relaxed text-cm-faint sm:text-sm">
-              Solana RPC diagnostics, per-address history, and optional co-activity metrics from synced data.
+              Early coordination intelligence on Solana—surface synchronized flows and concentration before the market
+              fully prices them.
             </p>
           </div>
           <div className="flex flex-col gap-10 text-sm sm:flex-row sm:gap-14">
@@ -37,16 +38,20 @@ export function SiteFooter() {
                 </li>
               </ul>
             </div>
-            <div>
-              <p className="text-xs font-semibold uppercase tracking-wide text-cm-faint">Disclaimer</p>
-              <p className="mt-2 max-w-xs text-xs leading-relaxed text-cm-muted">
-                Scores are statistical summaries, not findings of fact or intent.
+            <div className="max-w-md">
+              <p className="text-xs font-semibold uppercase tracking-wide text-cm-faint">Important</p>
+              <p className="mt-2 text-xs leading-relaxed text-cm-muted">
+                ChainMind outputs are statistical and investigative tools. They do not establish intent, wrongdoing, or
+                legal liability, and are not a substitute for compliance review, legal counsel, or ground truth off
+                chain. Scores and AI briefs prioritize triage, not findings of fact. You are responsible for how you
+                use and communicate results.
               </p>
             </div>
           </div>
         </div>
-        <p className="mt-10 border-t border-cm-border-subtle pt-6 text-center text-[11px] text-cm-faint">
-          © {new Date().getFullYear()} ChainMind · Use a dedicated RPC in production
+        <p className="mt-10 border-t border-cm-border-subtle pt-6 text-center text-[11px] leading-relaxed text-cm-faint">
+          © {new Date().getFullYear()} ChainMind · Dedicated RPC recommended in production · See footer for usage
+          limitations
         </p>
       </div>
     </footer>

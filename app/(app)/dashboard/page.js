@@ -17,12 +17,14 @@ export default function SolanaDashboardPage() {
             </Link>
           </div>
           <p className="mt-2 max-w-2xl text-xs leading-relaxed text-cm-muted sm:text-sm">
-            RPC health, address signatures, database counts (Turso), and v1 co-activity. Production: set{" "}
+            Run operational checks on the assets you track: live network health, signature flows, cloud-backed
+            coordination windows, and optional Groq briefs. Production needs{" "}
             <code className="rounded border border-cm-border bg-cm-elevated px-1 font-[family-name:var(--font-mono)] text-[11px] text-cm-subtle">
               SOLANA_RPC_URL
-            </code>{" "}
-            on the host; optional <code className="font-mono text-[11px] text-cm-subtle">TURSO_*</code> for cloud panels; optional{" "}
-            <code className="font-mono text-[11px] text-cm-subtle">GROQ_API_KEY</code> for analyst briefs.
+            </code>
+            ; Turso env for hosted scores;{" "}
+            <code className="font-mono text-[11px] text-cm-subtle">GROQ_API_KEY</code> for narratives. Footer covers
+            output limitations.
           </p>
         </div>
       </div>

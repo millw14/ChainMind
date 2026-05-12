@@ -3,11 +3,11 @@ import { SiteHeader } from "@/components/site/SiteHeader";
 
 export const metadata = {
   title: {
-    default: "ChainMind — Solana RPC console and co-activity metrics",
+    default: "ChainMind — detect coordinated manipulation on Solana early",
     template: "%s · ChainMind",
   },
   description:
-    "Solana RPC checks, per-address transaction history, and optional co-activity scoring from data you sync. Outputs are analytical, not evidence of intent.",
+    "Surface early coordination signals on Solana—wallet clustering, synchronized flows, and concentration in time—before liquidity and narrative catch up.",
 };
 
 export default function MarketingLayout({ children }) {

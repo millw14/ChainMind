@@ -14,7 +14,7 @@ const jetbrains = JetBrains_Mono({
 export const metadata = {
   title: "ChainMind",
   description:
-    "Solana RPC checks, address transaction history, and optional co-activity scoring from data you control.",
+    "Detect coordinated manipulation on Solana early—live reads, mirrored event scores, and optional AI analyst briefs.",
 };
 
 export default function RootLayout({ children }) {

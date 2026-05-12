@@ -11,7 +11,8 @@ export default function HowItWorksPage() {
         <p className="font-[family-name:var(--font-mono)] text-[10px] uppercase tracking-widest text-cm-faint">Guide</p>
         <h1 className="mt-3 text-3xl font-bold tracking-tight text-cm-text sm:text-4xl">How ChainMind fits together</h1>
         <p className="mt-4 text-lg leading-relaxed text-cm-muted">
-          Dashboard first, pipeline when you need your own event store and scored windows.
+          Stand up live Solana reads in minutes; turn on coordination scoring once your pipeline mirrors events to the
+          cloud.
         </p>
 
         <ol className="mt-14 space-y-10">
@@ -22,8 +23,8 @@ export default function HowItWorksPage() {
               <Link href="/dashboard" className="font-medium text-cm-text underline-offset-4 hover:underline">
                 dashboard
               </Link>{" "}
-              hits your configured RPC for health, loads recent signatures for any base58 you enter, and shows scores when
-              cloud-backed data exists.
+              validates RPC health, pulls recent signatures for any base58, and renders scored coordination windows
+              when Turso holds your mirrored events.
             </p>
           </li>
           <li className="border-l border-cm-border pl-5">
@@ -36,8 +37,8 @@ export default function HowItWorksPage() {
           <li className="border-l border-cm-border pl-5">
             <h2 className="text-lg font-semibold text-cm-text">3. v1 score</h2>
             <p className="mt-2 text-sm leading-relaxed text-cm-muted">
-              Today’s metric is the maximum distinct fee-paying wallets in one time bucket over your lookback. Useful for
-              triage; easy to misread as evidence if you skip the limits on the home page.
+              v1 measures peak distinct fee payers inside a minute bucket over your lookback—ideal for surfacing crowded
+              windows fast. Pair with fundamentals and your compliance process; limitations are in the site footer.
             </p>
           </li>
         </ol>

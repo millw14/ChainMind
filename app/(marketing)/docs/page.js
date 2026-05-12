@@ -13,7 +13,8 @@ export default function DocsPage() {
         </p>
         <h1 className="mt-2 text-2xl font-semibold tracking-tight text-cm-text sm:text-3xl">Setup & environment</h1>
         <p className="mt-3 text-sm leading-relaxed text-cm-muted">
-          Operator notes for the Next app, Vercel, and the Node CLIs. Canonical copy also lives in{" "}
+          ChainMind surfaces early coordination signals on Solana; this page is the operator reference for running the
+          app and CLIs. Canonical copy also lives in{" "}
           <code className="rounded border border-cm-border bg-cm-elevated px-1 font-[family-name:var(--font-mono)] text-xs text-cm-subtle">
             readme.txt
           </code>{" "}

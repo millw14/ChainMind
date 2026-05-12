@@ -312,8 +312,8 @@ function ScoreBody({ data, loading }) {
           <p className="text-xs uppercase tracking-wide text-cm-faint">Co-activity score (v1)</p>
           <p className="mt-1 text-4xl font-bold tracking-tight text-cm-text tabular-nums">{data.score ?? "—"}</p>
           <p className="mt-1 max-w-md text-xs text-cm-faint">
-            Peak number of different fee-paying wallets in one {data.windowMinutes}-minute window (not proof of
-            collusion).
+            Peak distinct fee-paying wallets in one {data.windowMinutes}-minute slice—dense windows deserve a second
+            look before the tape catches up.
           </p>
         </div>
         {data.peakBucketStartsIso ? (
@@ -490,7 +490,7 @@ export function Dashboard() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           data: snapshot,
-          focus: "Solana on-chain triage from ChainMind dashboard panels; no legal conclusions.",
+          focus: "Solana coordination signals from ChainMind panels—hypotheses for analyst follow-up.",
         }),
       });
       const j = await r.json().catch(() => ({}));
