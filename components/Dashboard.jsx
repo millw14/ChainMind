@@ -122,7 +122,7 @@ function PingBody({ data, loading }) {
 
 function InspectBody({ data, loading }) {
   if (loading) {
-    return <p className="py-8 text-center text-sm text-cm-faint">Fetching signatures (getSignaturesForAddress)…</p>;
+    return <p className="py-8 text-center text-sm text-cm-faint">Loading recent transactions…</p>;
   }
   if (!data) {
     return <p className="py-8 text-center text-sm text-cm-faint">Enter a base58 address and run Load.</p>;
@@ -197,10 +197,10 @@ function InspectBody({ data, loading }) {
 
 function DbBody({ data, loading }) {
   if (loading) {
-    return <p className="py-8 text-center text-sm text-cm-faint">GET /api/db-stats…</p>;
+    return <p className="py-8 text-center text-sm text-cm-faint">Loading synced counts…</p>;
   }
   if (!data) {
-    return <p className="py-8 text-center text-sm text-cm-faint">No database summary loaded. Run Refresh database.</p>;
+    return <p className="py-8 text-center text-sm text-cm-faint">No counts yet. Refresh synced data.</p>;
   }
   if (data.error) {
     return <ErrorCallout message={data.error} />;
@@ -209,16 +209,12 @@ function DbBody({ data, loading }) {
     return (
       <div className="space-y-3">
         <InfoCallout>
-          <strong className="text-cm-warn">Cloud database not connected.</strong> Hosted counts and scores use Turso.
-          After local pipeline runs, sync with{" "}
-          <code className="rounded border border-cm-border bg-cm-elevated px-1 font-[family-name:var(--font-mono)] text-[11px] text-cm-subtle">
-            npm run turso:sync
-          </code>{" "}
-          and set Turso env on the host; see{" "}
+          <strong className="text-cm-warn">Synced events not connected.</strong> Hosted counts and the coordination
+          score need cloud storage wired from your machine. Follow{" "}
           <Link href="/docs" className="font-medium text-cm-text underline underline-offset-2 hover:text-cm-accent">
             Docs
-          </Link>
-          . Ping and inspect above do not require Turso.
+          </Link>{" "}
+          to connect and run a sync—live network and recent activity above still work without it.
         </InfoCallout>
         {data.hint ? <p className="text-xs text-cm-faint">{data.hint}</p> : null}
         <ExpandableRaw data={data} />
@@ -242,7 +238,7 @@ function DbBody({ data, loading }) {
           </dd>
         </div>
         <div className="col-span-2 rounded-md border border-cm-border bg-cm-row/60 px-4 py-3 sm:col-span-1">
-          <dt className="text-xs text-cm-faint">Backend</dt>
+          <dt className="text-xs text-cm-faint">Store</dt>
           <dd className="mt-1 text-sm font-medium capitalize text-cm-text">{data.database ?? "—"}</dd>
         </div>
       </div>
@@ -251,7 +247,7 @@ function DbBody({ data, loading }) {
           <table className="w-full text-left text-sm">
             <thead className="border-b border-cm-border bg-cm-row/80 text-xs font-medium uppercase tracking-wide text-cm-faint">
               <tr>
-                <th className="px-3 py-2">Scope address</th>
+                <th className="px-3 py-2">Tracked address</th>
                 <th className="px-3 py-2">Signatures</th>
                 <th className="px-3 py-2">Events</th>
               </tr>
@@ -270,6 +266,10 @@ function DbBody({ data, loading }) {
           </table>
         </div>
       ) : null}
+      <p className="mt-4 text-xs leading-relaxed text-cm-faint">
+        Funding-graph clustering, named pattern detectors, and exportable case files are on the roadmap—today these
+        counts feed the coordination score and raw JSON below.
+      </p>
       <ExpandableRaw data={data} />
     </div>
   );
@@ -277,10 +277,10 @@ function DbBody({ data, loading }) {
 
 function ScoreBody({ data, loading }) {
   if (loading) {
-    return <p className="py-8 text-center text-sm text-cm-faint">GET /api/score…</p>;
+    return <p className="py-8 text-center text-sm text-cm-faint">Computing coordination score…</p>;
   }
   if (!data) {
-    return <p className="py-8 text-center text-sm text-cm-faint">Set scope, window, and lookback; run Compute.</p>;
+    return <p className="py-8 text-center text-sm text-cm-faint">Choose time window and lookback, then Compute.</p>;
   }
   if (data.error) {
     return <ErrorCallout message={data.error} />;
@@ -288,10 +288,12 @@ function ScoreBody({ data, loading }) {
   if (data.database === "unconfigured") {
     return (
       <InfoCallout>
-        <strong className="text-cm-warn">Score needs cloud data.</strong> Configure Turso (see Database panel) and sync events.{" "}
+        <strong className="text-cm-warn">Coordination score needs synced events.</strong> Connect cloud storage and sync
+        from your machine—see{" "}
         <Link href="/docs" className="font-medium text-cm-text underline underline-offset-2 hover:text-cm-accent">
           Docs
         </Link>
+        .
       </InfoCallout>
     );
   }
@@ -309,7 +311,7 @@ function ScoreBody({ data, loading }) {
     <div className="space-y-4">
       <div className="flex flex-wrap items-end gap-4">
         <div>
-          <p className="text-xs uppercase tracking-wide text-cm-faint">Co-activity score (v1)</p>
+          <p className="text-xs uppercase tracking-wide text-cm-faint">Coordination score (v1)</p>
           <p className="mt-1 text-4xl font-bold tracking-tight text-cm-text tabular-nums">{data.score ?? "—"}</p>
           <p className="mt-1 max-w-md text-xs text-cm-faint">
             Peak distinct fee-paying wallets in one {data.windowMinutes}-minute slice—dense windows deserve a second
@@ -365,7 +367,7 @@ function ScoreBody({ data, loading }) {
 
 function BriefBody({ text, error, loading }) {
   if (loading) {
-    return <p className="py-8 text-center text-sm text-cm-faint">POST /api/groq-brief…</p>;
+    return <p className="py-8 text-center text-sm text-cm-faint">Generating brief…</p>;
   }
   if (error) {
     return <ErrorCallout message={error} />;
@@ -373,11 +375,11 @@ function BriefBody({ text, error, loading }) {
   if (!text) {
     return (
       <p className="text-sm text-cm-muted">
-        Optional: set{" "}
-        <code className="rounded border border-cm-border bg-cm-elevated px-1 font-[family-name:var(--font-mono)] text-[11px] text-cm-subtle">
-          GROQ_API_KEY
-        </code>{" "}
-        (see <Link href="/docs">Docs</Link>). Load the panels above, then generate a brief from this snapshot.
+        Optional AI summary of what&apos;s loaded above—enable in your environment using{" "}
+        <Link href="/docs" className="font-medium text-cm-text underline underline-offset-2 hover:text-cm-accent">
+          Docs
+        </Link>
+        . Load panels first, then Generate brief.
       </p>
     );
   }
@@ -390,11 +392,10 @@ function BriefBody({ text, error, loading }) {
 
 export function Dashboard() {
   const [ping, setPing] = useState(null);
-  const [inspectAddr, setInspectAddr] = useState(USDC_MAINNET);
+  const [focusAddress, setFocusAddress] = useState(USDC_MAINNET);
   const [inspectLimit, setInspectLimit] = useState("12");
   const [inspect, setInspect] = useState(null);
 
-  const [scoreScope, setScoreScope] = useState(USDC_MAINNET);
   const [scoreWindow, setScoreWindow] = useState("5");
   const [scoreHours, setScoreHours] = useState("168");
   const [score, setScore] = useState(null);
@@ -434,7 +435,7 @@ export function Dashboard() {
   };
 
   const runInspect = async () => {
-    const a = inspectAddr.trim();
+    const a = focusAddress.trim();
     if (!a) return;
     const u = `/api/inspect?address=${encodeURIComponent(a)}&limit=${encodeURIComponent(inspectLimit || "12")}`;
     try {
@@ -459,7 +460,7 @@ export function Dashboard() {
   }, []);
 
   const runScore = async () => {
-    const s = scoreScope.trim();
+    const s = focusAddress.trim();
     if (!s) return;
     const u = `/api/score?scope=${encodeURIComponent(s)}&window=${encodeURIComponent(scoreWindow || "5")}&hours=${encodeURIComponent(scoreHours || "24")}`;
     try {
@@ -476,9 +477,9 @@ export function Dashboard() {
       const snapshot = {
         generatedAt: new Date().toISOString(),
         network: ping,
-        inspect: { address: inspectAddr.trim(), limit: inspectLimit, result: inspect },
+        focusAddress: focusAddress.trim(),
+        inspect: { limit: inspectLimit, result: inspect },
         score: {
-          scope: scoreScope.trim(),
           windowMinutes: scoreWindow,
           lookbackHours: scoreHours,
           result: score,
@@ -525,7 +526,7 @@ export function Dashboard() {
             disabled={loading.db}
             className="rounded-md border border-cm-border bg-cm-elevated px-3 py-2 text-xs font-medium text-cm-text hover:bg-cm-row-hover disabled:opacity-50"
           >
-            {loading.db ? "DB…" : "Refresh database"}
+            {loading.db ? "Sync…" : "Refresh synced data"}
           </button>
         </div>
       </div>
@@ -533,7 +534,7 @@ export function Dashboard() {
       <main className="mx-auto max-w-5xl space-y-6 px-4 py-8 sm:px-6">
         <Card
           title="Network status"
-          subtitle="Live read from your configured Solana RPC"
+          subtitle="Live read from the Solana connection in your environment"
           actions={
             <button
               type="button"
@@ -550,10 +551,25 @@ export function Dashboard() {
           ) : null}
         </Card>
 
+        <Card
+          title="What you’re watching"
+          subtitle="One token, wallet, or program drives activity and coordination below."
+        >
+          <label className="mb-1 block text-xs font-medium text-cm-faint">Solana address</label>
+          <input
+            className="w-full rounded-md border border-cm-border bg-cm-surface px-3 py-2 text-sm text-cm-text outline-none ring-cm-accent-ring focus:ring-2"
+            value={focusAddress}
+            onChange={(e) => setFocusAddress(e.target.value)}
+            placeholder="Token (mint), wallet, or program id"
+            spellCheck={false}
+            autoComplete="off"
+          />
+        </Card>
+
         <div className="grid gap-6 lg:grid-cols-2">
           <Card
-            title="Address activity"
-            subtitle="Recent transactions touching a wallet, token, or program"
+            title="Recent activity"
+            subtitle="Latest on-chain touches for the address above"
             actions={
               <button
                 type="button"
@@ -561,23 +577,13 @@ export function Dashboard() {
                 disabled={loading.inspect}
                 className="rounded-md bg-cm-accent px-3 py-1.5 text-xs font-semibold text-cm-on-accent transition hover:bg-cm-accent-bright disabled:opacity-50"
               >
-                {loading.inspect ? "Fetch…" : "Load"}
+                {loading.inspect ? "Load…" : "Load"}
               </button>
             }
           >
             <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-end">
-              <div className="min-w-0 flex-1">
-                <label className="mb-1 block text-xs font-medium text-cm-faint">Solana address (base58)</label>
-                <input
-                  className="w-full rounded-md border border-cm-border bg-cm-surface px-3 py-2 text-sm text-cm-text outline-none ring-cm-accent-ring focus:ring-2"
-                  value={inspectAddr}
-                  onChange={(e) => setInspectAddr(e.target.value)}
-                  placeholder="Wallet, mint, or program id"
-                  spellCheck={false}
-                />
-              </div>
               <div className="w-full sm:w-28">
-                <label className="mb-1 block text-xs font-medium text-cm-faint">How many</label>
+                <label className="mb-1 block text-xs font-medium text-cm-faint">How many rows</label>
                 <input
                   type="number"
                   min={1}
@@ -592,8 +598,8 @@ export function Dashboard() {
           </Card>
 
           <Card
-            title="Co-activity score"
-            subtitle="Needs synced data · compares wallet activity in time buckets"
+            title="Coordination score"
+            subtitle="Flags when many wallets bunch into the same short window—uses synced events, not RPC alone."
             actions={
               <button
                 type="button"
@@ -601,20 +607,11 @@ export function Dashboard() {
                 disabled={loading.score}
                 className="rounded-md bg-cm-accent px-3 py-1.5 text-xs font-semibold text-cm-on-accent transition hover:bg-cm-accent-bright disabled:opacity-50"
               >
-                {loading.score ? "Score…" : "Compute"}
+                {loading.score ? "Compute…" : "Compute"}
               </button>
             }
           >
-            <div className="mb-4 grid gap-3 sm:grid-cols-3">
-              <div className="sm:col-span-3">
-                <label className="mb-1 block text-xs font-medium text-cm-faint">Scope (same as your token or wallet)</label>
-                <input
-                  className="w-full rounded-md border border-cm-border bg-cm-surface px-3 py-2 text-sm text-cm-text outline-none focus:ring-2 focus:ring-cm-accent-ring"
-                  value={scoreScope}
-                  onChange={(e) => setScoreScope(e.target.value)}
-                  spellCheck={false}
-                />
-              </div>
+            <div className="mb-4 grid gap-3 sm:grid-cols-2">
               <div>
                 <label className="mb-1 block text-xs font-medium text-cm-faint">Window (minutes)</label>
                 <input
@@ -643,8 +640,8 @@ export function Dashboard() {
         </div>
 
         <Card
-          title="Your data (cloud)"
-          subtitle="Counts after you sync from the ChainMind CLI"
+          title="Synced events"
+          subtitle="What you’ve mirrored from your machine—signatures and parsed activity in cloud storage."
           actions={
             <button type="button" onClick={runDb} className="text-xs font-medium text-cm-muted hover:text-cm-text">
               Refresh
@@ -653,13 +650,13 @@ export function Dashboard() {
         >
           <DbBody data={dbStats} loading={loading.db && dbStats == null} />
           {dbStats != null && loading.db ? (
-            <p className="mt-2 text-center text-xs text-cm-faint">DB request in flight…</p>
+            <p className="mt-2 text-center text-xs text-cm-faint">Refreshing synced counts…</p>
           ) : null}
         </Card>
 
         <Card
-          title="Analyst brief (Groq)"
-          subtitle="LLM reads the snapshot from the panels above — triage language only"
+          title="Analyst brief"
+          subtitle="Optional AI summary of everything loaded above—setup in Docs."
           actions={
             <button
               type="button"

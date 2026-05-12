@@ -39,8 +39,8 @@ export default function DocsPage() {
 
         <h2 className="mt-10 text-sm font-semibold uppercase tracking-wide text-cm-faint">Environment variables</h2>
         <p className="mt-3 text-sm leading-relaxed text-cm-muted">
-          See <code className="font-mono text-xs text-cm-subtle">.env.example</code> in the repository for names and
-          hints.
+          Operators set these on the host (see <code className="font-mono text-xs text-cm-subtle">.env.example</code>);
+          the dashboard UI does not surface variable names to end users.
         </p>
         <ul className="mt-3 list-inside list-disc space-y-1.5 text-sm text-cm-muted">
           <li>
