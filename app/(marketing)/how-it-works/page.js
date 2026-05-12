@@ -90,12 +90,34 @@ export default function HowItWorksPage() {
             </div>
 
             <div className="border-l border-cm-border pl-5">
-              <h3 className="text-base font-semibold text-cm-text">Prediction / leading indicators</h3>
+              <h3 className="text-base font-semibold text-cm-text">Prediction / leading indicators (“get ahead”)</h3>
               <p className="mt-3 text-sm leading-relaxed text-cm-muted">
-                “Before it becomes visible” requires features aimed at <em>pre</em>-tape signals: pre-positioning
-                clusters, liquidity withdrawal or rotation patterns, unusual fee-payer compression ahead of volume
-                spikes—features that deliberately move ChainMind away from being “another explorer with a chart.”
+                This layer is the hardest to build and the clearest differentiator: not “what happened” but what tends to
+                happen <em>next</em>. It needs baselines, history, and explicit definitions of “before it’s visible” per
+                asset—otherwise it collapses into vibes. Target signals include:
               </p>
+              <ul className="mt-3 list-inside list-disc space-y-2 text-sm leading-relaxed text-cm-muted">
+                <li>
+                  <strong className="font-medium text-cm-text">Pre-positioning clusters</strong> — coordinated wallets
+                  accumulating or rotating inventory quietly before public volume or social attention spikes; detect
+                  divergence between “stealth” participation and headline tape.
+                </li>
+                <li>
+                  <strong className="font-medium text-cm-text">Liquidity &amp; venue rotation</strong> — unusual
+                  withdrawal of depth, pool rebalancing, or route changes that precede volatility—especially when timed
+                  with fee-payer compression elsewhere.
+                </li>
+                <li>
+                  <strong className="font-medium text-cm-text">Fee-payer &amp; timing compression (leading)</strong> —
+                  the same structural signal as v1, but scored on <em>delta and acceleration vs a rolling baseline</em>,
+                  not a static threshold—unusual crowding before the market moves, not only after.
+                </li>
+                <li>
+                  <strong className="font-medium text-cm-text">Cross-signal corroboration</strong> — only elevate a
+                  leading hypothesis when clustering, velocity, and pre-tape pressure agree; publish confidence bands
+                  instead of binary alerts.
+                </li>
+              </ul>
             </div>
           </div>
         </section>
