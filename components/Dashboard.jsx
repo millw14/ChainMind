@@ -341,6 +341,11 @@ function BriefBody({ analysis, error, loading, webhookMeta }) {
   const riskLevel = typeof analysis.risk_level === "string" ? analysis.risk_level : "—";
   const reasoning = Array.isArray(analysis.reasoning) ? analysis.reasoning : [];
   const nextSteps = Array.isArray(analysis.next_steps) ? analysis.next_steps : [];
+  const confidenceReasoning =
+    typeof analysis.confidence_reasoning === "string" ? analysis.confidence_reasoning.trim() : "";
+  const namedEntities = Array.isArray(analysis.named_entities) ? analysis.named_entities : [];
+  const manipulationVsBenign =
+    typeof analysis.manipulation_vs_benign === "string" ? analysis.manipulation_vs_benign.trim() : "";
 
   const vClass = verdictStyle[verdict] ?? "bg-cm-row text-cm-muted ring-1 ring-cm-border";
   const rClass = riskStyle[riskLevel] ?? "text-cm-muted";
@@ -371,7 +376,35 @@ function BriefBody({ analysis, error, loading, webhookMeta }) {
           {riskLevel} risk
         </span>
       </div>
-      {reasoning.length > 0 ? (
+      {confidenceReasoning ? (
+        <div>
+          <p className="font-mono text-[10px] font-semibold uppercase tracking-wide text-cm-faint">
+            Confidence calibration
+          </p>
+          <p className="mt-2 text-sm leading-relaxed text-cm-subtle">{confidenceReasoning}</p>
+        </div>
+      ) : null}
+      {namedEntities.length > 0 ? (
+        <div>
+          <p className="font-mono text-[10px] font-semibold uppercase tracking-wide text-cm-faint">
+            Named entities
+          </p>
+          <ul className="mt-2 list-inside list-disc space-y-1 font-[family-name:var(--font-mono)] text-[11px] leading-relaxed text-cm-accent-bright/95 break-all">
+            {namedEntities.map((line, i) => (
+              <li key={i}>{String(line)}</li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
+      {manipulationVsBenign ? (
+        <div>
+          <p className="font-mono text-[10px] font-semibold uppercase tracking-wide text-cm-faint">
+            Manipulation vs benign
+          </p>
+          <p className="mt-2 text-sm leading-relaxed text-cm-muted">{manipulationVsBenign}</p>
+        </div>
+      ) : null}
+      {!confidenceReasoning && reasoning.length > 0 ? (
         <div>
           <p className="font-mono text-[10px] font-semibold uppercase tracking-wide text-cm-faint">Reasoning</p>
           <ul className="mt-2 list-inside list-disc space-y-1.5 text-sm leading-relaxed text-cm-subtle">

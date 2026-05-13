@@ -1,33 +1,32 @@
 import { NextResponse } from "next/server";
 import { getGeoqApiKey, geoqFetch } from "@/lib/geoq.js";
 import { sendVerdictWebhook } from "@/lib/groq-webhook.js";
+import { buildGroqUserEvidence } from "@/lib/groq-user-evidence.js";
 
 export const maxDuration = 60;
 export const runtime = "nodejs";
 
-const SYSTEM_PROMPT = `You are a crypto manipulation analyst.
-Given on-chain signals, identify coordination patterns, assess confidence, and recommend next investigation steps.
+const SYSTEM_PROMPT = `You are ChainMind, a crypto manipulation analyst for Solana.
+You receive raw on-chain evidence. Your job is to:
+1. Name specific wallets/signatures in your reasoning — never speak in abstracts.
+2. Explain WHY your confidence is the number it is, and what would raise or lower it.
+3. Distinguish between manipulation signals vs. benign explanations (congestion, market-maker bots, hot-wallet churn, etc.).
+4. Give next steps that name specific entities to investigate (use addresses or transaction signatures from the evidence), not generic actions.
 
-You know these manipulation patterns:
-- Coordinated accumulation: multiple wallets buying the same token within tight time windows, often funded from the same source
-- Wash trading: the same capital rotating through linked wallets to inflate volume
-- Sybil pump: many fresh wallets buying simultaneously with a shared fee payer
-- Fake liquidity: LP added and removed in a coordinated way
-
-Rules:
-- Use only what appears in the evidence JSON. If shared funding or true wallet age is not in the payload, do not invent it.
-- Prefer verdict "suspicious" over "manipulation_detected" unless the numbers clearly support coordination pressure.
-- Use verdict "clean" only when evidence is weak or consistent with benign traffic.
+Patterns to weigh only when the numbers support them: coordinated accumulation, wash rotation, sybil-style payer bursts, coordinated LP moves.
+If shared funding or true account age is not in the evidence object, say so explicitly — do not invent it.
 
 Respond with ONLY valid JSON (no markdown fences, no commentary before or after the object):
 {
   "verdict": "manipulation_detected | suspicious | clean",
   "confidence": 0.0,
-  "reasoning": ["bullet explaining what the signals suggest"],
-  "next_steps": ["concrete investigative or data-collection step"]
+  "confidence_reasoning": "string: why this confidence; what evidence would raise or lower it",
+  "named_entities": ["full or shortened wallet base58, or signature, or program id you cite"],
+  "manipulation_vs_benign": "string: contrast plausible manipulation narrative vs benign explanations",
+  "next_steps": ["specific step naming an entity from named_entities or evidence signatures"]
 }
 
-confidence is a number from 0 through 1. reasoning and next_steps must be arrays of short strings (at least one entry each).`;
+confidence is from 0 through 1. named_entities and next_steps must be non-empty arrays when the evidence contains any wallets or signatures; if the evidence is empty, say so in those fields with one honest entry each.`;
 const VERDICTS = new Set(["manipulation_detected", "suspicious", "clean"]);
 const MANIP_TYPES = new Set(["coordinated_accumulation", "wash_trade", "sybil_pump", "none"]);
 const RISK_LEVELS = new Set(["critical", "high", "medium", "low"]);
@@ -85,6 +84,27 @@ function normalizeAnalysis(raw) {
   if (!Number.isFinite(confidence)) confidence = 0.5;
   confidence = Math.min(1, Math.max(0, confidence));
 
+  let confidence_reasoning =
+    typeof o.confidence_reasoning === "string"
+      ? o.confidence_reasoning.trim()
+      : typeof o.confidenceReasoning === "string"
+        ? o.confidenceReasoning.trim()
+        : "";
+
+  let named_entities = toStringArray(o.named_entities);
+  if (named_entities.length === 0) named_entities = toStringArray(o.namedEntities);
+
+  let manipulation_vs_benign = "";
+  if (typeof o.manipulation_vs_benign === "string") manipulation_vs_benign = o.manipulation_vs_benign.trim();
+  else if (typeof o.manipulationVsBenign === "string") manipulation_vs_benign = o.manipulationVsBenign.trim();
+  else if (o.manipulation_vs_benign && typeof o.manipulation_vs_benign === "object") {
+    try {
+      manipulation_vs_benign = JSON.stringify(o.manipulation_vs_benign);
+    } catch {
+      manipulation_vs_benign = "";
+    }
+  }
+
   let reasoning = toStringArray(o.reasoning);
   let next_steps = toStringArray(o.next_steps);
   if (next_steps.length === 0) next_steps = toStringArray(o.nextSteps);
@@ -94,26 +114,49 @@ function normalizeAnalysis(raw) {
     next_steps = [...key_evidence_legacy];
   }
 
+  if (!confidence_reasoning && reasoning.length) {
+    confidence_reasoning = reasoning.join(" ");
+  }
+  if (!confidence_reasoning) {
+    confidence_reasoning = "Model did not return confidence_reasoning — treat calibration as unknown.";
+  }
+
+  if (reasoning.length === 0) {
+    reasoning = [confidence_reasoning];
+  } else if (confidence_reasoning && !reasoning.some((r) => r.includes(confidence_reasoning.slice(0, 40)))) {
+    reasoning = [confidence_reasoning, ...reasoning];
+  }
+
+  if (named_entities.length === 0) {
+    named_entities.push("(none returned — re-prompt or widen inspect sample)");
+  }
+
+  if (!manipulation_vs_benign) {
+    manipulation_vs_benign = "No manipulation_vs_benign field returned.";
+  }
+
+  if (next_steps.length === 0) {
+    next_steps.push("Pull signatures listed in evidence and trace the first fee payer on Solscan.");
+  }
+
   const manipulation_type = MANIP_TYPES.has(o.manipulation_type) ? o.manipulation_type : "none";
   const risk_level = RISK_LEVELS.has(o.risk_level)
     ? o.risk_level
     : inferRiskLevel(verdict, confidence);
 
-  if (reasoning.length === 0) {
-    reasoning.push("Model returned no reasoning lines—treat as indeterminate.");
-  }
-  if (next_steps.length === 0) {
-    next_steps.push("Refine score window and pull a wider signature sample; validate against funding tooling when available.");
-  }
-
   return {
     verdict,
     confidence,
+    confidence_reasoning,
+    named_entities,
+    manipulation_vs_benign,
     reasoning,
     next_steps,
     manipulation_type,
     risk_level,
-    key_evidence: key_evidence_legacy.length ? key_evidence_legacy : next_steps.slice(0, Math.min(5, next_steps.length)),
+    key_evidence: key_evidence_legacy.length
+      ? key_evidence_legacy
+      : [...named_entities.filter((x) => x.startsWith("(") === false), ...next_steps].slice(0, 8),
   };
 }
 function webhookConfidenceThreshold() {
@@ -164,8 +207,14 @@ export async function POST(request) {
     return NextResponse.json({ error: "GROQ_API_KEY is not configured" }, { status: 503 });
   }
 
-  const payloadText = typeof data === "string" ? data : JSON.stringify(data, null, 2);
-  const userBlock = truncate(["Analyze:", payloadText, focus ? `\n\nNote:\n${focus}` : ""].join("\n"));
+  const userEvidence =
+    typeof data === "object" && data !== null
+      ? buildGroqUserEvidence(data)
+      : { error: "Expected object snapshot", raw: typeof data === "string" ? data.slice(0, 500) : null };
+
+  const userBlock = truncate(
+    ["Evidence:", JSON.stringify(userEvidence, null, 2), focus ? `\n\nNote:\n${focus}` : ""].join("\n"),
+  );
 
   const model = process.env.GROQ_MODEL?.trim() || "llama-3.3-70b-versatile";
 
@@ -180,7 +229,7 @@ export async function POST(request) {
           { role: "user", content: userBlock },
         ],
         temperature: 0.15,
-        max_tokens: 1024,
+        max_tokens: 1536,
       }),
     });
   } catch (e) {
