@@ -5,28 +5,29 @@ import { sendVerdictWebhook } from "@/lib/groq-webhook.js";
 export const maxDuration = 60;
 export const runtime = "nodejs";
 
-const SYSTEM_PROMPT = `You are ChainMind, an on-chain manipulation detection analyst for Solana.
+const SYSTEM_PROMPT = `You are a crypto manipulation analyst.
+Given on-chain signals, identify coordination patterns, assess confidence, and recommend next investigation steps.
 
 You know these manipulation patterns:
-- Coordinated accumulation: multiple wallets buying same token within tight time windows, funded from same source
-- Wash trading: same capital rotating through linked wallets to inflate volume
-- Sybil pump: many fresh wallets (<72h old) buying simultaneously with shared fee payer
-- Fake liquidity: LP positions opened and removed in coordinated fashion
+- Coordinated accumulation: multiple wallets buying the same token within tight time windows, often funded from the same source
+- Wash trading: the same capital rotating through linked wallets to inflate volume
+- Sybil pump: many fresh wallets buying simultaneously with a shared fee payer
+- Fake liquidity: LP added and removed in a coordinated way
 
-You receive one JSON object of computed evidence (fee-payer concentration, co-activity score, transaction samples, alerts, etc.). Some fields may be missing or explicitly state that shared funding / true wallet age was not computed—do not infer those signals. Prefer lower confidence or verdict "suspicious" over "manipulation_detected" when the payload does not support a pattern. Use manipulation_type "none" and verdict "clean" only when evidence is weak or consistent with benign traffic.
+Rules:
+- Use only what appears in the evidence JSON. If shared funding or true wallet age is not in the payload, do not invent it.
+- Prefer verdict "suspicious" over "manipulation_detected" unless the numbers clearly support coordination pressure.
+- Use verdict "clean" only when evidence is weak or consistent with benign traffic.
 
-You must respond with ONLY valid JSON (no markdown fences, no commentary before or after the object):
+Respond with ONLY valid JSON (no markdown fences, no commentary before or after the object):
 {
   "verdict": "manipulation_detected | suspicious | clean",
   "confidence": 0.0,
-  "manipulation_type": "coordinated_accumulation | wash_trade | sybil_pump | none",
-  "risk_level": "critical | high | medium | low",
-  "reasoning": ["point 1", "point 2", "point 3"],
-  "key_evidence": ["specific data point that triggered this"]
+  "reasoning": ["bullet explaining what the signals suggest"],
+  "next_steps": ["concrete investigative or data-collection step"]
 }
 
-Rules: confidence is a number from 0 through 1. reasoning and key_evidence must be arrays of strings (at least one entry each when you have any signal; use cautious language in strings).`;
-
+confidence is a number from 0 through 1. reasoning and next_steps must be arrays of short strings (at least one entry each).`;
 const VERDICTS = new Set(["manipulation_detected", "suspicious", "clean"]);
 const MANIP_TYPES = new Set(["coordinated_accumulation", "wash_trade", "sybil_pump", "none"]);
 const RISK_LEVELS = new Set(["critical", "high", "medium", "low"]);
@@ -51,6 +52,26 @@ function extractJsonObject(content) {
 }
 
 /**
+ * @param {unknown} v
+ * @returns {string[]}
+ */
+function toStringArray(v) {
+  if (Array.isArray(v)) return v.map((x) => String(x).trim()).filter(Boolean);
+  if (typeof v === "string" && v.trim()) return [v.trim()];
+  return [];
+}
+
+/**
+ * @param {string} verdict
+ * @param {number} confidence
+ */
+function inferRiskLevel(verdict, confidence) {
+  if (verdict === "manipulation_detected") return confidence > 0.75 ? "critical" : "high";
+  if (verdict === "suspicious") return "medium";
+  return "low";
+}
+
+/**
  * @param {unknown} raw
  */
 function normalizeAnalysis(raw) {
@@ -63,25 +84,38 @@ function normalizeAnalysis(raw) {
   let confidence = Number(o.confidence);
   if (!Number.isFinite(confidence)) confidence = 0.5;
   confidence = Math.min(1, Math.max(0, confidence));
+
+  let reasoning = toStringArray(o.reasoning);
+  let next_steps = toStringArray(o.next_steps);
+  if (next_steps.length === 0) next_steps = toStringArray(o.nextSteps);
+
+  const key_evidence_legacy = toStringArray(o.key_evidence);
+  if (next_steps.length === 0 && key_evidence_legacy.length) {
+    next_steps = [...key_evidence_legacy];
+  }
+
   const manipulation_type = MANIP_TYPES.has(o.manipulation_type) ? o.manipulation_type : "none";
-  const risk_level = RISK_LEVELS.has(o.risk_level) ? o.risk_level : "medium";
-  const reasoning = Array.isArray(o.reasoning)
-    ? o.reasoning.map((x) => String(x).trim()).filter(Boolean)
-    : [];
-  const key_evidence = Array.isArray(o.key_evidence)
-    ? o.key_evidence.map((x) => String(x).trim()).filter(Boolean)
-    : [];
+  const risk_level = RISK_LEVELS.has(o.risk_level)
+    ? o.risk_level
+    : inferRiskLevel(verdict, confidence);
 
   if (reasoning.length === 0) {
     reasoning.push("Model returned no reasoning lines—treat as indeterminate.");
   }
-  if (key_evidence.length === 0) {
-    key_evidence.push("No explicit evidence strings returned.");
+  if (next_steps.length === 0) {
+    next_steps.push("Refine score window and pull a wider signature sample; validate against funding tooling when available.");
   }
 
-  return { verdict, confidence, manipulation_type, risk_level, reasoning, key_evidence };
+  return {
+    verdict,
+    confidence,
+    reasoning,
+    next_steps,
+    manipulation_type,
+    risk_level,
+    key_evidence: key_evidence_legacy.length ? key_evidence_legacy : next_steps.slice(0, Math.min(5, next_steps.length)),
+  };
 }
-
 function webhookConfidenceThreshold() {
   const raw = process.env.CHAINMIND_WEBHOOK_MIN_CONFIDENCE?.trim();
   if (raw === undefined || raw === "") return 0.7;
@@ -131,9 +165,7 @@ export async function POST(request) {
   }
 
   const payloadText = typeof data === "string" ? data : JSON.stringify(data, null, 2);
-  const userBlock = truncate(
-    [focus ? `Analyst focus: ${focus}\n\n` : "", "Structured evidence (JSON):\n", payloadText].join(""),
-  );
+  const userBlock = truncate(["Analyze:", payloadText, focus ? `\n\nNote:\n${focus}` : ""].join("\n"));
 
   const model = process.env.GROQ_MODEL?.trim() || "llama-3.3-70b-versatile";
 
