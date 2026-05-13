@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { motion, useReducedMotion } from "framer-motion";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   AlertStrip,
   buildAlerts,
@@ -16,13 +16,14 @@ import {
   WalletGraphSvg,
 } from "@/components/dashboard/intel-widgets";
 import { buildGroqEvidence } from "@/lib/groq-evidence.js";
+import { GROQ_BRIEF_USER_FOCUS } from "@/lib/groq-brief-defaults.js";
+import { GROQ_AUTO_CO_ACTIVITY } from "@/lib/groq-thresholds.js";
 import { staggerContainer, fadeUp, springGentle } from "@/components/motion/presets";
 
 const USDC_MAINNET = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
 
 const INSPECT_DEBOUNCE_MS = 350;
 const LIVE_POLL_MS = 42_000;
-
 function solscanTx(signature) {
   return `https://solscan.io/tx/${signature}`;
 }
@@ -303,9 +304,9 @@ const riskStyle = {
 };
 
 /**
- * @param {{ analysis: Record<string, unknown> | null, error: string | null, loading: boolean }} props
+ * @param {{ analysis: Record<string, unknown> | null, error: string | null, loading: boolean, webhookMeta?: object | null }} props
  */
-function BriefBody({ analysis, error, loading }) {
+function BriefBody({ analysis, error, loading, webhookMeta }) {
   if (loading) {
     return <p className="py-8 text-center text-sm text-cm-faint">Running ChainMind analyst…</p>;
   }
@@ -315,11 +316,13 @@ function BriefBody({ analysis, error, loading }) {
   if (!analysis) {
     return (
       <p className="text-sm text-cm-muted">
-        Structured verdict from ChainMind (JSON)—enable in your environment using{" "}
+        Structured verdict runs automatically when co-activity is above {(GROQ_AUTO_CO_ACTIVITY * 100).toFixed(0)}% (with{" "}
+        <code className="text-cm-accent-bright">GROQ_API_KEY</code>
+        ). Manual override below. Configure webhooks in{" "}
         <Link href="/docs" className="font-medium text-cm-text underline underline-offset-2 hover:text-cm-accent">
           Docs
         </Link>
-        . Load panels first, then Generate.
+        .
       </p>
     );
   }
@@ -381,6 +384,22 @@ function BriefBody({ analysis, error, loading }) {
           </ul>
         </div>
       ) : null}
+      {webhookMeta?.attempted && webhookMeta?.delivered ? (
+        <p className="border-t border-cm-border-subtle pt-3 font-mono text-[10px] text-cm-terminal">
+          Investigation webhook POST succeeded (high-confidence auto verdict).
+        </p>
+      ) : null}
+      {webhookMeta?.attempted && webhookMeta?.skipped ? (
+        <p className="border-t border-cm-border-subtle pt-3 font-mono text-[10px] text-cm-faint">
+          High-confidence auto verdict — set{" "}
+          <code className="text-cm-muted">CHAINMIND_VERDICT_WEBHOOK_URL</code> to notify Slack or your SOAR stack.
+        </p>
+      ) : null}
+      {webhookMeta?.error ? (
+        <p className="border-t border-cm-border-subtle pt-3 font-mono text-[10px] text-cm-bad">
+          Webhook error: {String(webhookMeta.error)}
+        </p>
+      ) : null}
     </div>
   );
 }
@@ -399,6 +418,10 @@ export function Dashboard() {
 
   const [groqAnalysis, setGroqAnalysis] = useState(null);
   const [groqErr, setGroqErr] = useState(null);
+  const [groqWebhookMeta, setGroqWebhookMeta] = useState(null);
+
+  const groqEpisodeArmedRef = useRef(true);
+  const groqAutoInFlightRef = useRef(false);
 
   const [loading, setLoading] = useState({});
   const [loadingGroq, setLoadingGroq] = useState(false);
@@ -509,37 +532,44 @@ export function Dashboard() {
 
   const intelAlerts = useMemo(() => buildAlerts({ inspect, score, ping }), [inspect, score, ping]);
   const risk = useMemo(() => deriveRiskProfile(score), [score]);
-  const walletGraphVisual = useMemo(() => {
-    if (score?.walletGraph?.nodes?.length > 1) return score.walletGraph;
-    return inspectFallbackGraph(focusAddress.trim(), inspect?.ok ? inspect.signatures : null);
-  }, [score?.walletGraph, focusAddress, inspect?.ok, inspect?.signatures]);
+  const coActivityScore = useMemo(() => {
+    if (risk?.score0_100 == null || !Number.isFinite(Number(risk.score0_100))) return null;
+    return Number(risk.score0_100) / 100;
+  }, [risk]);
 
-  const runBrief = async () => {
-    setGroqErr(null);
-    setLoadingGroq(true);
-    try {
-      const evidence = {
-        ...buildGroqEvidence({
-          address: focusAddress,
-          score,
-          inspect,
-          risk,
-        }),
-        rpcCluster: ping?.ok ? { cluster: ping.cluster, slot: ping.slot } : { error: ping?.error ?? "RPC unknown" },
-        inspectLimit: Number(inspectLimit) || null,
-        automatedAlerts: intelAlerts.map((a) => ({
-          severity: a.severity,
-          title: a.title,
-          detail: a.detail,
-        })),
-      };
+  const groqEvidence = useMemo(() => {
+    const addr = focusAddress.trim();
+    if (!addr) return null;
+    return {
+      ...buildGroqEvidence({
+        address: focusAddress,
+        score,
+        inspect,
+        risk,
+      }),
+      rpcCluster: ping?.ok ? { cluster: ping.cluster, slot: ping.slot } : { error: ping?.error ?? "RPC unknown" },
+      inspectLimit: Number(inspectLimit) || null,
+      automatedAlerts: intelAlerts.map((a) => ({
+        severity: a.severity,
+        title: a.title,
+        detail: a.detail,
+      })),
+    };
+  }, [focusAddress, score, inspect, risk, ping, inspectLimit, intelAlerts]);
+
+  const runGroqAnalysis = useCallback(
+    async (source) => {
+      if (!groqEvidence?.address) {
+        if (source === "manual") throw new Error("No evidence to analyze");
+        return null;
+      }
       const r = await fetch("/api/groq-brief", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          data: evidence,
-          focus:
-            "Return only the required verdict JSON. Evidence is from ChainMind ingest—cite fields; do not invent shared funding or wallet ages when absent.",
+          data: groqEvidence,
+          source,
+          focus: GROQ_BRIEF_USER_FOCUS,
         }),
       });
       const j = await r.json().catch(() => ({}));
@@ -547,7 +577,64 @@ export function Dashboard() {
         const msg = typeof j?.error === "string" ? j.error : [r.status, r.statusText].filter(Boolean).join(" ").trim();
         throw new Error(msg || "Brief request failed");
       }
+      return j;
+    },
+    [groqEvidence],
+  );
+
+  const runGroqAuto = useCallback(async () => {
+    if (groqAutoInFlightRef.current || !groqEvidence?.address) return;
+    groqAutoInFlightRef.current = true;
+    setLoadingGroq(true);
+    setGroqErr(null);
+    try {
+      const j = await runGroqAnalysis("auto");
+      if (j) {
+        setGroqAnalysis(j.analysis ?? null);
+        setGroqWebhookMeta(j.webhook ?? null);
+      }
+    } catch (e) {
+      console.warn("[dashboard] groq auto", e);
+      setGroqErr(`Auto analyst failed: ${String(e.message)}`);
+    } finally {
+      setLoadingGroq(false);
+      groqAutoInFlightRef.current = false;
+    }
+  }, [runGroqAnalysis, groqEvidence?.address]);
+
+  const walletGraphVisual = useMemo(() => {
+    if (score?.walletGraph?.nodes?.length > 1) return score.walletGraph;
+    return inspectFallbackGraph(focusAddress.trim(), inspect?.ok ? inspect.signatures : null);
+  }, [score?.walletGraph, focusAddress, inspect?.ok, inspect?.signatures]);
+
+  useEffect(() => {
+    groqEpisodeArmedRef.current = true;
+  }, [focusAddress]);
+
+  useEffect(() => {
+    if (coActivityScore == null || coActivityScore <= GROQ_AUTO_CO_ACTIVITY) {
+      groqEpisodeArmedRef.current = true;
+      return;
+    }
+    if (!groqEvidence?.address || loading.inspect || loading.score) return;
+    if (!groqEpisodeArmedRef.current) return;
+
+    const id = setTimeout(() => {
+      groqEpisodeArmedRef.current = false;
+      void runGroqAuto();
+    }, 600);
+    return () => clearTimeout(id);
+  }, [coActivityScore, groqEvidence, loading.inspect, loading.score, runGroqAuto]);
+
+  const runBrief = async () => {
+    setGroqErr(null);
+    setGroqWebhookMeta(null);
+    setLoadingGroq(true);
+    try {
+      const j = await runGroqAnalysis("manual");
+      if (!j) throw new Error("No evidence to analyze");
       setGroqAnalysis(j.analysis ?? null);
+      setGroqWebhookMeta(j.webhook ?? null);
     } catch (e) {
       setGroqAnalysis(null);
       setGroqErr(String(e.message));
@@ -750,7 +837,7 @@ export function Dashboard() {
           <Panel
             kicker="Synthesis"
             title="ChainMind verdict"
-            subtitle="Groq returns structured JSON — verdict, confidence, pattern type, risk."
+            subtitle={`Auto-runs when co-activity > ${(GROQ_AUTO_CO_ACTIVITY * 100).toFixed(0)}% (${LIVE_POLL_MS / 1000}s sweep). Webhook if model confidence > 70% (configure URL).`}
             actions={
               <button
                 type="button"
@@ -762,7 +849,7 @@ export function Dashboard() {
               </button>
             }
           >
-            <BriefBody analysis={groqAnalysis} error={groqErr} loading={loadingGroq} />
+            <BriefBody analysis={groqAnalysis} error={groqErr} loading={loadingGroq} webhookMeta={groqWebhookMeta} />
           </Panel>
         </motion.div>
       </motion.main>
