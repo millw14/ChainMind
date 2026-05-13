@@ -15,6 +15,7 @@ import {
   RpcActivityTimeline,
   WalletGraphSvg,
 } from "@/components/dashboard/intel-widgets";
+import { buildGroqEvidence } from "@/lib/groq-evidence.js";
 import { staggerContainer, fadeUp, springGentle } from "@/components/motion/presets";
 
 const USDC_MAINNET = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
@@ -446,24 +447,28 @@ export function Dashboard() {
     setGroqErr(null);
     setLoadingGroq(true);
     try {
-      const snapshot = {
-        generatedAt: new Date().toISOString(),
-        network: ping,
-        focusAddress: focusAddress.trim(),
-        inspect: { limit: inspectLimit, result: inspect },
-        score: {
-          windowMinutes: scoreWindow,
-          lookbackHours: scoreHours,
-          result: score,
-        },
-        database: dbStats,
+      const evidence = {
+        ...buildGroqEvidence({
+          address: focusAddress,
+          score,
+          inspect,
+          risk,
+        }),
+        rpcCluster: ping?.ok ? { cluster: ping.cluster, slot: ping.slot } : { error: ping?.error ?? "RPC unknown" },
+        inspectLimit: Number(inspectLimit) || null,
+        automatedAlerts: intelAlerts.map((a) => ({
+          severity: a.severity,
+          title: a.title,
+          detail: a.detail,
+        })),
       };
       const r = await fetch("/api/groq-brief", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          data: snapshot,
-          focus: "Solana coordination signals from ChainMind panels—hypotheses for analyst follow-up.",
+          data: evidence,
+          focus:
+            "Evidence JSON is computed metrics from ChainMind (not a human summary). Cite numbers; note gaps like funding graph absent.",
         }),
       });
       const j = await r.json().catch(() => ({}));
