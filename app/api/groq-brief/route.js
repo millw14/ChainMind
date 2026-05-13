@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getGeoqApiKey, geoqFetch } from "@/lib/geoq.js";
+import { sendVerdictWebhook } from "@/lib/groq-webhook.js";
 
 export const maxDuration = 60;
 export const runtime = "nodejs";
@@ -81,6 +82,24 @@ function normalizeAnalysis(raw) {
   return { verdict, confidence, manipulation_type, risk_level, reasoning, key_evidence };
 }
 
+function webhookConfidenceThreshold() {
+  const raw = process.env.CHAINMIND_WEBHOOK_MIN_CONFIDENCE?.trim();
+  if (raw === undefined || raw === "") return 0.7;
+  const n = Number(raw);
+  return Number.isFinite(n) ? Math.min(1, Math.max(0, n)) : 0.7;
+}
+
+/**
+ * @param {unknown} data
+ */
+function pickEvidenceAddress(data) {
+  if (data && typeof data === "object" && "address" in data) {
+    const a = /** @type {{ address?: string }} */ (data).address;
+    if (typeof a === "string" && a.trim()) return a.trim();
+  }
+  return null;
+}
+
 export async function POST(request) {
   const briefSecret = process.env.GROQ_BRIEF_SECRET?.trim();
   if (briefSecret) {
@@ -97,7 +116,7 @@ export async function POST(request) {
     return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
   }
 
-  const { data, focus } = body ?? {};
+  const { data, focus, source } = body ?? {};
   if (data === undefined || data === null) {
     return NextResponse.json(
       { error: "Expected JSON body with a `data` field (object or string)" },
@@ -168,5 +187,35 @@ export async function POST(request) {
     );
   }
 
-  return NextResponse.json({ analysis, model });
+  const evidenceAddress = pickEvidenceAddress(data);
+
+  /** @type {{ attempted: boolean, delivered?: boolean, skipped?: boolean, error?: string }} */
+  const webhook = { attempted: false };
+
+  if (source === "auto" && analysis.confidence > webhookConfidenceThreshold()) {
+    webhook.attempted = true;
+    const payload = {
+      event: "chainmind.high_confidence_verdict",
+      timestamp: new Date().toISOString(),
+      source: "auto",
+      address: evidenceAddress,
+      coActivityScore:
+        data && typeof data === "object" && "coActivityScore" in data
+          ? /** @type {{ coActivityScore?: number }} */ (data).coActivityScore
+          : null,
+      analysis,
+      model,
+    };
+    const wh = await sendVerdictWebhook(payload);
+    if (wh.skipped) {
+      webhook.skipped = true;
+    } else if (wh.ok) {
+      webhook.delivered = true;
+    } else {
+      webhook.error = wh.error ?? `HTTP ${wh.status ?? "?"}`;
+      console.error("[groq-brief] webhook", webhook.error);
+    }
+  }
+
+  return NextResponse.json({ analysis, model, webhook });
 }

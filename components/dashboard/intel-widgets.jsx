@@ -5,6 +5,11 @@ import { motion, useReducedMotion } from "framer-motion";
 
 import { fadeUp, staggerContainer, springGentle } from "@/components/motion/presets";
 
+export { buildAlerts } from "@/lib/intel-alerts.js";
+export { deriveRiskProfile } from "@/lib/risk-profile.js";
+
+/** @typedef {{ id: string, severity: 'critical' | 'high' | 'medium' | 'low' | 'info', title: string, detail?: string }} IntelAlert */
+
 export function shortAddr(s) {
   if (!s || s.length < 12) return s || "—";
   return `${s.slice(0, 4)}…${s.slice(-4)}`;
@@ -18,98 +23,6 @@ export function formatRelativeTime(unixSec) {
   if (d < 3600) return `${Math.floor(d / 60)}m ago`;
   if (d < 86400) return `${Math.floor(d / 3600)}h ago`;
   return `${Math.floor(d / 86400)}d ago`;
-}
-
-/** @typedef {{ id: string, severity: 'critical' | 'high' | 'medium' | 'low' | 'info', title: string, detail?: string }} IntelAlert */
-
-/**
- * @param {{ inspect: any, score: any, ping: any }} param0
- * @returns {IntelAlert[]}
- */
-export function buildAlerts({ inspect, score, ping }) {
-  /** @type {IntelAlert[]} */
-  const out = [];
-  let k = 0;
-  const id = () => `a-${k++}`;
-
-  if (ping?.error) {
-    out.push({
-      id: id(),
-      severity: "high",
-      title: "RPC reachability",
-      detail: String(ping.error),
-    });
-  }
-
-  if (score?.database === "unconfigured") {
-    out.push({
-      id: id(),
-      severity: "info",
-      title: "Coordination channel offline",
-      detail: "Sync events to Turso to unlock graph, timeline, and coordination risk for this scope.",
-    });
-  } else if (score?.ok && !score.empty && score.score != null) {
-    const s = score.score;
-    const w = score.windowMinutes ?? 5;
-    if (s >= 18) {
-      out.push({
-        id: id(),
-        severity: "critical",
-        title: "Dense payer burst",
-        detail: `${s} distinct fee payers in a single ${w}-minute bucket — worth manual review.`,
-      });
-    } else if (s >= 11) {
-      out.push({
-        id: id(),
-        severity: "high",
-        title: "Elevated co-activity",
-        detail: `${s} distinct payers peaked in one ${w}-minute slice.`,
-      });
-    } else if (s >= 6) {
-      out.push({
-        id: id(),
-        severity: "medium",
-        title: "Coordination pressure",
-        detail: `${s} payers in the busiest ${w}-minute window over the lookback.`,
-      });
-    }
-  }
-
-  if (inspect && inspect.ok === false && inspect.error) {
-    out.push({
-      id: id(),
-      severity: "high",
-      title: "Activity feed error",
-      detail: String(inspect.error),
-    });
-  }
-
-  if (inspect?.ok && Array.isArray(inspect.signatures) && inspect.signatures.length >= 4) {
-    const sigs = inspect.signatures;
-    const failed = sigs.filter((row) => row.err).length;
-    const ratio = failed / sigs.length;
-    if (ratio >= 0.35) {
-      out.push({
-        id: id(),
-        severity: "medium",
-        title: "On-chain failures spiking",
-        detail: `${Math.round(ratio * 100)}% of sampled txs failed — could be congestion, routing, or program risk.`,
-      });
-    }
-  }
-
-  const hasActionable = out.some((a) => ["critical", "high", "medium"].includes(a.severity));
-  const hasContext = out.some((a) => a.severity === "info");
-  if (!hasActionable && !hasContext) {
-    out.push({
-      id: id(),
-      severity: "low",
-      title: "No automated anomalies",
-      detail: "Alerts re-check on the live polling interval — tune windows if you need stricter signals.",
-    });
-  }
-
-  return out;
 }
 
 const severityStyle = {
@@ -192,41 +105,6 @@ export function AlertStrip({ alerts }) {
       </motion.ul>
     </motion.div>
   );
-}
-
-/**
- * @param {{ score: any }} props
- */
-export function deriveRiskProfile(score) {
-  if (!score || score.error) {
-    return { tier: "unknown", score0_100: null, blurb: "Run coordination analysis when data is available." };
-  }
-  if (score.database === "unconfigured") {
-    return {
-      tier: "unknown",
-      score0_100: null,
-      blurb: "Ingest synced events to produce a coordination risk estimate for this token or wallet.",
-    };
-  }
-  if (score.empty) {
-    return {
-      tier: "low",
-      score0_100: 8,
-      blurb: score.message || "No parsed events in this lookback — risk from coordination is not measurable yet.",
-    };
-  }
-  const peak = Number(score.score ?? 0);
-  const score0_100 = Math.min(100, Math.round(100 * (1 - Math.exp(-peak / 10))));
-  let tier = "low";
-  if (score0_100 >= 78) tier = "critical";
-  else if (score0_100 >= 58) tier = "high";
-  else if (score0_100 >= 38) tier = "elevated";
-  return {
-    tier,
-    score0_100,
-    peakPayers: peak,
-    blurb: `Peak ${peak} distinct fee payers in one ${score.windowMinutes}-minute slice (coordination pressure index ${score0_100}/100).`,
-  };
 }
 
 const tierColor = {
