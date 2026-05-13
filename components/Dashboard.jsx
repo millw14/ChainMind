@@ -289,27 +289,98 @@ function ScoreBody({ data, loading, hideMainScore }) {
   );
 }
 
-function BriefBody({ text, error, loading }) {
+const verdictStyle = {
+  manipulation_detected: "bg-cm-threat/20 text-cm-bad ring-1 ring-cm-bad/35",
+  suspicious: "bg-cm-warn/15 text-cm-warn ring-1 ring-cm-warn/30",
+  clean: "bg-cm-ok/15 text-cm-ok ring-1 ring-cm-ok/25",
+};
+
+const riskStyle = {
+  critical: "text-cm-bad",
+  high: "text-orange-300",
+  medium: "text-cm-warn",
+  low: "text-cm-muted",
+};
+
+/**
+ * @param {{ analysis: Record<string, unknown> | null, error: string | null, loading: boolean }} props
+ */
+function BriefBody({ analysis, error, loading }) {
   if (loading) {
-    return <p className="py-8 text-center text-sm text-cm-faint">Generating brief…</p>;
+    return <p className="py-8 text-center text-sm text-cm-faint">Running ChainMind analyst…</p>;
   }
   if (error) {
     return <ErrorCallout message={error} />;
   }
-  if (!text) {
+  if (!analysis) {
     return (
       <p className="text-sm text-cm-muted">
-        Optional AI summary of what&apos;s loaded above—enable in your environment using{" "}
+        Structured verdict from ChainMind (JSON)—enable in your environment using{" "}
         <Link href="/docs" className="font-medium text-cm-text underline underline-offset-2 hover:text-cm-accent">
           Docs
         </Link>
-        . Load panels first, then Generate brief.
+        . Load panels first, then Generate.
       </p>
     );
   }
+
+  const verdict = typeof analysis.verdict === "string" ? analysis.verdict : "—";
+  const confidence =
+    typeof analysis.confidence === "number" && Number.isFinite(analysis.confidence)
+      ? analysis.confidence
+      : null;
+  const manipulationType =
+    typeof analysis.manipulation_type === "string" ? analysis.manipulation_type : "—";
+  const riskLevel = typeof analysis.risk_level === "string" ? analysis.risk_level : "—";
+  const reasoning = Array.isArray(analysis.reasoning) ? analysis.reasoning : [];
+  const keyEvidence = Array.isArray(analysis.key_evidence) ? analysis.key_evidence : [];
+
+  const vClass = verdictStyle[verdict] ?? "bg-cm-row text-cm-muted ring-1 ring-cm-border";
+  const rClass = riskStyle[riskLevel] ?? "text-cm-muted";
+
   return (
-    <div className="rounded-md border border-cm-border-subtle bg-cm-row/30 px-4 py-3">
-      <p className="whitespace-pre-wrap text-sm leading-relaxed text-cm-subtle">{text}</p>
+    <div className="space-y-4 rounded-md border border-cm-border-subtle bg-cm-row/30 px-4 py-3">
+      <div className="flex flex-wrap items-center gap-2">
+        <span
+          className={`rounded px-2 py-0.5 font-mono text-[10px] font-bold uppercase tracking-wide ${vClass}`}
+        >
+          {verdict.replace(/_/g, " ")}
+        </span>
+        {confidence != null ? (
+          <span className="font-mono text-xs tabular-nums text-cm-subtle">
+            Confidence {(confidence * 100).toFixed(0)}%
+          </span>
+        ) : null}
+        <span className="font-mono text-[10px] uppercase tracking-wider text-cm-faint">·</span>
+        <span className="font-mono text-[10px] uppercase tracking-wider text-cm-muted">
+          {manipulationType.replace(/_/g, " ")}
+        </span>
+        <span className={`font-mono text-[10px] font-bold uppercase tracking-wider ${rClass}`}>
+          {riskLevel} risk
+        </span>
+      </div>
+      {reasoning.length > 0 ? (
+        <div>
+          <p className="font-mono text-[10px] font-semibold uppercase tracking-wide text-cm-faint">Reasoning</p>
+          <ul className="mt-2 list-inside list-disc space-y-1.5 text-sm leading-relaxed text-cm-subtle">
+            {reasoning.map((line, i) => (
+              <li key={i}>{String(line)}</li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
+      {keyEvidence.length > 0 ? (
+        <div>
+          <p className="font-mono text-[10px] font-semibold uppercase tracking-wide text-cm-faint">
+            Key evidence
+          </p>
+          <ul className="mt-2 list-inside list-decimal space-y-1.5 text-sm leading-relaxed text-cm-accent-bright/90">
+            {keyEvidence.map((line, i) => (
+              <li key={i}>{String(line)}</li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -326,7 +397,7 @@ export function Dashboard() {
 
   const [dbStats, setDbStats] = useState(null);
 
-  const [groqBrief, setGroqBrief] = useState(null);
+  const [groqAnalysis, setGroqAnalysis] = useState(null);
   const [groqErr, setGroqErr] = useState(null);
 
   const [loading, setLoading] = useState({});
@@ -468,7 +539,7 @@ export function Dashboard() {
         body: JSON.stringify({
           data: evidence,
           focus:
-            "Evidence JSON is computed metrics from ChainMind (not a human summary). Cite numbers; note gaps like funding graph absent.",
+            "Return only the required verdict JSON. Evidence is from ChainMind ingest—cite fields; do not invent shared funding or wallet ages when absent.",
         }),
       });
       const j = await r.json().catch(() => ({}));
@@ -476,9 +547,9 @@ export function Dashboard() {
         const msg = typeof j?.error === "string" ? j.error : [r.status, r.statusText].filter(Boolean).join(" ").trim();
         throw new Error(msg || "Brief request failed");
       }
-      setGroqBrief(j.text ?? "");
+      setGroqAnalysis(j.analysis ?? null);
     } catch (e) {
-      setGroqBrief(null);
+      setGroqAnalysis(null);
       setGroqErr(String(e.message));
     } finally {
       setLoadingGroq(false);
@@ -678,8 +749,8 @@ export function Dashboard() {
 
           <Panel
             kicker="Synthesis"
-            title="Analyst narrative"
-            subtitle="Optional AI summary — configure per Docs."
+            title="ChainMind verdict"
+            subtitle="Groq returns structured JSON — verdict, confidence, pattern type, risk."
             actions={
               <button
                 type="button"
@@ -691,7 +762,7 @@ export function Dashboard() {
               </button>
             }
           >
-            <BriefBody text={groqBrief} error={groqErr} loading={loadingGroq} />
+            <BriefBody analysis={groqAnalysis} error={groqErr} loading={loadingGroq} />
           </Panel>
         </motion.div>
       </motion.main>
