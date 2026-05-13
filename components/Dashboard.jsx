@@ -17,13 +17,14 @@ import {
 } from "@/components/dashboard/intel-widgets";
 import { buildGroqEvidence } from "@/lib/groq-evidence.js";
 import { GROQ_BRIEF_USER_FOCUS } from "@/lib/groq-brief-defaults.js";
-import { GROQ_AUTO_CO_ACTIVITY } from "@/lib/groq-thresholds.js";
 import { staggerContainer, fadeUp, springGentle } from "@/components/motion/presets";
 
 const USDC_MAINNET = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
 
 const INSPECT_DEBOUNCE_MS = 350;
 const LIVE_POLL_MS = 42_000;
+/** Minimum time between successful Groq reasoning calls (limits API usage during live polling). */
+const GROQ_REASONING_MIN_INTERVAL_MS = 90_000;
 function solscanTx(signature) {
   return `https://solscan.io/tx/${signature}`;
 }
@@ -316,9 +317,12 @@ function BriefBody({ analysis, error, loading, webhookMeta }) {
   if (!analysis) {
     return (
       <p className="text-sm text-cm-muted">
-        Structured verdict runs automatically when co-activity is above {(GROQ_AUTO_CO_ACTIVITY * 100).toFixed(0)}% (with{" "}
+        Live reasoning runs when panels have data (requires{" "}
         <code className="text-cm-accent-bright">GROQ_API_KEY</code>
-        ). Manual override below. Configure webhooks in{" "}
+        ). Analysis refreshes as the{" "}
+        <span className="font-mono text-cm-muted">{(LIVE_POLL_MS / 1000).toFixed(0)}s</span> sweep updates
+        evidence—at most about every {Math.ceil(GROQ_REASONING_MIN_INTERVAL_MS / 60_000)} minutes per scope. Webhooks:
+        {" "}
         <Link href="/docs" className="font-medium text-cm-text underline underline-offset-2 hover:text-cm-accent">
           Docs
         </Link>
@@ -333,10 +337,10 @@ function BriefBody({ analysis, error, loading, webhookMeta }) {
       ? analysis.confidence
       : null;
   const manipulationType =
-    typeof analysis.manipulation_type === "string" ? analysis.manipulation_type : "—";
+    typeof analysis.manipulation_type === "string" ? analysis.manipulation_type : "none";
   const riskLevel = typeof analysis.risk_level === "string" ? analysis.risk_level : "—";
   const reasoning = Array.isArray(analysis.reasoning) ? analysis.reasoning : [];
-  const keyEvidence = Array.isArray(analysis.key_evidence) ? analysis.key_evidence : [];
+  const nextSteps = Array.isArray(analysis.next_steps) ? analysis.next_steps : [];
 
   const vClass = verdictStyle[verdict] ?? "bg-cm-row text-cm-muted ring-1 ring-cm-border";
   const rClass = riskStyle[riskLevel] ?? "text-cm-muted";
@@ -355,9 +359,14 @@ function BriefBody({ analysis, error, loading, webhookMeta }) {
           </span>
         ) : null}
         <span className="font-mono text-[10px] uppercase tracking-wider text-cm-faint">·</span>
-        <span className="font-mono text-[10px] uppercase tracking-wider text-cm-muted">
-          {manipulationType.replace(/_/g, " ")}
-        </span>
+        {manipulationType !== "none" ? (
+          <>
+            <span className="font-mono text-[10px] uppercase tracking-wider text-cm-muted">
+              {manipulationType.replace(/_/g, " ")}
+            </span>
+            <span className="font-mono text-[10px] uppercase tracking-wider text-cm-faint">·</span>
+          </>
+        ) : null}
         <span className={`font-mono text-[10px] font-bold uppercase tracking-wider ${rClass}`}>
           {riskLevel} risk
         </span>
@@ -372,16 +381,16 @@ function BriefBody({ analysis, error, loading, webhookMeta }) {
           </ul>
         </div>
       ) : null}
-      {keyEvidence.length > 0 ? (
+      {nextSteps.length > 0 ? (
         <div>
           <p className="font-mono text-[10px] font-semibold uppercase tracking-wide text-cm-faint">
-            Key evidence
+            Next steps
           </p>
-          <ul className="mt-2 list-inside list-decimal space-y-1.5 text-sm leading-relaxed text-cm-accent-bright/90">
-            {keyEvidence.map((line, i) => (
+          <ol className="mt-2 list-inside list-decimal space-y-1.5 text-sm leading-relaxed text-cm-accent-bright/90">
+            {nextSteps.map((line, i) => (
               <li key={i}>{String(line)}</li>
             ))}
-          </ul>
+          </ol>
         </div>
       ) : null}
       {webhookMeta?.attempted && webhookMeta?.delivered ? (
@@ -420,7 +429,7 @@ export function Dashboard() {
   const [groqErr, setGroqErr] = useState(null);
   const [groqWebhookMeta, setGroqWebhookMeta] = useState(null);
 
-  const groqEpisodeArmedRef = useRef(true);
+  const groqLastReasoningAtRef = useRef(0);
   const groqAutoInFlightRef = useRef(false);
 
   const [loading, setLoading] = useState({});
@@ -532,10 +541,6 @@ export function Dashboard() {
 
   const intelAlerts = useMemo(() => buildAlerts({ inspect, score, ping }), [inspect, score, ping]);
   const risk = useMemo(() => deriveRiskProfile(score), [score]);
-  const coActivityScore = useMemo(() => {
-    if (risk?.score0_100 == null || !Number.isFinite(Number(risk.score0_100))) return null;
-    return Number(risk.score0_100) / 100;
-  }, [risk]);
 
   const groqEvidence = useMemo(() => {
     const addr = focusAddress.trim();
@@ -559,10 +564,7 @@ export function Dashboard() {
 
   const runGroqAnalysis = useCallback(
     async (source) => {
-      if (!groqEvidence?.address) {
-        if (source === "manual") throw new Error("No evidence to analyze");
-        return null;
-      }
+      if (!groqEvidence?.address) return null;
       const r = await fetch("/api/groq-brief", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -584,18 +586,26 @@ export function Dashboard() {
 
   const runGroqAuto = useCallback(async () => {
     if (groqAutoInFlightRef.current || !groqEvidence?.address) return;
+    const now = Date.now();
+    if (
+      groqLastReasoningAtRef.current !== 0 &&
+      now - groqLastReasoningAtRef.current < GROQ_REASONING_MIN_INTERVAL_MS
+    ) {
+      return;
+    }
     groqAutoInFlightRef.current = true;
     setLoadingGroq(true);
     setGroqErr(null);
     try {
       const j = await runGroqAnalysis("auto");
       if (j) {
+        groqLastReasoningAtRef.current = Date.now();
         setGroqAnalysis(j.analysis ?? null);
         setGroqWebhookMeta(j.webhook ?? null);
       }
     } catch (e) {
       console.warn("[dashboard] groq auto", e);
-      setGroqErr(`Auto analyst failed: ${String(e.message)}`);
+      setGroqErr(`Reasoning failed: ${String(e.message)}`);
     } finally {
       setLoadingGroq(false);
       groqAutoInFlightRef.current = false;
@@ -608,40 +618,16 @@ export function Dashboard() {
   }, [score?.walletGraph, focusAddress, inspect?.ok, inspect?.signatures]);
 
   useEffect(() => {
-    groqEpisodeArmedRef.current = true;
+    groqLastReasoningAtRef.current = 0;
   }, [focusAddress]);
 
   useEffect(() => {
-    if (coActivityScore == null || coActivityScore <= GROQ_AUTO_CO_ACTIVITY) {
-      groqEpisodeArmedRef.current = true;
-      return;
-    }
     if (!groqEvidence?.address || loading.inspect || loading.score) return;
-    if (!groqEpisodeArmedRef.current) return;
-
     const id = setTimeout(() => {
-      groqEpisodeArmedRef.current = false;
       void runGroqAuto();
-    }, 600);
+    }, 900);
     return () => clearTimeout(id);
-  }, [coActivityScore, groqEvidence, loading.inspect, loading.score, runGroqAuto]);
-
-  const runBrief = async () => {
-    setGroqErr(null);
-    setGroqWebhookMeta(null);
-    setLoadingGroq(true);
-    try {
-      const j = await runGroqAnalysis("manual");
-      if (!j) throw new Error("No evidence to analyze");
-      setGroqAnalysis(j.analysis ?? null);
-      setGroqWebhookMeta(j.webhook ?? null);
-    } catch (e) {
-      setGroqAnalysis(null);
-      setGroqErr(String(e.message));
-    } finally {
-      setLoadingGroq(false);
-    }
-  };
+  }, [groqEvidence, loading.inspect, loading.score, runGroqAuto]);
 
   const syncing = Boolean(loading.ping || loading.db || loading.inspect || loading.score);
   const reduceMotion = useReducedMotion() ?? false;
@@ -836,17 +822,12 @@ export function Dashboard() {
 
           <Panel
             kicker="Synthesis"
-            title="ChainMind verdict"
-            subtitle={`Auto-runs when co-activity > ${(GROQ_AUTO_CO_ACTIVITY * 100).toFixed(0)}% (${LIVE_POLL_MS / 1000}s sweep). Webhook if model confidence > 70% (configure URL).`}
+            title="Live reasoning"
+            subtitle={`Groq re-analyzes the evidence snapshot as panels update (~${(LIVE_POLL_MS / 1000).toFixed(0)}s sweep), at most once per ${Math.round(GROQ_REASONING_MIN_INTERVAL_MS / 60_000)} min. High-confidence auto runs can POST webhooks.`}
             actions={
-              <button
-                type="button"
-                onClick={runBrief}
-                disabled={loadingGroq}
-                className="rounded-md border border-cm-border bg-cm-elevated px-3 py-1.5 font-mono text-[10px] font-bold uppercase tracking-wide text-cm-text hover:bg-cm-row-hover disabled:opacity-50"
-              >
-                {loadingGroq ? "Working…" : "Generate"}
-              </button>
+              <span className="rounded-md border border-cm-border-subtle bg-cm-row/50 px-2 py-1.5 font-mono text-[10px] uppercase tracking-wide text-cm-muted">
+                {loadingGroq ? "Reasoning…" : "Idle"}
+              </span>
             }
           >
             <BriefBody analysis={groqAnalysis} error={groqErr} loading={loadingGroq} webhookMeta={groqWebhookMeta} />

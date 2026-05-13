@@ -63,8 +63,8 @@ export default function DocsPage() {
           </li>
           <li>
             <strong className="font-medium text-cm-text">GROQ_API_KEY</strong> — optional; enables{" "}
-            <code className="font-mono text-xs">POST /api/groq-brief</code> and the &quot;Analyst brief&quot; panel on{" "}
-            <code className="font-mono text-xs">/dashboard</code>.
+            <code className="font-mono text-xs">POST /api/groq-brief</code> and the live reasoning panel on{" "}
+            <code className="font-mono text-xs">/dashboard</code> (structured verdict + next steps, refreshed with the sweep).
           </li>
         </ul>
 
