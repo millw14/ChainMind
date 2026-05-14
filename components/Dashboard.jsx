@@ -1073,13 +1073,25 @@ export function Dashboard() {
     const addr = focusAddress.trim();
     if (!addr) return null;
     const scopeHumanHint = addr === USDC_MAINNET ? "USDC mint (mainnet)" : null;
+    const evidenceCore = buildGroqEvidence({
+      address: focusAddress,
+      score,
+      inspect,
+      risk,
+    });
+    // Prefer live inspect list if non-empty; fall back to ranked pickSuspiciousSignatures sample.
+    // Cap matches ARRAY_CAPS.signatures in lib/groq-evidence.js — update both together.
+    const inspectSigs =
+      Array.isArray(inspect?.signatures) && inspect.signatures.length > 0
+        ? inspect.signatures
+        : Array.isArray(inspect?.data) && inspect.data.length > 0
+          ? inspect.data
+          : null;
+
+    const signatures = (inspectSigs ?? evidenceCore.signatures ?? []).slice(0, 24);
     return {
-      ...buildGroqEvidence({
-        address: focusAddress,
-        score,
-        inspect,
-        risk,
-      }),
+      ...evidenceCore,
+      signatures,
       scopeHumanHint: scopeHumanHint ?? undefined,
       rpcCluster: ping?.ok ? { cluster: ping.cluster, slot: ping.slot } : { error: ping?.error ?? "RPC unknown" },
       inspectLimit: Number(inspectLimit) || null,
