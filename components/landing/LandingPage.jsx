@@ -127,7 +127,7 @@ export function LandingPage() {
             <motion.div className="min-w-0" variants={staggerParent(reduceMotion, { stagger: 0.08, delayChildren: 0.02 })}>
               <motion.div variants={fv} className="inline-flex items-center gap-2 rounded border border-cm-border bg-cm-surface/80 px-2.5 py-1 font-mono text-[10px] font-medium uppercase tracking-[0.2em] text-cm-terminal">
                 <span className="cm-pulse-live inline-block h-1.5 w-1.5 rounded-full bg-cm-ok" />
-                Solana intelligence console
+                Solana threat console
               </motion.div>
               <motion.h1
                 variants={fv}
