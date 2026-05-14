@@ -3,13 +3,18 @@ import { PublicKey } from "@solana/web3.js";
 import { runAiDetectors } from "@/lib/ai-detectors.js";
 import { summarizeFundingGraphFromEdges } from "@/lib/funding-graph-summary.js";
 import { computeCoactivityScoreFromRows } from "@/lib/score-math.js";
+import { getSolanaConnection } from "@/lib/solana.js";
 import {
   getTursoClient,
   tursoFetchInboundFundingEdges,
   tursoFetchPayerPeerEdges,
   tursoFetchScoreRows,
   tursoFetchTransfersWindow,
+  tursoFetchWalletFirstSeenMany,
+  tursoUpsertWalletFirstSeen,
 } from "@/lib/turso.js";
+import { fetchOldestSignatureForAddress } from "@/lib/wallet-age-rpc.js";
+import { buildWalletLedgerAge } from "@/lib/wallet-ledger-age.js";
 
 export const maxDuration = 45;
 export const runtime = "nodejs";
@@ -103,7 +108,71 @@ export async function GET(request) {
       }
     }
 
-    return NextResponse.json({ ...result, fundingGraph, database: "turso", ...(aiDetection ? { aiDetection } : {}) });
+    /** @type {ReturnType<typeof buildWalletLedgerAge> | null} */
+    let walletLedgerAge = null;
+    try {
+      if (result.ok && !result.empty && Array.isArray(result.topPayerLinks) && result.topPayerLinks.length > 0) {
+        const payerAddrs = result.topPayerLinks.slice(0, 12).map((x) => x.payer).filter(Boolean);
+        let dbRows = await tursoFetchWalletFirstSeenMany(client, payerAddrs);
+
+        const lazy = process.env.CHAINMIND_FETCH_WALLET_AGE_ON_SCORE === "1";
+        const maxLazy = Math.min(12, Math.max(0, Number(process.env.CHAINMIND_WALLET_AGE_MAX_FETCH ?? 3) || 3));
+        const maxPages = Math.min(30, Math.max(1, Number(process.env.CHAINMIND_WALLET_AGE_MAX_PAGES ?? 5) || 5));
+
+        if (lazy && maxLazy > 0 && process.env.SOLANA_RPC_URL?.trim()) {
+          const have = new Set(dbRows.map((r) => r.address));
+          const missing = payerAddrs.filter((a) => !have.has(a)).slice(0, maxLazy);
+          if (missing.length) {
+            let connection;
+            try {
+              connection = getSolanaConnection();
+            } catch {
+              connection = null;
+            }
+            if (connection) {
+              for (const addr of missing) {
+                try {
+                  const meta = await fetchOldestSignatureForAddress(connection, addr, { maxPages });
+                  if (!meta.signature) continue;
+                  await tursoUpsertWalletFirstSeen(client, {
+                    address: addr,
+                    first_signature: meta.signature,
+                    first_slot: meta.slot,
+                    first_block_time: meta.blockTime,
+                    pages_walked: meta.pagesWalked,
+                    capped: meta.capped ? 1 : 0,
+                  });
+                  dbRows = dbRows.filter((r) => r.address !== addr);
+                  dbRows.push({
+                    address: addr,
+                    first_signature: meta.signature,
+                    first_slot: meta.slot,
+                    first_block_time: meta.blockTime,
+                    pages_walked: meta.pagesWalked,
+                    capped: meta.capped ? 1 : 0,
+                    updated_at: new Date().toISOString(),
+                  });
+                } catch {
+                  /* RPC error */
+                }
+              }
+            }
+          }
+        }
+
+        walletLedgerAge = buildWalletLedgerAge(payerAddrs, dbRows);
+      }
+    } catch {
+      walletLedgerAge = null;
+    }
+
+    return NextResponse.json({
+      ...result,
+      fundingGraph,
+      database: "turso",
+      ...(aiDetection ? { aiDetection } : {}),
+      ...(walletLedgerAge ? { walletLedgerAge } : {}),
+    });
   } catch (e) {
     return NextResponse.json(
       { ok: false, error: String(e?.message ?? e) },

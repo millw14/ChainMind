@@ -119,3 +119,17 @@ CREATE TABLE IF NOT EXISTS surface_hits (
 
 CREATE INDEX IF NOT EXISTS idx_surface_hits_scope ON surface_hits (scope_address);
 CREATE INDEX IF NOT EXISTS idx_surface_hits_created ON surface_hits (created_at);
+
+-- RPC-backfilled oldest signature per address (for real wallet age vs export-only first seen).
+CREATE TABLE IF NOT EXISTS wallet_first_seen (
+  address TEXT PRIMARY KEY,
+  first_signature TEXT,
+  first_slot INTEGER,
+  first_block_time INTEGER,
+  pages_walked INTEGER,
+  capped INTEGER NOT NULL DEFAULT 0,
+  updated_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_wallet_first_seen_block_time
+  ON wallet_first_seen (first_block_time DESC);
