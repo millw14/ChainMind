@@ -22,6 +22,7 @@ import { buildGroqEvidence } from "@/lib/groq-evidence.js";
 import { GROQ_BRIEF_USER_FOCUS } from "@/lib/groq-brief-defaults.js";
 import { enrichAnalysisWithVerdictStructure, shortenIdCompact } from "@/lib/groq-verdict-card.js";
 import { buildGroqUserEvidence } from "@/lib/groq-user-evidence.js";
+import { MultiScopeComparePanel } from "@/components/dashboard/multi-scope-compare";
 import { staggerContainer, fadeUp, springGentle } from "@/components/motion/presets";
 
 const USDC_MAINNET = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
@@ -708,6 +709,9 @@ export function Dashboard() {
   const [globalIntelFeedMeta, setGlobalIntelFeedMeta] = useState(null);
   const [loadingGlobalIntelFeed, setLoadingGlobalIntelFeed] = useState(false);
 
+  const [watchlistScopes, setWatchlistScopes] = useState(/** @type {Array<{ address: string, note?: string | null }> | null} */ (null));
+  const [compareScopes, setCompareScopes] = useState(/** @type {string[]} */ ([]));
+
   const [groqAnalysis, setGroqAnalysis] = useState(null);
   const [groqErr, setGroqErr] = useState(null);
   const [groqWebhookMeta, setGroqWebhookMeta] = useState(null);
@@ -835,6 +839,39 @@ export function Dashboard() {
     const t = Date.now();
     setNextDataSweepAt(t + LIVE_POLL_MS);
   }, [runPing, runDb, runInspect, runScore]);
+
+  const toggleCompareScope = useCallback((addr) => {
+    const a = String(addr ?? "").trim();
+    const p = focusAddress.trim();
+    if (!a || a === p) return;
+    setCompareScopes((prev) => {
+      if (prev.includes(a)) return prev.filter((x) => x !== a);
+      if (prev.length >= 5) return [...prev.slice(1), a];
+      return [...prev, a];
+    });
+  }, [focusAddress]);
+
+  const removeCompareScope = useCallback((addr) => {
+    setCompareScopes((prev) => prev.filter((x) => x !== addr));
+  }, []);
+
+  const clearCompareScopes = useCallback(() => setCompareScopes([]), []);
+
+  useEffect(() => {
+    void fetch("/api/watchlist")
+      .then((r) => r.json())
+      .then((j) => {
+        if (j?.ok && Array.isArray(j.scopes)) setWatchlistScopes(j.scopes);
+        else setWatchlistScopes([]);
+      })
+      .catch(() => setWatchlistScopes([]));
+  }, []);
+
+  useEffect(() => {
+    const p = focusAddress.trim();
+    if (!p) return;
+    setCompareScopes((prev) => prev.filter((x) => x !== p));
+  }, [focusAddress]);
 
   useEffect(() => {
     void runPing();
@@ -1078,6 +1115,7 @@ export function Dashboard() {
             loading={loadingSurfaceFeed}
             hint={surfaceFeedHint}
             onPickScope={(addr) => setFocusAddress(addr)}
+            onPinCompare={toggleCompareScope}
           />
           <GlobalIntelFeedStrip
             entries={globalIntelFeed ?? []}
@@ -1085,6 +1123,21 @@ export function Dashboard() {
             hint={globalIntelFeedHint}
             meta={globalIntelFeedMeta}
             onPickScope={(addr) => setFocusAddress(addr)}
+            onPinCompare={toggleCompareScope}
+          />
+        </motion.div>
+
+        <motion.div variants={panelV}>
+          <MultiScopeComparePanel
+            primary={focusAddress}
+            compareScopes={compareScopes}
+            scoreWindow={scoreWindow}
+            scoreHours={scoreHours}
+            watchlist={watchlistScopes}
+            onSetPrimary={(addr) => setFocusAddress(addr)}
+            onToggleCompare={toggleCompareScope}
+            onRemoveCompare={removeCompareScope}
+            onClearCompare={clearCompareScopes}
           />
         </motion.div>
 
