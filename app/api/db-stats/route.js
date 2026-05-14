@@ -14,7 +14,7 @@ export async function GET() {
       eventsTotal: null,
       edgesTotal: null,
       byScope: [],
-      graphFundingEdgeTypes: ["token_transfer", "fee_payer_cosigner", "mint_to"],
+      graphFundingEdgeTypes: ["token_transfer", "fee_payer_cosigner", "mint_to", "native_transfer"],
       hint: "Add TURSO_DATABASE_URL + TURSO_AUTH_TOKEN in Vercel. Run npm run turso:schema then npm run turso:sync locally.",
     });
   }
