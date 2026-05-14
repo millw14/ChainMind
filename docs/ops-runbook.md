@@ -49,6 +49,16 @@ After a successful **`mirror:up`**, open **Synced datastore**:
 
 That’s the whole loop: **watchlist + pipeline + turso:sync**, preferably **on a timer** so you’re not doing it by hand.
 
+## Helius / DexScreener token watchlist scanner (local or VPS)
+
+For **curated mints** (early-stage list you maintain), poll roughly every **60s**, compare **m5 volume** and **price** vs a rolling baseline, then **sync + parse** the mint and **top token-holder wallets** into the same SQLite pipeline as `npm run pipeline`.
+
+- **Command**: `npm run helius-scan` (loop) or `npm run helius-scan:once` (single round).
+- **Requires**: `.env.local` with `SOLANA_RPC_URL`, `CHAINMIND_HELIUS_SCAN_MINTS_JSON`, and ideally **`HELIUS_API_KEY`** (or a Helius URL in `SOLANA_RPC_URL`) for DAS price. **DexScreener** is used for volume / short price change (Helius has no global “top movers” HTTP feed).
+- **Not on Vercel**: uses **`better-sqlite3`** and long loops — run on your machine or a small VPS. After a burst, run **`npm run turso:sync`** if the hosted dashboard should see new rows.
+
+Queue log (JSON lines): default **`data/helius-investigation-queue.jsonl`** when a round fires.
+
 ## Autonomous surface scan (hosted)
 
 1. Apply Turso migration **`schema/migrations/005_surface_hits.sql`** (or re-run full `schema/turso.sql`). In the **Turso web SQL** editor, run **one statement at a time** (paste only the `CREATE TABLE …` block, execute; then each `CREATE INDEX …` separately). Pasting the whole file often triggers a generic “syntax error”.
