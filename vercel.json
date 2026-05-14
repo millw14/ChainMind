@@ -6,7 +6,7 @@
     },
     {
       "path": "/api/cron/surface-scan",
-      "schedule": "*/20 * * * *"
+      "schedule": "15 2 * * *"
     }
   ]
 }
