@@ -13,6 +13,7 @@ import {
   LiveActivityFeed,
   RiskHero,
   RpcActivityTimeline,
+  SurfaceFeedStrip,
   WalletGraphSvg,
 } from "@/components/dashboard/intel-widgets";
 import { buildEntityClassificationContext, classifyNamedEntityLine } from "@/lib/entity-classify.js";
@@ -623,6 +624,10 @@ export function Dashboard() {
 
   const [dbStats, setDbStats] = useState(null);
 
+  const [surfaceFeed, setSurfaceFeed] = useState(null);
+  const [surfaceFeedHint, setSurfaceFeedHint] = useState(null);
+  const [loadingSurfaceFeed, setLoadingSurfaceFeed] = useState(false);
+
   const [groqAnalysis, setGroqAnalysis] = useState(null);
   const [groqErr, setGroqErr] = useState(null);
   const [groqWebhookMeta, setGroqWebhookMeta] = useState(null);
@@ -681,6 +686,26 @@ export function Dashboard() {
     }
   }, [fetchJson]);
 
+  const runSurfaceFeed = useCallback(async () => {
+    setLoadingSurfaceFeed(true);
+    try {
+      const r = await fetch(`/api/surface-feed?limit=${encodeURIComponent(28)}`);
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) {
+        setSurfaceFeed([]);
+        setSurfaceFeedHint(typeof j?.error === "string" ? j.error : `HTTP ${r.status}`);
+        return;
+      }
+      setSurfaceFeedHint(typeof j?.hint === "string" ? j.hint : null);
+      setSurfaceFeed(Array.isArray(j.hits) ? j.hits : []);
+    } catch (e) {
+      setSurfaceFeed([]);
+      setSurfaceFeedHint(String(e.message));
+    } finally {
+      setLoadingSurfaceFeed(false);
+    }
+  }, []);
+
   const runScore = useCallback(async () => {
     const s = focusAddress.trim();
     if (!s) return;
@@ -704,7 +729,15 @@ export function Dashboard() {
   useEffect(() => {
     void runPing();
     void runDb();
-  }, [runPing, runDb]);
+    void runSurfaceFeed();
+  }, [runPing, runDb, runSurfaceFeed]);
+
+  useEffect(() => {
+    const id = setInterval(() => {
+      void runSurfaceFeed();
+    }, LIVE_POLL_MS);
+    return () => clearInterval(id);
+  }, [runSurfaceFeed]);
 
   useEffect(() => {
     const a = focusAddress.trim();
@@ -922,6 +955,15 @@ export function Dashboard() {
       >
         <motion.div variants={panelV}>
           <AlertStrip alerts={intelAlerts} />
+        </motion.div>
+
+        <motion.div variants={panelV}>
+          <SurfaceFeedStrip
+            hits={surfaceFeed ?? []}
+            loading={loadingSurfaceFeed}
+            hint={surfaceFeedHint}
+            onPickScope={(addr) => setFocusAddress(addr)}
+          />
         </motion.div>
 
         <motion.div variants={panelV}>

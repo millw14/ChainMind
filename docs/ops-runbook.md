@@ -48,3 +48,12 @@ After a successful **`mirror:up`**, open **Synced datastore**:
 - **Empty graph**: confirm `config/watchlist.json` includes the same **scope** you’re scoring on the dashboard.
 
 That’s the whole loop: **watchlist + pipeline + turso:sync**, preferably **on a timer** so you’re not doing it by hand.
+
+## Autonomous surface scan (hosted)
+
+1. Apply Turso migration **`schema/migrations/005_surface_hits.sql`** (or re-run full `schema/turso.sql`).
+2. In Vercel env: **`CRON_SECRET`**, **`CHAINMIND_WATCHLIST_JSON`** (compact JSON string of `{ "scopes": [ { "address": "…" } ] }`), **`NEXT_PUBLIC_APP_URL`** (stable site URL for self-calls).
+3. **`vercel.json`** schedules **`GET /api/cron/surface-scan`** (default every 20 minutes) with `Authorization: Bearer CRON_SECRET`.
+4. Dashboard **Autonomous surfaces** reads **`GET /api/surface-feed`**. Click a row to set that scope as the watch target.
+
+Rules today use **ingested** Turso data (co-activity, funding graph slice, event-rate proxy). **DEX volume, oracle price, and news correlation** are documented in API responses as **`rulesNotYetWired`** — add external feeds when you wire them.
