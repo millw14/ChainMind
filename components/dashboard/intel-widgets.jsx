@@ -487,6 +487,197 @@ export function SurfaceFeedStrip({ hits, loading, hint, onPickScope }) {
   );
 }
 
+const globalKindLabel = {
+  cross_mint_pair: "Cross-mint",
+  persistent_cluster: "Cluster",
+  surface_hit: "Surface",
+};
+
+/**
+ * Ranked intel from `/api/intel/global-feed` (pairs, clusters, surface hits merged).
+ * @param {{
+ *   entries: Array<{ kind: string, score?: number, item: Record<string, unknown> }>,
+ *   loading?: boolean,
+ *   hint?: string | null,
+ *   meta?: { generatedAt?: string, lookbackHoursUsed?: number | null } | null,
+ *   onPickScope?: (address: string) => void,
+ * }} props
+ */
+export function GlobalIntelFeedStrip({ entries, loading, hint, meta, onPickScope }) {
+  const reduce = useReducedMotion() ?? false;
+  const list = entries ?? [];
+
+  return (
+    <motion.div
+      id="global-intel-feed"
+      className="rounded-md border border-cm-border bg-cm-card/80 px-4 py-4 sm:px-5"
+      initial={{ opacity: 0, y: 10 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={reduce ? { duration: 0 } : springGentle}
+    >
+      <div className="mb-3 flex flex-wrap items-end justify-between gap-2">
+        <div>
+          <p className="font-mono text-[10px] font-semibold uppercase tracking-[0.22em] text-cm-faint">Global intel feed</p>
+          <p className="mt-1 text-xs text-cm-muted">
+            Cross-mint overlaps, tracked clusters, and surface hits — ranked; click a scope to load it
+          </p>
+        </div>
+        <div className="flex flex-col items-end gap-0.5">
+          {loading ? (
+            <span className="font-mono text-[10px] text-cm-faint">Loading…</span>
+          ) : (
+            <span className="font-mono text-[10px] text-cm-terminal">{list.length} rows</span>
+          )}
+          {meta?.generatedAt ? (
+            <span className="font-mono text-[9px] text-cm-faint" title={meta.generatedAt}>
+              {new Date(meta.generatedAt).toLocaleTimeString()}
+            </span>
+          ) : null}
+        </div>
+      </div>
+      {meta?.lookbackHoursUsed != null ? (
+        <p className="mb-2 font-mono text-[9px] text-cm-faint">
+          Pair window filter: <span className="text-cm-muted">{meta.lookbackHoursUsed}h</span>
+        </p>
+      ) : null}
+      {hint ? <p className="mb-3 text-[11px] text-cm-warn/90">{hint}</p> : null}
+      {!loading && list.length === 0 ? (
+        <p className="text-sm text-cm-faint">
+          No intel rows yet. Run cross-mint recompute / surface cron (see <code className="text-cm-muted">vercel.json</code>) and
+          ensure Turso <code className="text-cm-muted">intel_*</code> migrations are applied.
+        </p>
+      ) : null}
+      {list.length > 0 ? (
+        <ul className="max-h-64 space-y-2 overflow-y-auto pr-1">
+          {list.map((row, idx) => {
+            const kind = String(row.kind ?? "");
+            const item = row.item && typeof row.item === "object" ? row.item : {};
+            const label = globalKindLabel[kind] ?? kind;
+
+            if (kind === "cross_mint_pair") {
+              const a = String(item.scope_a ?? "");
+              const b = String(item.scope_b ?? "");
+              const shared = Number(item.sharedWalletCount) || 0;
+              const key = `pair-${a}-${b}-${idx}`;
+              return (
+                <li
+                  key={key}
+                  className="rounded-md border border-cm-border-subtle border-l-4 border-l-cm-accent bg-cm-row/30 px-3 py-2"
+                >
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <span className="font-mono text-[9px] font-bold uppercase tracking-wide text-cm-accent-bright/90">
+                      {label}
+                    </span>
+                    <span className="font-mono text-[9px] text-cm-faint">{shared} shared wallets</span>
+                  </div>
+                  <div className="mt-1.5 flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      onClick={() => onPickScope?.(a)}
+                      className="font-mono text-[11px] font-medium text-cm-accent-bright underline-offset-2 hover:underline"
+                      title={a}
+                    >
+                      {shortAddr(a)}
+                    </button>
+                    <span className="text-cm-faint">↔</span>
+                    <button
+                      type="button"
+                      onClick={() => onPickScope?.(b)}
+                      className="font-mono text-[11px] font-medium text-cm-accent-bright underline-offset-2 hover:underline"
+                      title={b}
+                    >
+                      {shortAddr(b)}
+                    </button>
+                  </div>
+                  {item.avgPairScore != null ? (
+                    <p className="mt-1 font-mono text-[9px] text-cm-faint">Avg pair score {String(item.avgPairScore)}</p>
+                  ) : null}
+                </li>
+              );
+            }
+
+            if (kind === "persistent_cluster") {
+              const fp = String(item.clusterFingerprint ?? "");
+              const scopes = Array.isArray(item.scopes) ? item.scopes.filter((s) => typeof s === "string") : [];
+              const mc = Number(item.memberCount) || 0;
+              const mintC = Number(item.mintCount) || 0;
+              const sev = surfaceSeverityBar.low;
+              return (
+                <li
+                  key={`cl-${fp || idx}`}
+                  className={`rounded-md border border-cm-border-subtle border-l-4 bg-cm-row/30 px-3 py-2 ${sev}`}
+                >
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <span className="font-mono text-[9px] font-bold uppercase tracking-wide text-cm-warn">{label}</span>
+                    <span className="font-mono text-[9px] text-cm-faint">
+                      {mc} members · {mintC} mints
+                    </span>
+                  </div>
+                  <p className="mt-1 font-mono text-[10px] text-cm-subtle" title={fp}>
+                    {fp.length > 20 ? `${fp.slice(0, 12)}…${fp.slice(-6)}` : fp || "—"}
+                  </p>
+                  {scopes.length > 0 ? (
+                    <div className="mt-1.5 flex flex-wrap gap-1.5">
+                      {scopes.slice(0, 6).map((addr) => (
+                        <button
+                          key={addr}
+                          type="button"
+                          onClick={() => onPickScope?.(addr)}
+                          className="rounded border border-cm-border-subtle bg-cm-surface/50 px-1.5 py-0.5 font-mono text-[10px] text-cm-accent-bright hover:bg-cm-accent/10"
+                          title={addr}
+                        >
+                          {shortAddr(addr)}
+                        </button>
+                      ))}
+                    </div>
+                  ) : null}
+                </li>
+              );
+            }
+
+            if (kind === "surface_hit") {
+              const scope = String(item.scope_address ?? "");
+              const id = item.id != null ? String(item.id) : `sh-${idx}`;
+              const sev = surfaceSeverityBar[String(item.severity)] ?? surfaceSeverityBar.low;
+              const ruleId = String(item.rule_id ?? "").replace(/_/g, " ");
+              return (
+                <li
+                  key={id}
+                  className={`rounded-md border border-cm-border-subtle border-l-4 bg-cm-row/30 px-3 py-2 ${sev}`}
+                >
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <button
+                      type="button"
+                      onClick={() => onPickScope?.(scope)}
+                      className="font-mono text-[11px] font-medium text-cm-accent-bright underline-offset-2 hover:underline"
+                      title={scope}
+                    >
+                      {shortAddr(scope)}
+                    </button>
+                    <span className="font-mono text-[9px] uppercase tracking-wide text-cm-faint">{label}</span>
+                  </div>
+                  <p className="mt-0.5 font-mono text-[9px] text-cm-muted">{ruleId}</p>
+                  <p className="mt-1 text-[11px] leading-snug text-cm-subtle">{String(item.detail ?? "")}</p>
+                  <p className="mt-1 font-mono text-[9px] text-cm-faint">{String(item.created_at ?? "")}</p>
+                </li>
+              );
+            }
+
+            return (
+              <li key={`other-${idx}`} className="rounded-md border border-cm-border-subtle bg-cm-row/20 px-3 py-2">
+                <span className="font-mono text-[10px] text-cm-muted">{label}</span>
+                <pre className="mt-1 max-h-24 overflow-auto font-mono text-[9px] text-cm-faint">
+                  {JSON.stringify(item, null, 2)}
+                </pre>
+              </li>
+            );
+          })}
+        </ul>
+      ) : null}
+    </motion.div>
+  );
+}
+
 export function IntelDocsHint() {
   return (
     <p className="text-[11px] leading-relaxed text-cm-faint">
