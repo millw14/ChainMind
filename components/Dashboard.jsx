@@ -23,6 +23,7 @@ import { GROQ_BRIEF_USER_FOCUS } from "@/lib/groq-brief-defaults.js";
 import { enrichAnalysisWithVerdictStructure, shortenIdCompact } from "@/lib/groq-verdict-card.js";
 import { buildGroqUserEvidence } from "@/lib/groq-user-evidence.js";
 import { MultiScopeComparePanel } from "@/components/dashboard/multi-scope-compare";
+import WalletTable from "@/components/dashboard/WalletTable";
 import { staggerContainer, fadeUp, springGentle } from "@/components/motion/presets";
 
 const USDC_MAINNET = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
@@ -857,6 +858,7 @@ export function Dashboard() {
 
   const groqLastReasoningAtRef = useRef(0);
   const groqAutoInFlightRef = useRef(false);
+  const walletTableRef = useRef(/** @type {{ getRawEvidence?: () => unknown } | null} */ (null));
 
   const [loading, setLoading] = useState({});
   const [loadingGroq, setLoadingGroq] = useState(false);
@@ -1108,14 +1110,30 @@ export function Dashboard() {
     [groqEvidence],
   );
 
+  /** Matches GET /api/evidence lookback cap (168h). */
+  const evidenceLookbackHours = useMemo(
+    () => Math.min(168, Math.max(1, parseInt(String(scoreHours || "24").trim(), 10) || 24)),
+    [scoreHours],
+  );
+
   const runGroqAnalysis = useCallback(
     async (source) => {
       if (!groqEvidence?.address) return null;
+      const walletEvidence =
+        typeof walletTableRef.current?.getRawEvidence === "function"
+          ? walletTableRef.current.getRawEvidence()
+          : null;
+      const dataPayload =
+        walletEvidence != null &&
+        typeof walletEvidence === "object" &&
+        !("error" in walletEvidence && typeof walletEvidence.error === "string")
+          ? { ...groqEvidence, walletEvidence }
+          : groqEvidence;
       const r = await fetch("/api/groq-brief", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          data: groqEvidence,
+          data: dataPayload,
           source,
           focus: GROQ_BRIEF_USER_FOCUS,
         }),
@@ -1394,6 +1412,14 @@ export function Dashboard() {
               <ScoreBody data={score} loading={loading.score} hideMainScore />
             </Panel>
           </div>
+        </motion.div>
+
+        <motion.div variants={panelV}>
+          <WalletTable
+            ref={walletTableRef}
+            scope={focusAddress.trim()}
+            lookback={evidenceLookbackHours}
+          />
         </motion.div>
 
         <motion.div variants={panelV} className="grid gap-6 lg:grid-cols-2">
