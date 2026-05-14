@@ -14,6 +14,7 @@ import {
   RiskHero,
   RpcActivityTimeline,
   SurfaceFeedStrip,
+  GlobalIntelFeedStrip,
   WalletGraphSvg,
 } from "@/components/dashboard/intel-widgets";
 import { buildEntityClassificationContext, classifyNamedEntityLine } from "@/lib/entity-classify.js";
@@ -702,6 +703,11 @@ export function Dashboard() {
   const [surfaceFeedHint, setSurfaceFeedHint] = useState(null);
   const [loadingSurfaceFeed, setLoadingSurfaceFeed] = useState(false);
 
+  const [globalIntelFeed, setGlobalIntelFeed] = useState(null);
+  const [globalIntelFeedHint, setGlobalIntelFeedHint] = useState(null);
+  const [globalIntelFeedMeta, setGlobalIntelFeedMeta] = useState(null);
+  const [loadingGlobalIntelFeed, setLoadingGlobalIntelFeed] = useState(false);
+
   const [groqAnalysis, setGroqAnalysis] = useState(null);
   const [groqErr, setGroqErr] = useState(null);
   const [groqWebhookMeta, setGroqWebhookMeta] = useState(null);
@@ -780,6 +786,36 @@ export function Dashboard() {
     }
   }, []);
 
+  const runGlobalIntelFeed = useCallback(async () => {
+    const hoursRaw = String(scoreHours || "168").trim();
+    const lookback = /^\d+$/.test(hoursRaw) ? hoursRaw : "168";
+    setLoadingGlobalIntelFeed(true);
+    try {
+      const r = await fetch(
+        `/api/intel/global-feed?limit=${encodeURIComponent(32)}&lookbackHours=${encodeURIComponent(lookback)}`,
+      );
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) {
+        setGlobalIntelFeed([]);
+        setGlobalIntelFeedMeta(null);
+        setGlobalIntelFeedHint(typeof j?.error === "string" ? j.error : `HTTP ${r.status}`);
+        return;
+      }
+      setGlobalIntelFeedHint(typeof j?.hint === "string" ? j.hint : null);
+      setGlobalIntelFeedMeta({
+        generatedAt: typeof j?.generatedAt === "string" ? j.generatedAt : null,
+        lookbackHoursUsed: j?.lookbackHoursUsed ?? null,
+      });
+      setGlobalIntelFeed(Array.isArray(j.entries) ? j.entries : []);
+    } catch (e) {
+      setGlobalIntelFeed([]);
+      setGlobalIntelFeedMeta(null);
+      setGlobalIntelFeedHint(String(e.message));
+    } finally {
+      setLoadingGlobalIntelFeed(false);
+    }
+  }, [scoreHours]);
+
   const runScore = useCallback(async () => {
     const s = focusAddress.trim();
     if (!s) return;
@@ -807,11 +843,16 @@ export function Dashboard() {
   }, [runPing, runDb, runSurfaceFeed]);
 
   useEffect(() => {
+    void runGlobalIntelFeed();
+  }, [runGlobalIntelFeed]);
+
+  useEffect(() => {
     const id = setInterval(() => {
       void runSurfaceFeed();
+      void runGlobalIntelFeed();
     }, LIVE_POLL_MS);
     return () => clearInterval(id);
-  }, [runSurfaceFeed]);
+  }, [runSurfaceFeed, runGlobalIntelFeed]);
 
   useEffect(() => {
     const a = focusAddress.trim();
@@ -1031,11 +1072,18 @@ export function Dashboard() {
           <AlertStrip alerts={intelAlerts} />
         </motion.div>
 
-        <motion.div variants={panelV}>
+        <motion.div variants={panelV} className="grid gap-4 lg:grid-cols-2">
           <SurfaceFeedStrip
             hits={surfaceFeed ?? []}
             loading={loadingSurfaceFeed}
             hint={surfaceFeedHint}
+            onPickScope={(addr) => setFocusAddress(addr)}
+          />
+          <GlobalIntelFeedStrip
+            entries={globalIntelFeed ?? []}
+            loading={loadingGlobalIntelFeed}
+            hint={globalIntelFeedHint}
+            meta={globalIntelFeedMeta}
             onPickScope={(addr) => setFocusAddress(addr)}
           />
         </motion.div>
