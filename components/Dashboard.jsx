@@ -15,6 +15,7 @@ import {
   RpcActivityTimeline,
   WalletGraphSvg,
 } from "@/components/dashboard/intel-widgets";
+import { buildEntityClassificationContext, classifyNamedEntityLine } from "@/lib/entity-classify.js";
 import { buildGroqEvidence } from "@/lib/groq-evidence.js";
 import { GROQ_BRIEF_USER_FOCUS } from "@/lib/groq-brief-defaults.js";
 import { staggerContainer, fadeUp, springGentle } from "@/components/motion/presets";
@@ -78,6 +79,42 @@ function InfoCallout({ children }) {
   return (
     <div className="rounded-md border border-cm-warn/40 bg-cm-warn/10 px-4 py-3 text-sm leading-relaxed text-cm-subtle">
       {children}
+    </div>
+  );
+}
+
+function ReasoningPanelStatus({ loadingGroq, lastGroqAt, nextSweepAt, sweepSec }) {
+  const [, setTick] = useState(0);
+  useEffect(() => {
+    const id = setInterval(() => setTick((n) => n + 1), 1000);
+    return () => clearInterval(id);
+  }, []);
+  const nextInSec =
+    nextSweepAt != null ? Math.max(0, Math.ceil((nextSweepAt - Date.now()) / 1000)) : null;
+  const mm = nextInSec != null ? Math.floor(nextInSec / 60) : 0;
+  const ss = nextInSec != null ? nextInSec % 60 : 0;
+  const timeOpts = { hour: "2-digit", minute: "2-digit", second: "2-digit" };
+
+  return (
+    <div className="flex max-w-[15rem] flex-col items-end gap-0.5 text-right">
+      {loadingGroq ? (
+        <span className="font-mono text-[10px] font-bold uppercase tracking-wide text-cm-warn">Reasoning…</span>
+      ) : (
+        <span className="font-mono text-[10px] font-bold uppercase tracking-wide text-cm-terminal">Idle</span>
+      )}
+      <span className="font-mono text-[9px] normal-case leading-relaxed text-cm-faint">
+        Last analysis{" "}
+        <span className="text-cm-subtle">
+          {lastGroqAt ? new Date(lastGroqAt).toLocaleTimeString(undefined, timeOpts) : "—"}
+        </span>
+      </span>
+      <span className="font-mono text-[9px] normal-case leading-relaxed text-cm-faint">
+        Next data sweep{" "}
+        <span className="tabular-nums text-cm-accent-bright">
+          {nextInSec != null ? `${mm}:${String(ss).padStart(2, "0")}` : "—"}
+        </span>
+        <span className="text-cm-faint"> · {sweepSec}s cadence</span>
+      </span>
     </div>
   );
 }
@@ -305,9 +342,9 @@ const riskStyle = {
 };
 
 /**
- * @param {{ analysis: Record<string, unknown> | null, error: string | null, loading: boolean, webhookMeta?: object | null }} props
+ * @param {{ analysis: Record<string, unknown> | null, error: string | null, loading: boolean, webhookMeta?: object | null, entityContext: ReturnType<typeof buildEntityClassificationContext> | null }} props
  */
-function BriefBody({ analysis, error, loading, webhookMeta }) {
+function BriefBody({ analysis, error, loading, webhookMeta, entityContext }) {
   if (loading) {
     return <p className="py-8 text-center text-sm text-cm-faint">Running ChainMind analyst…</p>;
   }
@@ -389,10 +426,30 @@ function BriefBody({ analysis, error, loading, webhookMeta }) {
           <p className="font-mono text-[10px] font-semibold uppercase tracking-wide text-cm-faint">
             Named entities
           </p>
-          <ul className="mt-2 list-inside list-disc space-y-1 font-[family-name:var(--font-mono)] text-[11px] leading-relaxed text-cm-accent-bright/95 break-all">
-            {namedEntities.map((line, i) => (
-              <li key={i}>{String(line)}</li>
-            ))}
+          <ul className="mt-2 space-y-3 text-sm leading-relaxed">
+            {namedEntities.map((line, i) => {
+              const ctx = entityContext ?? buildEntityClassificationContext({});
+              const { raw, rows } = classifyNamedEntityLine(String(line), ctx);
+              return (
+                <li key={i} className="border-l-2 border-cm-border-subtle pl-3">
+                  <p className="text-xs text-cm-muted">{raw}</p>
+                  {rows.length > 0 ? (
+                    <ul className="mt-2 space-y-1.5">
+                      {rows.map((r, j) => (
+                        <li
+                          key={j}
+                          className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 font-[family-name:var(--font-mono)] text-[11px]"
+                        >
+                          <span className="shrink-0 break-all text-cm-accent-bright">{r.shortId}</span>
+                          <span className="text-cm-faint">→</span>
+                          <span className="text-cm-subtle">{r.role}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  ) : null}
+                </li>
+              );
+            })}
           </ul>
         </div>
       ) : null}
@@ -462,6 +519,9 @@ export function Dashboard() {
   const [groqErr, setGroqErr] = useState(null);
   const [groqWebhookMeta, setGroqWebhookMeta] = useState(null);
 
+  const [nextDataSweepAt, setNextDataSweepAt] = useState(null);
+  const [groqLastCompletedAt, setGroqLastCompletedAt] = useState(null);
+
   const groqLastReasoningAtRef = useRef(0);
   const groqAutoInFlightRef = useRef(false);
 
@@ -529,6 +589,8 @@ export function Dashboard() {
     await runDb();
     await runInspect();
     await runScore();
+    const t = Date.now();
+    setNextDataSweepAt(t + LIVE_POLL_MS);
   }, [runPing, runDb, runInspect, runScore]);
 
   useEffect(() => {
@@ -564,11 +626,14 @@ export function Dashboard() {
 
   useEffect(() => {
     const a = focusAddress.trim();
-    if (!a) return;
-    const tick = () => {
+    if (!a) {
+      setNextDataSweepAt(null);
+      return;
+    }
+    setNextDataSweepAt(Date.now() + LIVE_POLL_MS);
+    const id = setInterval(() => {
       void runAllSync();
-    };
-    const id = setInterval(tick, LIVE_POLL_MS);
+    }, LIVE_POLL_MS);
     return () => clearInterval(id);
   }, [focusAddress, runAllSync]);
 
@@ -578,6 +643,7 @@ export function Dashboard() {
   const groqEvidence = useMemo(() => {
     const addr = focusAddress.trim();
     if (!addr) return null;
+    const scopeHumanHint = addr === USDC_MAINNET ? "USDC mint (mainnet)" : null;
     return {
       ...buildGroqEvidence({
         address: focusAddress,
@@ -585,6 +651,7 @@ export function Dashboard() {
         inspect,
         risk,
       }),
+      scopeHumanHint: scopeHumanHint ?? undefined,
       rpcCluster: ping?.ok ? { cluster: ping.cluster, slot: ping.slot } : { error: ping?.error ?? "RPC unknown" },
       inspectLimit: Number(inspectLimit) || null,
       automatedAlerts: intelAlerts.map((a) => ({
@@ -594,6 +661,11 @@ export function Dashboard() {
       })),
     };
   }, [focusAddress, score, inspect, risk, ping, inspectLimit, intelAlerts]);
+
+  const entityClassificationContext = useMemo(
+    () => (groqEvidence ? buildEntityClassificationContext(groqEvidence) : null),
+    [groqEvidence],
+  );
 
   const runGroqAnalysis = useCallback(
     async (source) => {
@@ -633,6 +705,7 @@ export function Dashboard() {
       const j = await runGroqAnalysis("auto");
       if (j) {
         groqLastReasoningAtRef.current = Date.now();
+        setGroqLastCompletedAt(Date.now());
         setGroqAnalysis(j.analysis ?? null);
         setGroqWebhookMeta(j.webhook ?? null);
       }
@@ -652,6 +725,7 @@ export function Dashboard() {
 
   useEffect(() => {
     groqLastReasoningAtRef.current = 0;
+    setGroqLastCompletedAt(null);
   }, [focusAddress]);
 
   useEffect(() => {
@@ -858,12 +932,21 @@ export function Dashboard() {
             title="Live reasoning"
             subtitle={`Groq re-analyzes the evidence snapshot as panels update (~${(LIVE_POLL_MS / 1000).toFixed(0)}s sweep), at most once per ${Math.round(GROQ_REASONING_MIN_INTERVAL_MS / 60_000)} min. High-confidence auto runs can POST webhooks.`}
             actions={
-              <span className="rounded-md border border-cm-border-subtle bg-cm-row/50 px-2 py-1.5 font-mono text-[10px] uppercase tracking-wide text-cm-muted">
-                {loadingGroq ? "Reasoning…" : "Idle"}
-              </span>
+              <ReasoningPanelStatus
+                loadingGroq={loadingGroq}
+                lastGroqAt={groqLastCompletedAt}
+                nextSweepAt={nextDataSweepAt}
+                sweepSec={LIVE_POLL_MS / 1000}
+              />
             }
           >
-            <BriefBody analysis={groqAnalysis} error={groqErr} loading={loadingGroq} webhookMeta={groqWebhookMeta} />
+            <BriefBody
+              analysis={groqAnalysis}
+              error={groqErr}
+              loading={loadingGroq}
+              webhookMeta={groqWebhookMeta}
+              entityContext={entityClassificationContext}
+            />
           </Panel>
         </motion.div>
       </motion.main>
