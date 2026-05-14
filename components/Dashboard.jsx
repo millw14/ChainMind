@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { motion, useReducedMotion } from "framer-motion";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, Fragment } from "react";
 import {
   AlertStrip,
   buildAlerts,
@@ -475,33 +475,53 @@ function BriefBody({ analysis, error, loading, webhookMeta, entityContext }) {
           <p className="font-mono text-[10px] font-semibold uppercase tracking-wide text-cm-faint">
             Named entities
           </p>
-          <ul className="mt-2 space-y-3 text-sm leading-relaxed">
-            {namedEntities.map((line, i) => {
-              const ctx = entityContext ?? buildEntityClassificationContext({});
-              const { raw, rows } = classifyNamedEntityLine(String(line), ctx);
-              return (
-                <li key={i} className="border-l-2 border-cm-border-subtle pl-3">
-                  <p className="text-xs text-cm-muted">{raw}</p>
-                  {rows.length > 0 ? (
-                    <ul className="mt-2 space-y-1.5">
-                      {rows.map((r, j) => (
-                        <li
-                          key={j}
-                          className="grid grid-cols-[minmax(0,11rem)_1rem_minmax(0,1fr)] items-baseline gap-x-2 font-[family-name:var(--font-mono)] text-[11px] leading-snug sm:grid-cols-[minmax(0,12.5rem)_1.25rem_minmax(0,1fr)]"
+          <div className="mt-2 overflow-x-auto rounded-md border border-cm-border-subtle">
+            <table className="w-full table-fixed border-separate border-spacing-0 font-mono text-[11px] leading-snug">
+              <thead>
+                <tr className="border-b border-cm-border-subtle bg-cm-row/50 text-[10px] uppercase tracking-wide text-cm-faint">
+                  <th className="w-[40%] px-3 py-2 text-left font-medium sm:w-[36%]">Id</th>
+                  <th className="w-10 px-0 py-2 text-center font-medium sm:w-12" aria-hidden="true" />
+                  <th className="px-3 py-2 text-left font-medium">Classification</th>
+                </tr>
+              </thead>
+              <tbody>
+                {namedEntities.map((line, i) => {
+                  const ctx = entityContext ?? buildEntityClassificationContext({});
+                  const { raw, rows } = classifyNamedEntityLine(String(line), ctx);
+                  return (
+                    <Fragment key={i}>
+                      <tr className="bg-cm-row/25">
+                        <td
+                          colSpan={3}
+                          className="border-t border-cm-border-subtle px-3 py-2 font-sans text-xs text-cm-muted"
                         >
-                          <span className="min-w-0 truncate text-cm-accent-bright" title={r.fullId}>
-                            {r.shortId}
-                          </span>
-                          <span className="text-center text-cm-faint">→</span>
-                          <span className="min-w-0 text-cm-subtle">{r.role}</span>
-                        </li>
-                      ))}
-                    </ul>
-                  ) : null}
-                </li>
-              );
-            })}
-          </ul>
+                          {raw}
+                        </td>
+                      </tr>
+                      {rows.length > 0 ? (
+                        rows.map((r, j) => (
+                          <tr
+                            key={`${i}-${j}`}
+                            className="border-t border-cm-border-subtle/70 hover:bg-cm-row/20"
+                          >
+                            <td className="px-3 py-1.5 align-top">
+                              <span className="block truncate text-cm-accent-bright" title={r.fullId}>
+                                {r.shortId}
+                              </span>
+                            </td>
+                            <td className="w-10 px-0 py-1.5 align-top text-center text-cm-faint select-none sm:w-12">
+                              →
+                            </td>
+                            <td className="px-3 py-1.5 align-top text-cm-subtle">{r.role}</td>
+                          </tr>
+                        ))
+                      ) : null}
+                    </Fragment>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
         </div>
       ) : null}
       {manipulationVsBenign ? (
