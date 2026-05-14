@@ -1,50 +1,47 @@
 import { NextResponse } from "next/server";
 import { getGeoqApiKey, geoqFetch } from "@/lib/geoq.js";
 import { sendVerdictWebhook } from "@/lib/groq-webhook.js";
-import { enrichAnalysisWithVerdictStructure, normalizeSignalsArray } from "@/lib/groq-verdict-card.js";
+import {
+  enrichAnalysisWithVerdictStructure,
+  inferRiskLevelFromTriVerdict,
+  normalizePatternStr,
+  normalizeTopEvidenceArray,
+  normalizeTriVerdict,
+  normalizeVerdictWindow,
+} from "@/lib/groq-verdict-card.js";
 import { buildGroqUserEvidence } from "@/lib/groq-user-evidence.js";
 
 export const maxDuration = 60;
 export const runtime = "nodejs";
 
 const SYSTEM_PROMPT = `You are ChainMind, a crypto manipulation analyst for Solana.
-You receive structured evidence (metrics, funding graph, optional aiDetection block).
-Your job is to:
-1. Name specific wallets/signatures in your reasoning — never speak in abstracts.
-2. Explain WHY your confidence is the number it is, and what would raise or lower it.
-3. Distinguish between manipulation signals vs. benign explanations (congestion, market-maker bots, hot-wallet churn, etc.).
-4. Give next steps that name specific entities to investigate (use addresses or transaction signatures from the evidence), not generic actions.
+You receive structured evidence (metrics, funding graph, optional aiDetection). Calibrate confidence (0..1) and tie claims to Evidence fields — do not invent funding or account age not present.
 
-When Evidence.aiDetection is present, it is **pre-computed ChainMind logic** (multiSignal + named detectors detect_wash_rotation, detect_sybil_pump, detect_coordination_cluster). Treat these as labeled features, not ground truth — weigh them against benign alternatives and cite which sub-signals fired. For detect_coordination_cluster, evidence.communities lists label-propagation modules (sizes + internal density), not raw edges. Use aiDetection.dataAvailability so an empty transfer sample is not mistaken for a clean chain.
-Patterns to weigh only when the numbers support them: coordinated accumulation, wash rotation, sybil-style payer bursts, coordinated LP moves.
-If shared funding or true account age is not in the evidence object, say so explicitly — do not invent it.
-When fundingGraph.status is "attached" and sharedInboundFunders is non-empty, treat that as primary evidence of shared provisioning — you may raise confidence materially versus co-activity alone.
-When fundingGraph.status is "no_edges" or "not_attached", state that shared-funder conclusions are capped until graph backfill lands.
-Evidence may include walletLedgerAge / accountAge.sample — oldest signature metadata from RPC walks (first_block_time), not rentEpoch. Partial coverage is normal; history may be capped (deep wallets need higher max pages / npm run wallet-age:backfill).
-The Evidence JSON includes entityLedger (id → role labels), fundingGraph, fundingNarrative, accountAge — cite specific ids from entityLedger or signatures/feePayers.
+When Evidence.aiDetection exists, treat it as labeled features, not ground truth. Use aiDetection.dataAvailability so empty transfers are not read as "clean".
+When fundingGraph.status is "attached" and sharedInboundFunders is non-empty, shared provisioning is evidence you may weigh heavily.
+Use Evidence.scopeAddress or top-level Evidence.address when filling "scope".
 
-Respond with ONLY valid JSON (no markdown fences, no commentary before or after the object):
+Respond with ONLY valid JSON (no markdown fences, no commentary before or after):
 {
-  "verdict": "manipulation_detected | suspicious | clean",
+  "verdict": "escalate | monitor | dismiss",
   "confidence": 0.0,
-  "risk_level": "critical | high | medium | low",
-  "confidence_reasoning": "short string: why confidence is capped; no long prose — limiting factors go in limiting_factors",
+  "pattern": "coordinated-accumulation | wash-rotation | sybil-pump | time-synchronized-burst | organic | unknown",
+  "scope": "<base58 address>",
+  "window": { "start": "ISO8601", "end": "ISO8601", "duration_minutes": 0 },
   "signals": [
-    { "name": "Failure rate", "value": "0.58", "severity": "HIGH | MEDIUM | LOW | SKIPPED | NOT_FETCHED" }
+    { "type": "fee-payer-concentration | timing-cluster | repeated-route | shared-funder", "weight": 0.0, "detail": "fact tied to Evidence" }
   ],
-  "limiting_factors": ["funding graph skipped", "account age not fetched"],
-  "named_entities": ["identifiers only — no sentences; use base58 or signature strings"],
-  "manipulation_vs_benign": "one tight contrast line OR two short sentences max",
-  "next_steps": ["specific step naming an entity from named_entities or evidence signatures"]
+  "top_evidence": [ { "signature": "<tx sig>", "slot": 0, "actor": "<wallet>", "action": "short description" } ],
+  "next_action": "what an analyst should do next — name an entity or signature from Evidence",
+  "flags": ["low-liquidity-window", "repeat-pattern", "cross-scope-match"],
+  "limiting_factors": ["data gaps optional"],
+  "named_entities": ["base58 or signatures only"],
+  "confidence_reasoning": "short calibration line",
+  "manipulation_vs_benign": "one or two short sentences"
 }
 
-confidence is 0..1. risk_level should match verdict + confidence.
-signals: align with Evidence.failureRate, sampled txs, coActivityScore, fundingGraph.status, accountAge when possible.
-Do NOT paste long paragraph reasoning into confidence_reasoning — keep calibration concise; Evidence JSON has the numbers.
-named_entities must be identifiers only (no narrative paragraphs). If evidence is empty, use one honest placeholder entry.`;
-const VERDICTS = new Set(["manipulation_detected", "suspicious", "clean"]);
-const MANIP_TYPES = new Set(["coordinated_accumulation", "wash_trade", "sybil_pump", "none"]);
-const RISK_LEVELS = new Set(["critical", "high", "medium", "low"]);
+Legacy mapping if needed: manipulation_detected→escalate, suspicious→monitor, clean→dismiss.
+signals.weight is 0..1. Prefer 2+ signals when Evidence supports it. named_entities must be identifiers only.`;
 
 function truncate(s, max = 12000) {
   const t = String(s);
@@ -76,16 +73,6 @@ function toStringArray(v) {
 }
 
 /**
- * @param {string} verdict
- * @param {number} confidence
- */
-function inferRiskLevel(verdict, confidence) {
-  if (verdict === "manipulation_detected") return confidence > 0.75 ? "critical" : "high";
-  if (verdict === "suspicious") return "medium";
-  return "low";
-}
-
-/**
  * @param {unknown} raw
  */
 function normalizeAnalysis(raw) {
@@ -94,10 +81,18 @@ function normalizeAnalysis(raw) {
   }
   /** @type {any} */
   const o = raw;
-  const verdict = VERDICTS.has(o.verdict) ? o.verdict : "suspicious";
+
+  const verdict = normalizeTriVerdict(o.verdict);
   let confidence = Number(o.confidence);
   if (!Number.isFinite(confidence)) confidence = 0.5;
   confidence = Math.min(1, Math.max(0, confidence));
+
+  const pattern = normalizePatternStr(o.pattern, o.manipulation_type);
+
+  let scope = typeof o.scope === "string" ? o.scope.trim() : "";
+  if (!scope && typeof o.scope_address === "string") scope = o.scope_address.trim();
+
+  const windowObj = normalizeVerdictWindow(o, null);
 
   let confidence_reasoning =
     typeof o.confidence_reasoning === "string"
@@ -124,10 +119,14 @@ function normalizeAnalysis(raw) {
   let next_steps = toStringArray(o.next_steps);
   if (next_steps.length === 0) next_steps = toStringArray(o.nextSteps);
 
+  let next_action = typeof o.next_action === "string" ? o.next_action.trim() : "";
+  if (!next_action && typeof o.nextAction === "string") next_action = o.nextAction.trim();
+
   const key_evidence_legacy = toStringArray(o.key_evidence);
   if (next_steps.length === 0 && key_evidence_legacy.length) {
     next_steps = [...key_evidence_legacy];
   }
+  if (!next_action && next_steps.length) next_action = next_steps[0];
 
   if (!confidence_reasoning && reasoning.length) {
     confidence_reasoning = reasoning.join(" ");
@@ -154,12 +153,19 @@ function normalizeAnalysis(raw) {
     next_steps.push("Pull signatures listed in evidence and trace the first fee payer on Solscan.");
   }
 
-  const manipulation_type = MANIP_TYPES.has(o.manipulation_type) ? o.manipulation_type : "none";
-  const risk_level = RISK_LEVELS.has(o.risk_level)
-    ? o.risk_level
-    : inferRiskLevel(verdict, confidence);
+  const manipulation_type =
+    typeof o.manipulation_type === "string" && o.manipulation_type.trim()
+      ? o.manipulation_type.trim()
+      : typeof o.manipulationType === "string" && o.manipulationType.trim()
+        ? o.manipulationType.trim()
+        : "none";
 
-  const signals = normalizeSignalsArray(o.signals);
+  const risk_level = inferRiskLevelFromTriVerdict(verdict, confidence);
+
+  const rawSignals = Array.isArray(o.signals) ? o.signals : [];
+  let top_evidence = normalizeTopEvidenceArray(o.top_evidence ?? o.topEvidence);
+  let flags = toStringArray(o.flags);
+
   let limiting_factors = toStringArray(o.limiting_factors);
   if (limiting_factors.length === 0) limiting_factors = toStringArray(o.limitingFactors);
 
@@ -167,6 +173,13 @@ function normalizeAnalysis(raw) {
   const base = {
     verdict,
     confidence,
+    pattern,
+    scope: scope || null,
+    window: windowObj,
+    signals: rawSignals,
+    top_evidence,
+    next_action: next_action || "",
+    flags,
     confidence_reasoning,
     named_entities,
     manipulation_vs_benign,
@@ -174,7 +187,6 @@ function normalizeAnalysis(raw) {
     next_steps,
     manipulation_type,
     risk_level,
-    signals: signals ?? [],
     limiting_factors,
     key_evidence: key_evidence_legacy.length
       ? key_evidence_legacy
@@ -252,7 +264,7 @@ export async function POST(request) {
           { role: "user", content: userBlock },
         ],
         temperature: 0.15,
-        max_tokens: 1536,
+        max_tokens: 2048,
       }),
     });
   } catch (e) {
@@ -286,6 +298,10 @@ export async function POST(request) {
   try {
     analysis = normalizeAnalysis(JSON.parse(extractJsonObject(text)));
     analysis = enrichAnalysisWithVerdictStructure(analysis, userEvidence);
+    analysis.model = model;
+    if (!analysis.analyzed_at || typeof analysis.analyzed_at !== "string") {
+      analysis.analyzed_at = new Date().toISOString();
+    }
   } catch (e) {
     console.error("[groq-brief] parse analysis", e, text.slice(0, 800));
     return NextResponse.json(
