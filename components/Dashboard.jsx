@@ -134,19 +134,19 @@ function ReasoningPanelStatus({ loadingGroq, lastGroqAt, nextSweepAt, sweepSec }
   const timeOpts = { hour: "2-digit", minute: "2-digit", second: "2-digit" };
 
   return (
-    <div className="flex max-w-[15rem] flex-col items-end gap-0.5 text-right">
+    <div className="flex flex-col gap-0.5 font-mono text-left">
       {loadingGroq ? (
-        <span className="font-mono text-[10px] font-bold uppercase tracking-wide text-cm-warn">Reasoning…</span>
+        <span className="text-[10px] font-bold uppercase tracking-wide text-cm-warn">Reasoning…</span>
       ) : (
-        <span className="font-mono text-[10px] font-bold uppercase tracking-wide text-cm-terminal">Idle</span>
+        <span className="text-[10px] font-bold uppercase tracking-wide text-cm-terminal">Idle</span>
       )}
-      <span className="font-mono text-[9px] normal-case leading-relaxed text-cm-faint">
+      <span className="text-[9px] normal-case leading-relaxed text-cm-faint">
         Last analysis{" "}
         <span className="text-cm-subtle">
           {lastGroqAt ? new Date(lastGroqAt).toLocaleTimeString(undefined, timeOpts) : "—"}
         </span>
       </span>
-      <span className="font-mono text-[9px] normal-case leading-relaxed text-cm-faint">
+      <span className="text-[9px] normal-case leading-relaxed text-cm-faint">
         Next data sweep{" "}
         <span className="tabular-nums text-cm-accent-bright">
           {nextInSec != null ? `${mm}:${String(ss).padStart(2, "0")}` : "—"}
@@ -475,7 +475,7 @@ function BriefBody({ analysis, error, loading, webhookMeta, entityContext }) {
   const rClass = riskStyle[riskLevel] ?? "text-cm-muted";
 
   return (
-    <div className="space-y-4 rounded-md border border-cm-border-subtle bg-cm-row/30 px-4 py-3">
+    <div className="space-y-4 rounded-md border border-cm-border-subtle bg-cm-row/30 px-3 py-3 sm:px-4 sm:py-4">
       <div className="flex flex-wrap items-center gap-2">
         <span
           className={`rounded px-2 py-0.5 font-mono text-[10px] font-bold uppercase tracking-wide ${vClass}`}
@@ -1081,15 +1081,15 @@ export function Dashboard() {
             kicker="Synthesis"
             title="Live reasoning"
             subtitle={`Groq re-analyzes the evidence snapshot as panels update (~${(LIVE_POLL_MS / 1000).toFixed(0)}s sweep), at most once per ${Math.round(GROQ_REASONING_MIN_INTERVAL_MS / 60_000)} min. High-confidence auto runs can POST webhooks.`}
-            actions={
+          >
+            <div className="mb-4 border-b border-cm-border-subtle pb-4">
               <ReasoningPanelStatus
                 loadingGroq={loadingGroq}
                 lastGroqAt={groqLastCompletedAt}
                 nextSweepAt={nextDataSweepAt}
                 sweepSec={LIVE_POLL_MS / 1000}
               />
-            }
-          >
+            </div>
             <BriefBody
               analysis={groqAnalysis}
               error={groqErr}
