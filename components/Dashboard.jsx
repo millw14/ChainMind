@@ -427,6 +427,9 @@ const riskStyle = {
 };
 
 const verdictTone = {
+  escalate: "text-cm-bad",
+  monitor: "text-cm-warn",
+  dismiss: "text-cm-ok",
   manipulation_detected: "text-cm-bad",
   suspicious: "text-cm-warn",
   clean: "text-cm-ok",
@@ -496,8 +499,16 @@ function BriefBody({ analysis, error, loading, webhookMeta, entityContext, evide
     );
   }
 
-  const verdict = typeof enriched.verdict === "string" ? enriched.verdict : "suspicious";
+  const verdict = typeof enriched.verdict === "string" ? enriched.verdict : "monitor";
   const riskLevel = typeof enriched.risk_level === "string" ? enriched.risk_level : "medium";
+  const pattern = typeof enriched.pattern === "string" ? enriched.pattern : "unknown";
+  const scopeLabel = typeof enriched.scope === "string" ? enriched.scope.trim() : "";
+  const windowObj = enriched.window && typeof enriched.window === "object" ? enriched.window : null;
+  const topEvidence = Array.isArray(enriched.top_evidence) ? enriched.top_evidence : [];
+  const flags = Array.isArray(enriched.flags) ? enriched.flags : [];
+  const nextAction = typeof enriched.next_action === "string" ? enriched.next_action.trim() : "";
+  const modelLine = typeof enriched.model === "string" ? enriched.model.trim() : "";
+  const analyzedAt = typeof enriched.analyzed_at === "string" ? enriched.analyzed_at.trim() : "";
   const confPct =
     typeof enriched.confidence_pct === "number" && Number.isFinite(enriched.confidence_pct)
       ? enriched.confidence_pct
@@ -546,7 +557,7 @@ function BriefBody({ analysis, error, loading, webhookMeta, entityContext, evide
     <div className="overflow-hidden rounded-lg border border-cm-border bg-cm-card/95 shadow-cm">
       <div className="flex flex-wrap items-end justify-between gap-4 border-b border-cm-border-subtle bg-cm-row/35 px-4 py-5 sm:px-5">
         <h3 className={`max-w-[min(100%,28rem)] text-2xl font-black uppercase tracking-tight sm:text-3xl ${vTone}`}>
-          {verdict.replace(/_/g, " ")}
+          {verdict.replace(/-/g, " ")}
         </h3>
         <div className="flex flex-wrap items-end justify-end gap-4 text-right">
           <p className={`font-mono text-sm font-bold uppercase tracking-wider ${riskStyle[riskLevel] ?? "text-cm-muted"}`}>
@@ -560,20 +571,88 @@ function BriefBody({ analysis, error, loading, webhookMeta, entityContext, evide
         </div>
       </div>
 
+      <div className="border-b border-cm-border-subtle px-4 py-3 sm:px-5 font-mono text-[10px] text-cm-subtle">
+        <p>
+          <span className="text-cm-faint">Pattern</span>{" "}
+          <span className="text-cm-accent-bright">{pattern.replace(/-/g, " ")}</span>
+        </p>
+        {scopeLabel ? (
+          <p className="mt-1">
+            <span className="text-cm-faint">Scope</span>{" "}
+            <span className="break-all text-cm-text">{shortSig(scopeLabel)}</span>
+          </p>
+        ) : null}
+        {windowObj ? (
+          <p className="mt-1 text-cm-faint">
+            Window{" "}
+            <span className="text-cm-muted">
+              {String((/** @type {any} */ (windowObj)).start ?? "").slice(0, 19)} →{" "}
+              {String((/** @type {any} */ (windowObj)).end ?? "").slice(0, 19)}
+              {Number.isFinite(Number((/** @type {any} */ (windowObj)).duration_minutes)) &&
+              Number((/** @type {any} */ (windowObj)).duration_minutes) > 0
+                ? ` · ${Math.round(Number((/** @type {any} */ (windowObj)).duration_minutes))}m`
+                : ""}
+            </span>
+          </p>
+        ) : null}
+        {flags.length > 0 ? (
+          <div className="mt-2 flex flex-wrap gap-1.5">
+            {flags.map((f, i) => (
+              <span
+                key={`${String(f)}-${i}`}
+                className="rounded border border-cm-border-subtle bg-cm-warn/10 px-1.5 py-0.5 text-[9px] uppercase tracking-wide text-cm-warn"
+              >
+                {String(f).replace(/-/g, " ")}
+              </span>
+            ))}
+          </div>
+        ) : null}
+      </div>
+
       <div className="border-b border-cm-border-subtle px-4 py-4 sm:px-5">
         <p className="font-mono text-[10px] font-semibold uppercase tracking-[0.2em] text-cm-faint">Signals detected</p>
         <ul className="mt-3 divide-y divide-cm-border-subtle/60">
           {signals.length > 0 ? (
-            signals.map((s, i) => (
-              <li key={`${String(s.name)}-${i}`} className="flex flex-wrap items-baseline gap-x-3 gap-y-1 py-2 font-mono text-xs first:pt-0 last:pb-0">
-                <span className="text-cm-faint shrink-0">●</span>
-                <span className="min-w-[10rem] shrink-0 text-cm-muted">{s.name}</span>
-                <span className="min-w-0 flex-1 tabular-nums text-cm-text">{s.value}</span>
-                <span className={`shrink-0 text-[10px] font-bold uppercase tracking-wide ${severityAccent(s.severity)}`}>
-                  {String(s.severity).replace(/_/g, " ")}
-                </span>
-              </li>
-            ))
+            signals.map((s, i) => {
+              if (s && typeof s === "object" && "type" in s) {
+                const row = /** @type {{ type?: string; weight?: number; detail?: string; name?: string; value?: string; severity?: string }} */ (s);
+                if (row.detail != null || row.weight != null) {
+                  const pct =
+                    typeof row.weight === "number" && Number.isFinite(row.weight)
+                      ? Math.round(row.weight * 100)
+                      : null;
+                  return (
+                    <li
+                      key={`${String(row.type)}-${i}`}
+                      className="flex flex-wrap items-baseline gap-x-3 gap-y-1 py-2 font-mono text-xs first:pt-0 last:pb-0"
+                    >
+                      <span className="text-cm-faint shrink-0">●</span>
+                      <span className="min-w-[9rem] shrink-0 text-cm-muted">
+                        {String(row.type ?? "signal").replace(/-/g, " ")}
+                      </span>
+                      <span className="min-w-0 flex-1 text-cm-text leading-snug">{String(row.detail ?? "—")}</span>
+                      {pct != null ? (
+                        <span className="shrink-0 tabular-nums text-[10px] font-bold text-cm-accent-bright">{pct}%</span>
+                      ) : null}
+                    </li>
+                  );
+                }
+              }
+              const row = /** @type {{ name?: string; value?: string; severity?: string }} */ (s);
+              return (
+                <li
+                  key={`${String(row.name)}-${i}`}
+                  className="flex flex-wrap items-baseline gap-x-3 gap-y-1 py-2 font-mono text-xs first:pt-0 last:pb-0"
+                >
+                  <span className="text-cm-faint shrink-0">●</span>
+                  <span className="min-w-[10rem] shrink-0 text-cm-muted">{String(row.name ?? "—")}</span>
+                  <span className="min-w-0 flex-1 tabular-nums text-cm-text">{String(row.value ?? "—")}</span>
+                  <span className={`shrink-0 text-[10px] font-bold uppercase tracking-wide ${severityAccent(row.severity)}`}>
+                    {String(row.severity ?? "").replace(/_/g, " ")}
+                  </span>
+                </li>
+              );
+            })
           ) : (
             <li className="py-2 text-sm text-cm-faint">No structured signals in this response.</li>
           )}
@@ -630,6 +709,56 @@ function BriefBody({ analysis, error, loading, webhookMeta, entityContext, evide
         </div>
       ) : null}
 
+      {topEvidence.length > 0 ? (
+        <div className="border-t border-cm-border-subtle px-4 py-4 sm:px-5">
+          <p className="font-mono text-[10px] font-semibold uppercase tracking-[0.2em] text-cm-faint">Top evidence</p>
+          <div className="mt-2 overflow-x-auto rounded-md border border-cm-border-subtle">
+            <table className="w-full border-separate border-spacing-0 text-left font-mono text-[10px]">
+              <thead>
+                <tr className="border-b border-cm-border-subtle bg-cm-row/50 text-[9px] uppercase tracking-wide text-cm-faint">
+                  <th className="px-2 py-1.5 font-medium">Tx</th>
+                  <th className="px-2 py-1.5 font-medium">Slot</th>
+                  <th className="px-2 py-1.5 font-medium">Actor</th>
+                  <th className="px-2 py-1.5 font-medium">Action</th>
+                </tr>
+              </thead>
+              <tbody>
+                {topEvidence.map((row, i) => {
+                  const r = /** @type {Record<string, unknown>} */ (row && typeof row === "object" ? row : {});
+                  const sig = String(r.signature ?? "").trim();
+                  const href = sig ? `https://solscan.io/tx/${encodeURIComponent(sig)}` : "";
+                  return (
+                    <tr key={`${sig}-${i}`} className="border-t border-cm-border-subtle/80 bg-cm-row/15">
+                      <td className="max-w-[7rem] truncate px-2 py-1.5 align-top">
+                        {href ? (
+                          <a href={href} target="_blank" rel="noreferrer" className="text-cm-accent-bright hover:underline">
+                            {shortSig(sig)}
+                          </a>
+                        ) : (
+                          "—"
+                        )}
+                      </td>
+                      <td className="px-2 py-1.5 align-top text-cm-muted tabular-nums">{String(r.slot ?? "—")}</td>
+                      <td className="max-w-[6rem] truncate px-2 py-1.5 align-top text-cm-subtle" title={String(r.actor ?? "")}>
+                        {shortSig(String(r.actor ?? ""))}
+                      </td>
+                      <td className="px-2 py-1.5 align-top text-cm-subtle">{String(r.action ?? "—")}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      ) : null}
+
+      {nextAction ? (
+        <div className="border-t border-cm-border-subtle bg-cm-accent/5 px-4 py-4 sm:px-5">
+          <p className="font-mono text-[10px] font-semibold uppercase tracking-[0.2em] text-cm-faint">Next action</p>
+          <p className="mt-2 text-sm font-medium leading-relaxed text-cm-text">{nextAction}</p>
+        </div>
+      ) : null}
+
       {nextSteps.length > 0 ? (
         <div className="border-t border-cm-border-subtle px-4 py-4 sm:px-5">
           <p className="font-mono text-[10px] font-semibold uppercase tracking-[0.2em] text-cm-faint">Next steps</p>
@@ -681,6 +810,13 @@ function BriefBody({ analysis, error, loading, webhookMeta, entityContext, evide
         <p className="border-t border-cm-border-subtle px-4 py-3 font-mono text-[10px] text-cm-bad sm:px-5">
           Webhook error: {String(webhookMeta.error)}
         </p>
+      ) : null}
+
+      {modelLine || analyzedAt ? (
+        <div className="border-t border-cm-border-subtle px-4 py-2 sm:px-5 font-mono text-[9px] text-cm-faint">
+          {modelLine ? <p>Model · {modelLine}</p> : null}
+          {analyzedAt ? <p className={modelLine ? "mt-0.5" : ""}>Analyzed · {analyzedAt}</p> : null}
+        </div>
       ) : null}
 
       <ExpandableRaw label="Full analyst payload (JSON)" data={enriched} />
@@ -999,7 +1135,11 @@ export function Dashboard() {
       if (j) {
         groqLastReasoningAtRef.current = Date.now();
         setGroqLastCompletedAt(Date.now());
-        setGroqAnalysis(j.analysis ?? null);
+        setGroqAnalysis(
+          j.analysis && typeof j.analysis === "object"
+            ? { ...j.analysis, ...(j.model ? { model: j.model } : {}) }
+            : null,
+        );
         setGroqWebhookMeta(j.webhook ?? null);
       }
     } catch (e) {
