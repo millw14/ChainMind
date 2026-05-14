@@ -1,21 +1,15 @@
-/**
- * Compute and persist scope_baselines from Turso events (same row fetch as score-core / tursoFetchScoreRows).
- *
- * First run (single scope):
- *   npm run baseline:update -- <base58> --force
- *
- * Expect regime=, buckets=, span=, shallow= in the log. shallow=true means <2h baseline span — ingest
- * more history (e.g. npm run backfill), then re-run with --force.
- */
 import { loadEnv } from "../lib/load-env.js";
 loadEnv();
 
 import { PublicKey } from "@solana/web3.js";
 import {
-  updateBaselineForScope,
-  updateBaselinesForStaleRows,
-} from "../lib/baseline-update-run.js";
-import { getTursoClient } from "../lib/turso.js";
+  computeBaseline,
+  fetchBaseline,
+  fetchStaleBaselines,
+  persistBaseline,
+} from "../lib/baseline-manager.js";
+import { buildTimelineBucketsFromRows } from "../lib/score-math.js";
+import { fetchEventsForScope, getTursoClient } from "../lib/turso.js";
 import { loadWatchlist } from "../lib/watchlist.js";
 
 function parseFlags(argv) {
@@ -36,116 +30,155 @@ function parseFlags(argv) {
 }
 
 const { flags, positional } = parseFlags(process.argv.slice(2));
+
 const force = flags.force === true;
-const staleOnly = flags["stale-only"] === true;
-const windowMinutes = Math.min(
-  120,
-  Math.max(1, Number(flags.window ?? process.env.SCORE_WINDOW_MINUTES ?? "5") || 5),
-);
-const lastHours = Math.min(
-  24 * 90,
-  Math.max(1, Number(flags.hours ?? flags.lookback ?? "168") || 168),
-);
-const staleDays = Math.min(365, Math.max(1, Number(flags["stale-days"] ?? "1") || 1));
+const windowMin = Math.min(60, Math.max(1, Number(flags.window ?? process.env.SCORE_WINDOW_MINUTES ?? "5") || 5));
+const lookbackH = Math.min(24 * 30, Math.max(1, Number(flags.hours ?? "168") || 168));
+const maxAgeDays = Math.max(0, Number(flags["max-age-days"] ?? "1") || 1);
+const scopeDelayMs = Math.max(0, Number(flags["scope-delay-ms"] ?? "400") || 400);
 
-const opts = { lastHours, force };
-
-/**
- * @param {Awaited<ReturnType<typeof updateBaselineForScope>>} r
- * @param {string} scopeAddress
- */
-function logScopeResult(r, scopeAddress) {
-  if (r.status === "skip") {
-    console.log(`  skip ${scopeAddress}: ${r.detail ?? "?"}`);
-    return;
-  }
-  const b = r.baseline;
-  if (!b) return;
-  console.log(
-    `  ok ${scopeAddress} regime=${b.regime} buckets=${b.bucket_count} span=${b.span_hours}h shallow=${b.shallow_history}`,
-  );
-}
-
-const client = getTursoClient();
-if (!client) {
-  console.error("TURSO_DATABASE_URL and TURSO_AUTH_TOKEN must be set.");
-  process.exit(1);
-}
-
-const single =
+// Single-scope override (mirrors ingest-events pattern)
+const singleScope =
   positional[0]?.trim() ||
   process.env.CHAINMIND_SCOPE?.trim() ||
   process.env.TARGET_ADDRESS?.trim() ||
-  "";
+  null;
 
-if (single) {
-  let scope;
+function sleep(ms) {
+  return new Promise((r) => setTimeout(r, ms));
+}
+
+function validateBase58(addr) {
   try {
-    scope = new PublicKey(single).toBase58();
+    return new PublicKey(addr).toBase58();
   } catch {
-    console.error("Invalid base58 address:", single);
+    return null;
+  }
+}
+
+function fmtBaseline(b) {
+  if (!b) return "none stored";
+  return `regime=${b.regime} buckets=${b.bucket_count} span=${b.span_hours ?? "?"}h shallow=${b.shallow_history}`;
+}
+
+async function processScope(turso, scopeAddress, windowMinutes, lookbackHours) {
+  const cutoffSec = Math.floor(Date.now() / 1000) - lookbackHours * 3600;
+  let rows;
+  try {
+    rows = await fetchEventsForScope(turso, scopeAddress, cutoffSec);
+  } catch (e) {
+    return { ok: false, reason: `turso fetch failed: ${String(e?.message ?? e)}` };
+  }
+
+  if (rows.length < 8) {
+    return { ok: false, reason: `insufficient events (${rows.length} — need ≥ 8)` };
+  }
+
+  const timelineBuckets = buildTimelineBucketsFromRows(rows, windowMinutes);
+
+  if (timelineBuckets.length < 8) {
+    return { ok: false, reason: `insufficient buckets (${timelineBuckets.length} — need ≥ 8)` };
+  }
+
+  const baseline = computeBaseline(timelineBuckets, windowMinutes);
+  if (!baseline) {
+    return { ok: false, reason: "computeBaseline returned null" };
+  }
+
+  await persistBaseline(turso, scopeAddress, baseline);
+  return { ok: true, baseline };
+}
+
+async function main() {
+  console.log("ChainMind baseline:update");
+  console.log("-------------------------");
+  console.log("Window        :", windowMin, "min");
+  console.log("Lookback      :", lookbackH, "h");
+  console.log(
+    "Force refresh :",
+    force ? "yes (--force)" : `no — skip scopes whose baseline is newer than max-age-days=${maxAgeDays}`,
+  );
+  console.log("");
+
+  const turso = getTursoClient();
+  if (!turso) {
+    console.error("TURSO_* env vars not configured — baseline:update requires Turso.");
     process.exit(1);
   }
 
-  console.log("baseline:update (single scope)");
-  console.log("--------------------------");
-  console.log("Scope           :", scope);
-  console.log("Window minutes  :", windowMinutes);
-  console.log("Lookback hours  :", lastHours);
-  console.log("Force shallow   :", force);
-  console.log("");
-  const r = await updateBaselineForScope(client, scope, windowMinutes, opts);
-  logScopeResult(r, scope);
-  process.exit(0);
-}
-
-if (staleOnly) {
-  console.log("baseline:update (--stale-only)");
-  console.log("-----------------------------");
-  console.log("Lookback hours  :", lastHours);
-  console.log("Force shallow   :", force);
-  console.log("");
-  const { staleRowCount, results } = await updateBaselinesForStaleRows(client, staleDays, opts);
-  console.log("Stale rows      :", staleRowCount, `(computed_at older than ${staleDays}d)`);
-  for (const row of results) {
-    const label = `${row.scope} (window=${row.bucketWidthMinutes}m)`;
-    if (row.status === "skip") {
-      console.log(`  skip ${label}: ${row.detail ?? "?"}`);
-    } else {
-      console.log(
-        `  ok ${label} regime=${row.regime} buckets=${row.bucket_count} span=${row.span_hours}h shallow=${row.shallow}`,
-      );
+  let scopes;
+  if (singleScope) {
+    const addr = validateBase58(singleScope);
+    if (!addr) {
+      console.error("Invalid base58 address:", singleScope);
+      process.exit(1);
     }
+    scopes = [{ address: addr, note: "single scope (CLI arg / env)" }];
+  } else {
+    const watchlist = loadWatchlist();
+    if (watchlist.length === 0) {
+      console.error("No watchlist scopes found. Add scopes to config/watchlist.json or set CHAINMIND_SCOPE.");
+      process.exit(1);
+    }
+    scopes = watchlist;
   }
-  process.exit(0);
+
+  const staleSet = new Set();
+  if (!force) {
+    const staleRows = await fetchStaleBaselines(turso, maxAgeDays);
+    for (const r of staleRows) staleSet.add(String(r.scope_address));
+  }
+
+  console.log(`Scopes to process: ${scopes.length}`);
+  console.log("");
+
+  let updated = 0;
+  let skipped = 0;
+  let failed = 0;
+
+  for (const s of scopes) {
+    const addr = validateBase58(s.address);
+    if (!addr) {
+      console.warn(`  SKIP invalid address: ${s.address}`);
+      skipped++;
+      continue;
+    }
+
+    const label = s.note ? `${addr} — ${s.note}` : addr;
+
+    if (!force) {
+      const existing = await fetchBaseline(turso, addr, windowMin);
+      if (existing && !staleSet.has(addr)) {
+        const ageH = Math.round((Date.now() / 1000 - Number(existing.computed_at)) / 3600);
+        console.log(`  SKIP ${label}`);
+        console.log(`       baseline fresh (${ageH}h old, max-age-days=${maxAgeDays})`);
+        skipped++;
+        if (scopeDelayMs > 0) await sleep(scopeDelayMs);
+        continue;
+      }
+    }
+
+    console.log(`  → ${label}`);
+    const result = await processScope(turso, addr, windowMin, lookbackH);
+
+    if (result.ok) {
+      updated++;
+      console.log(`    ✓ ${fmtBaseline(result.baseline)}`);
+    } else {
+      failed++;
+      console.warn(`    ✗ ${result.reason}`);
+    }
+
+    if (scopeDelayMs > 0) await sleep(scopeDelayMs);
+  }
+
+  console.log("");
+  console.log("Done.");
+  console.log(`  Updated : ${updated}`);
+  console.log(`  Skipped : ${skipped}`);
+  console.log(`  Failed  : ${failed}`);
+
+  if (failed > 0) process.exit(1);
 }
 
-const scopes = loadWatchlist();
-if (scopes.length === 0) {
-  console.error(`
-Usage:
-  npm run baseline:update -- <base58> [--force] [--window=5] [--hours=168]
-  npm run baseline:update [--force] [--window=5] [--hours=168]   # all scopes in watchlist
-  npm run baseline:update --stale-only [--stale-days=1] [--force]
-
-Single-scope env: CHAINMIND_SCOPE / TARGET_ADDRESS
-Watchlist: config/watchlist.json or CHAINMIND_WATCHLIST / CHAINMIND_WATCHLIST_JSON
-
-${force ? "" : "Use --force to persist when shallow=true (short baseline span).\n"}`);
-  process.exit(1);
-}
-
-console.log("baseline:update (watchlist)");
-console.log("---------------------------");
-console.log("Scopes          :", scopes.length);
-console.log("Window minutes  :", windowMinutes);
-console.log("Lookback hours  :", lastHours);
-console.log("Force shallow   :", force);
-console.log("");
-
-for (const s of scopes) {
-  const label = s.note ? `${s.address} — ${s.note}` : s.address;
-  console.log("—", label);
-  const r = await updateBaselineForScope(client, s.address, windowMinutes, opts);
-  logScopeResult(r, s.address);
-}
+await main();
