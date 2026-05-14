@@ -150,7 +150,7 @@ function InspectBody({ data, loading, hasFocus, solscanTx }) {
   );
 }
 
-function DbBody({ data, loading }) {
+function DbBody({ data, loading, watchScope }) {
   if (loading) {
     return <p className="py-8 text-center text-sm text-cm-faint">Loading synced counts…</p>;
   }
@@ -177,9 +177,12 @@ function DbBody({ data, loading }) {
     );
   }
   const scopes = data.byScope ?? [];
+  const watch = typeof watchScope === "string" ? watchScope.trim() : "";
+  const graphReady = data.edgesTotal != null;
+
   return (
     <div className="space-y-4">
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         <div className="rounded-md border border-cm-border bg-cm-row/60 px-4 py-3">
           <dt className="text-xs text-cm-faint">Signatures stored</dt>
           <dd className="mt-1 text-xl font-semibold tabular-nums text-cm-text">
@@ -192,11 +195,39 @@ function DbBody({ data, loading }) {
             {(data.eventsTotal ?? 0).toLocaleString()}
           </dd>
         </div>
-        <div className="col-span-2 rounded-md border border-cm-border bg-cm-row/60 px-4 py-3 sm:col-span-1">
+        <div className="rounded-md border border-cm-border bg-cm-row/60 px-4 py-3">
+          <dt className="text-xs text-cm-faint">Graph edges</dt>
+          <dd className="mt-1 text-xl font-semibold tabular-nums text-cm-text">
+            {graphReady ? (data.edgesTotal ?? 0).toLocaleString() : "—"}
+          </dd>
+          {!graphReady ? (
+            <p className="mt-1 text-[10px] leading-snug text-cm-faint">
+              Apply schema (<code className="text-cm-muted">edges</code>) + sync
+            </p>
+          ) : null}
+        </div>
+        <div className="rounded-md border border-cm-border bg-cm-row/60 px-4 py-3">
           <dt className="text-xs text-cm-faint">Store</dt>
           <dd className="mt-1 text-sm font-medium capitalize text-cm-text">{data.database ?? "—"}</dd>
         </div>
       </div>
+      {watch && graphReady ? (
+        <p className="text-xs text-cm-muted">
+          Watch target{" "}
+          <span className="font-[family-name:var(--font-mono)] text-cm-accent-bright">{shortSig(watch)}</span>
+          {" — "}
+          {(() => {
+            const row = scopes.find((s) => s.scope === watch);
+            if (!row) {
+              return "no rows for this scope in Turso yet (backfill + turso:sync).";
+            }
+            const fe = row.fundingLikeEdges;
+            const ed = row.edges ?? 0;
+            const fl = typeof fe === "number" ? fe : 0;
+            return `${ed.toLocaleString()} edges (${fl.toLocaleString()} funding-like) — Groq funding slice uses this.`;
+          })()}
+        </p>
+      ) : null}
       {scopes.length > 0 ? (
         <div className="overflow-x-auto rounded-md border border-cm-border">
           <table className="w-full text-left text-sm">
@@ -205,16 +236,32 @@ function DbBody({ data, loading }) {
                 <th className="px-3 py-2">Tracked address</th>
                 <th className="px-3 py-2">Signatures</th>
                 <th className="px-3 py-2">Events</th>
+                <th className="px-3 py-2">Edges</th>
+                <th className="px-3 py-2">Funding-like</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-cm-border">
               {scopes.map((s) => (
-                <tr key={s.scope} className="bg-cm-row/30">
+                <tr
+                  key={s.scope}
+                  className={`bg-cm-row/30 ${watch && s.scope === watch ? "ring-1 ring-inset ring-cm-accent/40" : ""}`}
+                >
                   <td className="max-w-[12rem] truncate px-3 py-2 font-[family-name:var(--font-mono)] text-xs text-cm-subtle">
                     {s.scope}
+                    {watch && s.scope === watch ? (
+                      <span className="ml-2 rounded bg-cm-accent/15 px-1 py-px text-[9px] font-semibold text-cm-accent-bright">
+                        watch
+                      </span>
+                    ) : null}
                   </td>
                   <td className="px-3 py-2 tabular-nums text-cm-muted">{(s.signatures ?? 0).toLocaleString()}</td>
                   <td className="px-3 py-2 tabular-nums text-cm-muted">{(s.events ?? 0).toLocaleString()}</td>
+                  <td className="px-3 py-2 tabular-nums text-cm-muted">
+                    {typeof s.edges === "number" ? s.edges.toLocaleString() : "—"}
+                  </td>
+                  <td className="px-3 py-2 tabular-nums text-cm-muted">
+                    {typeof s.fundingLikeEdges === "number" ? s.fundingLikeEdges.toLocaleString() : "—"}
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -222,7 +269,9 @@ function DbBody({ data, loading }) {
         </div>
       ) : null}
       <p className="mt-4 border-t border-cm-border-subtle pt-4 font-mono text-[10px] leading-relaxed text-cm-faint">
-        Funding-graph clustering and exportable case bundles ship next — counts below feed coordination scoring today.
+        <strong className="font-semibold text-cm-muted">Funding-like edges</strong> (
+        {(data.graphFundingEdgeTypes ?? ["token_transfer", "fee_payer_cosigner", "mint_to"]).join(", ")}) feed the Groq
+        funding slice when payers match; zero here means backfill/sync has not populated graph rows for this scope.
       </p>
       <ExpandableRaw data={data} />
     </div>
@@ -921,7 +970,7 @@ export function Dashboard() {
 
         <motion.div variants={panelV} className="grid gap-6 lg:grid-cols-2">
           <Panel kicker="Corpus" title="Synced datastore" subtitle="Signatures & parsed events mirrored for analysis">
-            <DbBody data={dbStats} loading={loading.db && dbStats == null} />
+            <DbBody data={dbStats} loading={loading.db && dbStats == null} watchScope={focusAddress} />
             {dbStats != null && loading.db ? (
               <p className="mt-3 text-center font-mono text-[10px] text-cm-faint">Refreshing counts…</p>
             ) : null}
