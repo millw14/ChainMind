@@ -19,6 +19,7 @@
     "dashboard-legacy": "node server/server.mjs",
     "turso:schema": "node scripts/turso-init-schema.mjs",
     "turso:sync": "node scripts/sync-sqlite-to-turso.mjs",
+    "intel:cross-mint": "node scripts/cross-mint-recompute.mjs",
     "wallet-age:backfill": "node scripts/wallet-first-seen.mjs",
     "pipeline": "node scripts/pipeline-worker.mjs",
     "pipeline:once": "node scripts/pipeline-worker.mjs --once",

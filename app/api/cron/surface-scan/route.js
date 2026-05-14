@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { appBaseUrl } from "@/lib/app-base-url.js";
+import { recomputeCrossMintIntel } from "@/lib/cross-mint-intel.js";
 import { evaluateSurfaceTriggers, externalRulesDocumentation } from "@/lib/surface-triggers.js";
 import { getTursoClient, tursoInsertSurfaceHits } from "@/lib/turso.js";
 import { loadWatchlist } from "@/lib/watchlist.js";
@@ -121,12 +122,30 @@ export async function GET(request) {
     }
   }
 
+  /** @type {Awaited<ReturnType<typeof recomputeCrossMintIntel>> | { ok: false; error: string } | null} */
+  let crossMint = null;
+  if (client && scopes.length >= 2) {
+    try {
+      const topN = Math.min(48, Math.max(5, Number(process.env.CROSS_MINT_TOP_PAYERS ?? 18) || 18));
+      const minCluster = Math.min(24, Math.max(2, Number(process.env.CROSS_MINT_MIN_CLUSTER ?? 3) || 3));
+      crossMint = await recomputeCrossMintIntel(client, scopes.map((s) => s.address), {
+        lookbackHours: hours,
+        topN,
+        minClusterMembers: minCluster,
+      });
+    } catch (e) {
+      console.error("[surface-scan] cross-mint intel", e);
+      crossMint = { ok: false, error: String(e?.message ?? e) };
+    }
+  }
+
   return NextResponse.json({
     ok: true,
     scanned: scopes.length,
     hitsTotal: toRecord.length,
     hitsPersisted: persisted,
     ping: ping?.error ? { error: ping.error } : { ok: true },
+    crossMint,
     rulesNotYetWired: externalRulesDocumentation(),
     results: results.map((r) => ({
       scope: r.scope,
