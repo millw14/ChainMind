@@ -10,38 +10,10 @@ import {
   normalizeVerdictWindow,
 } from "@/lib/groq-verdict-card.js";
 import { buildGroqUserEvidence } from "@/lib/groq-user-evidence.js";
+import { buildGroqBriefUserContent, GROQ_BRIEF_SYSTEM_PROMPT } from "@/lib/groq-brief-prompts.js";
 
 export const maxDuration = 60;
 export const runtime = "nodejs";
-
-const SYSTEM_PROMPT = `You are ChainMind, a crypto manipulation analyst for Solana.
-You receive structured evidence (metrics, funding graph, optional aiDetection). Calibrate confidence (0..1) and tie claims to Evidence fields — do not invent funding or account age not present.
-
-When Evidence.aiDetection exists, treat it as labeled features, not ground truth. Use aiDetection.dataAvailability so empty transfers are not read as "clean".
-When fundingGraph.status is "attached" and sharedInboundFunders is non-empty, shared provisioning is evidence you may weigh heavily.
-Use Evidence.scopeAddress or top-level Evidence.address when filling "scope".
-
-Respond with ONLY valid JSON (no markdown fences, no commentary before or after):
-{
-  "verdict": "escalate | monitor | dismiss",
-  "confidence": 0.0,
-  "pattern": "coordinated-accumulation | wash-rotation | sybil-pump | time-synchronized-burst | organic | unknown",
-  "scope": "<base58 address>",
-  "window": { "start": "ISO8601", "end": "ISO8601", "duration_minutes": 0 },
-  "signals": [
-    { "type": "fee-payer-concentration | timing-cluster | repeated-route | shared-funder", "weight": 0.0, "detail": "fact tied to Evidence" }
-  ],
-  "top_evidence": [ { "signature": "<tx sig>", "slot": 0, "actor": "<wallet>", "action": "short description" } ],
-  "next_action": "what an analyst should do next — name an entity or signature from Evidence",
-  "flags": ["low-liquidity-window", "repeat-pattern", "cross-scope-match"],
-  "limiting_factors": ["data gaps optional"],
-  "named_entities": ["base58 or signatures only"],
-  "confidence_reasoning": "short calibration line",
-  "manipulation_vs_benign": "one or two short sentences"
-}
-
-Legacy mapping if needed: manipulation_detected→escalate, suspicious→monitor, clean→dismiss.
-signals.weight is 0..1. Prefer 2+ signals when Evidence supports it. named_entities must be identifiers only.`;
 
 function truncate(s, max = 12000) {
   const t = String(s);
@@ -247,9 +219,7 @@ export async function POST(request) {
       ? buildGroqUserEvidence(data)
       : { error: "Expected object snapshot", raw: typeof data === "string" ? data.slice(0, 500) : null };
 
-  const userBlock = truncate(
-    ["Evidence:", JSON.stringify(userEvidence, null, 2), focus ? `\n\nNote:\n${focus}` : ""].join("\n"),
-  );
+  const userBlock = truncate(buildGroqBriefUserContent(JSON.stringify(userEvidence, null, 2), focus));
 
   const model = process.env.GROQ_MODEL?.trim() || "llama-3.3-70b-versatile";
 
@@ -260,7 +230,7 @@ export async function POST(request) {
       body: JSON.stringify({
         model,
         messages: [
-          { role: "system", content: SYSTEM_PROMPT },
+          { role: "system", content: GROQ_BRIEF_SYSTEM_PROMPT },
           { role: "user", content: userBlock },
         ],
         temperature: 0.15,
