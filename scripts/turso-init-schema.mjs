@@ -16,10 +16,25 @@ if (!client) {
   process.exit(1);
 }
 
+/**
+ * Strip leading full-line SQL comments so a block like
+ * "-- comment\nCREATE TABLE ..." is not dropped by mistake.
+ * @param {string} s
+ */
+function stripLeadingLineComments(s) {
+  const lines = s.split(/\r?\n/);
+  while (lines.length > 0) {
+    const t = lines[0].trim();
+    if (t === "" || t.startsWith("--")) lines.shift();
+    else break;
+  }
+  return lines.join("\n").trim();
+}
+
 const parts = raw
   .split(/;\s*(?:\r?\n|$)/)
-  .map((s) => s.trim())
-  .filter((s) => s.length > 0 && !s.startsWith("--"));
+  .map((s) => stripLeadingLineComments(s.trim()))
+  .filter((s) => s.length > 0);
 
 for (const statement of parts) {
   await client.execute(statement + ";");
