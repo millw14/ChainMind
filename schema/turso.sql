@@ -133,3 +133,19 @@ CREATE TABLE IF NOT EXISTS wallet_first_seen (
 
 CREATE INDEX IF NOT EXISTS idx_wallet_first_seen_block_time
   ON wallet_first_seen (first_block_time DESC);
+
+-- Shareable frozen case files (JSON payload); created via POST /api/cases
+CREATE TABLE IF NOT EXISTS investigation_cases (
+  id TEXT PRIMARY KEY,
+  scope_address TEXT NOT NULL,
+  created_at INTEGER NOT NULL,
+  window_minutes INTEGER NOT NULL,
+  last_hours INTEGER NOT NULL,
+  payload_json TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_investigation_cases_scope
+  ON investigation_cases (scope_address);
+
+CREATE INDEX IF NOT EXISTS idx_investigation_cases_created
+  ON investigation_cases (created_at DESC);
