@@ -9,8 +9,10 @@ import {
   normalizeTriVerdict,
   normalizeVerdictWindow,
 } from "@/lib/groq-verdict-card.js";
+import { buildGroqEvidenceBlockText } from "@/lib/groq-evidence-block.js";
 import { buildGroqUserEvidence } from "@/lib/groq-user-evidence.js";
 import { buildGroqBriefUserContent, GROQ_BRIEF_SYSTEM_PROMPT } from "@/lib/groq-brief-prompts.js";
+import { getTursoClient, tursoFetchRecentCaseVerdictsForScope } from "@/lib/turso.js";
 
 export const maxDuration = 60;
 export const runtime = "nodejs";
@@ -219,7 +221,30 @@ export async function POST(request) {
       ? buildGroqUserEvidence(data)
       : { error: "Expected object snapshot", raw: typeof data === "string" ? data.slice(0, 500) : null };
 
-  const userBlock = truncate(buildGroqBriefUserContent(JSON.stringify(userEvidence, null, 2), focus));
+  let priorVerdicts = [];
+  const evidenceAddr = pickEvidenceAddress(data);
+  if (evidenceAddr && userEvidence && typeof userEvidence === "object" && !("error" in userEvidence)) {
+    const turso = getTursoClient();
+    if (turso) {
+      try {
+        priorVerdicts = await tursoFetchRecentCaseVerdictsForScope(turso, evidenceAddr, 3);
+      } catch (e) {
+        console.error("[groq-brief] prior verdicts", e);
+      }
+    }
+  }
+
+  const evidenceForPrompt =
+    userEvidence && typeof userEvidence === "object" && !("error" in userEvidence)
+      ? { ...userEvidence, priorVerdicts }
+      : userEvidence;
+
+  const evidenceNarrative = buildGroqEvidenceBlockText(
+    evidenceForPrompt && typeof evidenceForPrompt === "object" ? evidenceForPrompt : {},
+  );
+  const userBlock = truncate(
+    buildGroqBriefUserContent(evidenceNarrative, JSON.stringify(evidenceForPrompt, null, 2), focus),
+  );
 
   const model = process.env.GROQ_MODEL?.trim() || "llama-3.3-70b-versatile";
 
@@ -267,7 +292,7 @@ export async function POST(request) {
   let analysis;
   try {
     analysis = normalizeAnalysis(JSON.parse(extractJsonObject(text)));
-    analysis = enrichAnalysisWithVerdictStructure(analysis, userEvidence);
+    analysis = enrichAnalysisWithVerdictStructure(analysis, evidenceForPrompt);
     analysis.model = model;
     if (!analysis.analyzed_at || typeof analysis.analyzed_at !== "string") {
       analysis.analyzed_at = new Date().toISOString();
