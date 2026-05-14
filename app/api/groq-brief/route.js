@@ -252,7 +252,9 @@ export async function POST(request) {
   if (!groqRes.ok) {
     const errMsg = parsed?.error?.message ?? parsed?.message ?? groqRes.statusText;
     console.error("[groq-brief] Groq error", groqRes.status, errMsg);
-    return NextResponse.json({ error: String(errMsg).slice(0, 500) }, { status: 502 });
+    const status = groqRes.status === 429 ? 429 : 502;
+    const cap = status === 429 ? 8000 : 500;
+    return NextResponse.json({ error: String(errMsg).slice(0, cap) }, { status });
   }
 
   const text = parsed?.choices?.[0]?.message?.content?.trim();

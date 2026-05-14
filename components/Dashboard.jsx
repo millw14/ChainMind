@@ -75,6 +75,43 @@ function ErrorCallout({ message }) {
   );
 }
 
+/**
+ * Groq free tier often returns long rate-limit bodies; surface a calm summary + optional retry hint.
+ * @param {{ message: string | null | undefined }} props
+ */
+function GroqErrorCallout({ message }) {
+  const raw = String(message ?? "");
+  const lower = raw.toLowerCase();
+  const looksLikeRateLimit =
+    lower.includes("rate limit") || lower.includes("tokens per day") || lower.includes("tpd");
+  if (looksLikeRateLimit) {
+    const retry = raw.match(/try again in ([^\n.]+)/i);
+    return (
+      <div className="rounded-md border border-cm-warn/50 bg-cm-warn/10 px-4 py-3 text-sm leading-relaxed text-cm-subtle">
+        <p className="font-medium text-cm-warn">Groq daily token budget exhausted</p>
+        <p className="mt-2">
+          Your key/org hit Groq’s <strong>tokens-per-day</strong> limit on this model tier. Nothing is wrong with
+          ChainMind — the provider is refusing the call until the window resets or you raise the cap.
+        </p>
+        {retry ? (
+          <p className="mt-2 font-mono text-[11px] text-cm-muted">Typical retry: ~{retry[1].trim()}</p>
+        ) : null}
+        <p className="mt-2 text-xs text-cm-faint">
+          You can wait, adjust usage (e.g. less frequent reasoning), set a cheaper{" "}
+          <code className="text-cm-muted">GROQ_MODEL</code>, or change billing tier in the Groq console.
+        </p>
+        <details className="mt-3 rounded border border-cm-border-subtle bg-cm-surface/40 px-2 py-1">
+          <summary className="cursor-pointer select-none text-xs text-cm-faint">Provider message (full)</summary>
+          <pre className="mt-2 max-h-40 overflow-auto whitespace-pre-wrap break-all font-mono text-[10px] text-cm-muted">
+            {raw}
+          </pre>
+        </details>
+      </div>
+    );
+  }
+  return <ErrorCallout message={raw} />;
+}
+
 function InfoCallout({ children }) {
   return (
     <div className="rounded-md border border-cm-warn/40 bg-cm-warn/10 px-4 py-3 text-sm leading-relaxed text-cm-subtle">
@@ -398,7 +435,7 @@ function BriefBody({ analysis, error, loading, webhookMeta, entityContext }) {
     return <p className="py-8 text-center text-sm text-cm-faint">Running ChainMind analyst…</p>;
   }
   if (error) {
-    return <ErrorCallout message={error} />;
+    return <GroqErrorCallout message={error} />;
   }
   if (!analysis) {
     return (
