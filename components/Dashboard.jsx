@@ -487,11 +487,13 @@ function BriefBody({ analysis, error, loading, webhookMeta, entityContext }) {
                       {rows.map((r, j) => (
                         <li
                           key={j}
-                          className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 font-[family-name:var(--font-mono)] text-[11px]"
+                          className="grid grid-cols-[minmax(0,11rem)_1rem_minmax(0,1fr)] items-baseline gap-x-2 font-[family-name:var(--font-mono)] text-[11px] leading-snug sm:grid-cols-[minmax(0,12.5rem)_1.25rem_minmax(0,1fr)]"
                         >
-                          <span className="shrink-0 break-all text-cm-accent-bright">{r.shortId}</span>
-                          <span className="text-cm-faint">→</span>
-                          <span className="text-cm-subtle">{r.role}</span>
+                          <span className="min-w-0 truncate text-cm-accent-bright" title={r.fullId}>
+                            {r.shortId}
+                          </span>
+                          <span className="text-center text-cm-faint">→</span>
+                          <span className="min-w-0 text-cm-subtle">{r.role}</span>
                         </li>
                       ))}
                     </ul>
