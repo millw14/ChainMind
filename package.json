@@ -26,7 +26,8 @@
     "mirror:up": "npm run pipeline:once && npm run turso:sync",
     "watch": "node scripts/watch.mjs",
     "helius-scan": "node scripts/helius-watchlist-scanner.mjs",
-    "helius-scan:once": "node scripts/helius-watchlist-scanner.mjs --once"
+    "helius-scan:once": "node scripts/helius-watchlist-scanner.mjs --once",
+    "baseline:update": "node scripts/baseline-update.mjs"
   },
   "dependencies": {
     "@libsql/client": "^0.14.0",
