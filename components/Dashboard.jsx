@@ -1119,21 +1119,14 @@ export function Dashboard() {
   const runGroqAnalysis = useCallback(
     async (source) => {
       if (!groqEvidence?.address) return null;
-      const walletEvidence =
-        typeof walletTableRef.current?.getRawEvidence === "function"
-          ? walletTableRef.current.getRawEvidence()
-          : null;
-      const dataPayload =
-        walletEvidence != null &&
-        typeof walletEvidence === "object" &&
-        !("error" in walletEvidence && typeof walletEvidence.error === "string")
-          ? { ...groqEvidence, walletEvidence }
-          : groqEvidence;
+      // Merge wallet table payload into Groq POST (see lib/integration-notes.js)
+      const walletEvidence = walletTableRef.current?.getRawEvidence?.() ?? null;
+      const groqData = { ...groqEvidence, walletEvidence: walletEvidence ?? null };
       const r = await fetch("/api/groq-brief", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          data: dataPayload,
+          data: groqData,
           source,
           focus: GROQ_BRIEF_USER_FOCUS,
         }),
