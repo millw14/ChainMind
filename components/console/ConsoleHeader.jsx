@@ -18,6 +18,9 @@ export function ConsoleHeader() {
           </div>
         </div>
         <nav className="flex shrink-0 items-center gap-4 font-mono text-xs">
+          <Link href="/dashboard" className="font-medium text-cm-accent-bright hover:text-cm-text">
+            Dashboard
+          </Link>
           <Link href="/docs" className="text-cm-muted hover:text-cm-text">
             Docs
           </Link>

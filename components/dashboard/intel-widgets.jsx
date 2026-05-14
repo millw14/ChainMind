@@ -423,6 +423,7 @@ export function SurfaceFeedStrip({ hits, loading, hint, onPickScope }) {
   const reduce = useReducedMotion() ?? false;
   return (
     <motion.div
+      id="autonomous-surfaces"
       className="rounded-md border border-cm-border bg-cm-card/80 px-4 py-4 sm:px-5"
       initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
