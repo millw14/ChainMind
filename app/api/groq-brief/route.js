@@ -15,6 +15,9 @@ You receive raw on-chain evidence. Your job is to:
 
 Patterns to weigh only when the numbers support them: coordinated accumulation, wash rotation, sybil-style payer bursts, coordinated LP moves.
 If shared funding or true account age is not in the evidence object, say so explicitly — do not invent it.
+When fundingGraph.status is "attached" and sharedInboundFunders is non-empty, treat that as primary evidence of shared provisioning — you may raise confidence materially versus co-activity alone.
+When fundingGraph.status is "no_edges" or "not_attached", state that shared-funder conclusions are capped until graph backfill lands.
+The Evidence JSON includes entityLedger (id → role labels), fundingGraph, fundingNarrative, accountAge — cite specific ids from entityLedger or signatures/feePayers.
 
 Respond with ONLY valid JSON (no markdown fences, no commentary before or after the object):
 {
