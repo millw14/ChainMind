@@ -41,6 +41,25 @@ CREATE INDEX IF NOT EXISTS idx_events_scope_time
 CREATE INDEX IF NOT EXISTS idx_events_scope_fee_payer
   ON events (scope_address, fee_payer);
 
+-- Per-scope time-bucket baselines for z-scores / regime-aware layers (see migrations/003_scope_baselines.sql).
+CREATE TABLE IF NOT EXISTS scope_baselines (
+  scope_address TEXT NOT NULL,
+  bucket_width_minutes INTEGER NOT NULL,
+  baseline_start_sec INTEGER NOT NULL,
+  baseline_end_sec INTEGER NOT NULL,
+  mean_event_count REAL NOT NULL,
+  std_event_count REAL NOT NULL,
+  mean_wallet_count REAL NOT NULL,
+  std_wallet_count REAL NOT NULL,
+  bucket_count INTEGER NOT NULL,
+  regime TEXT NOT NULL DEFAULT 'calm', -- calm | active | unknown
+  computed_at INTEGER NOT NULL,
+  PRIMARY KEY (scope_address, bucket_width_minutes)
+);
+
+CREATE INDEX IF NOT EXISTS idx_scope_baselines_computed
+  ON scope_baselines (computed_at);
+
 CREATE TABLE IF NOT EXISTS signers (
   tx_sig TEXT NOT NULL,
   scope_address TEXT NOT NULL,
