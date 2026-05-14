@@ -27,7 +27,8 @@
     "watch": "node scripts/watch.mjs",
     "helius-scan": "node scripts/helius-watchlist-scanner.mjs",
     "helius-scan:once": "node scripts/helius-watchlist-scanner.mjs --once",
-    "baseline:update": "node scripts/baseline-update.mjs"
+    "baseline:update": "node scripts/baseline-update.mjs",
+    "evidence": "node scripts/run-evidence.mjs"
   },
   "dependencies": {
     "@libsql/client": "^0.14.0",
