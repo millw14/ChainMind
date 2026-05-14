@@ -191,7 +191,9 @@ CREATE TABLE IF NOT EXISTS intel_cluster_track (
   first_seen INTEGER NOT NULL,
   last_seen INTEGER NOT NULL,
   observation_count INTEGER NOT NULL DEFAULT 1,
-  last_pair_score_avg REAL
+  last_pair_score_avg REAL,
+  canonical_cluster_id TEXT
 );
 
 CREATE INDEX IF NOT EXISTS idx_cluster_track_last_seen ON intel_cluster_track (last_seen DESC);
+CREATE INDEX IF NOT EXISTS idx_cluster_track_canonical ON intel_cluster_track (canonical_cluster_id);

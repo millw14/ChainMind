@@ -417,9 +417,10 @@ const surfaceSeverityBar = {
  *   loading?: boolean,
  *   hint?: string | null,
  *   onPickScope?: (address: string) => void,
+ *   onPinCompare?: (address: string) => void,
  * }} props
  */
-export function SurfaceFeedStrip({ hits, loading, hint, onPickScope }) {
+export function SurfaceFeedStrip({ hits, loading, hint, onPickScope, onPinCompare }) {
   const reduce = useReducedMotion() ?? false;
   return (
     <motion.div
@@ -464,14 +465,29 @@ export function SurfaceFeedStrip({ hits, loading, hint, onPickScope }) {
                 className={`rounded-md border border-cm-border-subtle border-l-4 bg-cm-row/30 px-3 py-2 ${sev}`}
               >
                 <div className="flex flex-wrap items-center justify-between gap-2">
-                  <button
-                    type="button"
-                    onClick={() => onPickScope?.(row.scope_address)}
-                    className="font-mono text-[11px] font-medium text-cm-accent-bright underline-offset-2 hover:underline"
-                    title={row.scope_address}
-                  >
-                    {shortAddr(row.scope_address)}
-                  </button>
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => onPickScope?.(row.scope_address)}
+                      className="font-mono text-[11px] font-medium text-cm-accent-bright underline-offset-2 hover:underline"
+                      title={row.scope_address}
+                    >
+                      {shortAddr(row.scope_address)}
+                    </button>
+                    {onPinCompare ? (
+                      <button
+                        type="button"
+                        title="Pin for multi-focus compare"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onPinCompare(row.scope_address);
+                        }}
+                        className="rounded border border-cm-border-subtle px-1 font-mono text-[9px] text-cm-faint hover:bg-cm-warn/15 hover:text-cm-warn"
+                      >
+                        +
+                      </button>
+                    ) : null}
+                  </div>
                   <span className="font-mono text-[9px] uppercase tracking-wide text-cm-faint">
                     {row.rule_id.replace(/_/g, " ")}
                   </span>
@@ -501,12 +517,12 @@ const globalKindLabel = {
  *   hint?: string | null,
  *   meta?: { generatedAt?: string, lookbackHoursUsed?: number | null } | null,
  *   onPickScope?: (address: string) => void,
+ *   onPinCompare?: (address: string) => void,
  * }} props
  */
-export function GlobalIntelFeedStrip({ entries, loading, hint, meta, onPickScope }) {
+export function GlobalIntelFeedStrip({ entries, loading, hint, meta, onPickScope, onPinCompare }) {
   const reduce = useReducedMotion() ?? false;
   const list = entries ?? [];
-
   return (
     <motion.div
       id="global-intel-feed"
@@ -570,24 +586,54 @@ export function GlobalIntelFeedStrip({ entries, loading, hint, meta, onPickScope
                     </span>
                     <span className="font-mono text-[9px] text-cm-faint">{shared} shared wallets</span>
                   </div>
-                  <div className="mt-1.5 flex flex-wrap gap-2">
-                    <button
-                      type="button"
-                      onClick={() => onPickScope?.(a)}
-                      className="font-mono text-[11px] font-medium text-cm-accent-bright underline-offset-2 hover:underline"
-                      title={a}
-                    >
-                      {shortAddr(a)}
-                    </button>
+                  <div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1">
+                    <div className="flex items-center gap-1">
+                      <button
+                        type="button"
+                        onClick={() => onPickScope?.(a)}
+                        className="font-mono text-[11px] font-medium text-cm-accent-bright underline-offset-2 hover:underline"
+                        title={a}
+                      >
+                        {shortAddr(a)}
+                      </button>
+                      {onPinCompare ? (
+                        <button
+                          type="button"
+                          title="Pin for multi-focus compare"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onPinCompare(a);
+                          }}
+                          className="rounded border border-cm-border-subtle px-1 font-mono text-[9px] text-cm-faint hover:bg-cm-warn/15 hover:text-cm-warn"
+                        >
+                          +
+                        </button>
+                      ) : null}
+                    </div>
                     <span className="text-cm-faint">↔</span>
-                    <button
-                      type="button"
-                      onClick={() => onPickScope?.(b)}
-                      className="font-mono text-[11px] font-medium text-cm-accent-bright underline-offset-2 hover:underline"
-                      title={b}
-                    >
-                      {shortAddr(b)}
-                    </button>
+                    <div className="flex items-center gap-1">
+                      <button
+                        type="button"
+                        onClick={() => onPickScope?.(b)}
+                        className="font-mono text-[11px] font-medium text-cm-accent-bright underline-offset-2 hover:underline"
+                        title={b}
+                      >
+                        {shortAddr(b)}
+                      </button>
+                      {onPinCompare ? (
+                        <button
+                          type="button"
+                          title="Pin for multi-focus compare"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onPinCompare(b);
+                          }}
+                          className="rounded border border-cm-border-subtle px-1 font-mono text-[9px] text-cm-faint hover:bg-cm-warn/15 hover:text-cm-warn"
+                        >
+                          +
+                        </button>
+                      ) : null}
+                    </div>
                   </div>
                   {item.avgPairScore != null ? (
                     <p className="mt-1 font-mono text-[9px] text-cm-faint">Avg pair score {String(item.avgPairScore)}</p>
@@ -597,7 +643,7 @@ export function GlobalIntelFeedStrip({ entries, loading, hint, meta, onPickScope
             }
 
             if (kind === "persistent_cluster") {
-              const fp = String(item.clusterFingerprint ?? "");
+              const canon = item.canonicalClusterId ? String(item.canonicalClusterId) : "";
               const scopes = Array.isArray(item.scopes) ? item.scopes.filter((s) => typeof s === "string") : [];
               const mc = Number(item.memberCount) || 0;
               const mintC = Number(item.mintCount) || 0;
@@ -616,18 +662,40 @@ export function GlobalIntelFeedStrip({ entries, loading, hint, meta, onPickScope
                   <p className="mt-1 font-mono text-[10px] text-cm-subtle" title={fp}>
                     {fp.length > 20 ? `${fp.slice(0, 12)}…${fp.slice(-6)}` : fp || "—"}
                   </p>
+                  {canon ? (
+                    <p className="mt-0.5 font-mono text-[9px] text-cm-faint" title={canon}>
+                      Lineage{" "}
+                      <span className="text-cm-muted">
+                        {canon.length > 24 ? `${canon.slice(0, 16)}…${canon.slice(-6)}` : canon}
+                      </span>
+                    </p>
+                  ) : null}
                   {scopes.length > 0 ? (
                     <div className="mt-1.5 flex flex-wrap gap-1.5">
                       {scopes.slice(0, 6).map((addr) => (
-                        <button
-                          key={addr}
-                          type="button"
-                          onClick={() => onPickScope?.(addr)}
-                          className="rounded border border-cm-border-subtle bg-cm-surface/50 px-1.5 py-0.5 font-mono text-[10px] text-cm-accent-bright hover:bg-cm-accent/10"
-                          title={addr}
-                        >
-                          {shortAddr(addr)}
-                        </button>
+                        <span key={addr} className="inline-flex items-center gap-0.5">
+                          <button
+                            type="button"
+                            onClick={() => onPickScope?.(addr)}
+                            className="rounded border border-cm-border-subtle bg-cm-surface/50 px-1.5 py-0.5 font-mono text-[10px] text-cm-accent-bright hover:bg-cm-accent/10"
+                            title={addr}
+                          >
+                            {shortAddr(addr)}
+                          </button>
+                          {onPinCompare ? (
+                            <button
+                              type="button"
+                              title="Pin for compare"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                onPinCompare(addr);
+                              }}
+                              className="rounded border border-cm-border-subtle px-0.5 font-mono text-[8px] text-cm-faint hover:bg-cm-warn/15"
+                            >
+                              +
+                            </button>
+                          ) : null}
+                        </span>
                       ))}
                     </div>
                   ) : null}
@@ -645,7 +713,7 @@ export function GlobalIntelFeedStrip({ entries, loading, hint, meta, onPickScope
                   key={id}
                   className={`rounded-md border border-cm-border-subtle border-l-4 bg-cm-row/30 px-3 py-2 ${sev}`}
                 >
-                  <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div className="flex flex-wrap items-center gap-1.5">
                     <button
                       type="button"
                       onClick={() => onPickScope?.(scope)}
@@ -654,6 +722,19 @@ export function GlobalIntelFeedStrip({ entries, loading, hint, meta, onPickScope
                     >
                       {shortAddr(scope)}
                     </button>
+                    {onPinCompare ? (
+                      <button
+                        type="button"
+                        title="Pin for multi-focus compare"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onPinCompare(scope);
+                        }}
+                        className="rounded border border-cm-border-subtle px-1 font-mono text-[9px] text-cm-faint hover:bg-cm-warn/15 hover:text-cm-warn"
+                      >
+                        +
+                      </button>
+                    ) : null}
                     <span className="font-mono text-[9px] uppercase tracking-wide text-cm-faint">{label}</span>
                   </div>
                   <p className="mt-0.5 font-mono text-[9px] text-cm-muted">{ruleId}</p>

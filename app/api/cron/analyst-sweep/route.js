@@ -1,12 +1,9 @@
 import { NextResponse } from "next/server";
 import { appBaseUrl } from "@/lib/app-base-url.js";
-import { buildAlerts } from "@/lib/intel-alerts.js";
-import { buildGroqEvidence } from "@/lib/groq-evidence.js";
-import { GROQ_BRIEF_USER_FOCUS } from "@/lib/groq-brief-defaults.js";
-import { GROQ_AUTO_CO_ACTIVITY } from "@/lib/groq-thresholds.js";
-import { deriveRiskProfile } from "@/lib/risk-profile.js";
+import { runAnalystSweepForScope } from "@/lib/analyst-sweep-run.js";
+import { loadWatchlist } from "@/lib/watchlist.js";
 
-export const maxDuration = 120;
+export const maxDuration = 300;
 export const runtime = "nodejs";
 
 /**
@@ -28,111 +25,92 @@ function authorizeCron(request) {
   return null;
 }
 
-async function fetchJson(url) {
-  const r = await fetch(url, { cache: "no-store" });
-  const j = await r.json().catch(() => ({}));
-  return { r, j };
+function truthyEnv(v) {
+  const s = String(v ?? "").trim().toLowerCase();
+  return s === "1" || s === "true" || s === "yes";
 }
 
 /**
- * Runs on Vercel Cron (GET). Fetches score + inspect for CHAINMIND_CRON_SCOPE (or CHAINMIND_SCOPE).
- * If co-activity > GROQ_AUTO_CO_ACTIVITY, POSTs the same payload as the dashboard to /api/groq-brief (source=auto).
+ * Runs on Vercel Cron (GET).
+ * - Default: single scope from CHAINMIND_CRON_SCOPE or CHAINMIND_SCOPE.
+ * - Watchlist mode: set CHAINMIND_ANALYST_SWEEP_WATCHLIST=1 — runs every watchlist address (capped by ANALYST_SWEEP_MAX_SCOPES).
+ * If co-activity > GROQ_AUTO_CO_ACTIVITY, POSTs to /api/groq-brief (source=auto) per scope.
  */
 export async function GET(request) {
   const denied = authorizeCron(request);
   if (denied) return denied;
 
-  const scope = (process.env.CHAINMIND_CRON_SCOPE || process.env.CHAINMIND_SCOPE || "").trim();
-  if (!scope) {
-    return NextResponse.json(
-      { error: "Set CHAINMIND_CRON_SCOPE or CHAINMIND_SCOPE to a base58 mint/wallet" },
-      { status: 400 },
-    );
-  }
+  const useWatchlist = truthyEnv(process.env.CHAINMIND_ANALYST_SWEEP_WATCHLIST);
+  const maxScopes = Math.min(24, Math.max(1, Number(process.env.ANALYST_SWEEP_MAX_SCOPES ?? 8) || 8));
+  const groqDelayMs = Math.min(5000, Math.max(0, Number(process.env.ANALYST_SWEEP_GROQ_DELAY_MS ?? 350) || 0));
 
   const window = Math.min(60, Math.max(1, Number(process.env.CHAINMIND_CRON_SCORE_WINDOW ?? 5) || 5));
   const hours = Math.min(24 * 30, Math.max(1, Number(process.env.CHAINMIND_CRON_SCORE_HOURS ?? 168) || 168));
   const inspectLimit = Math.min(100, Math.max(1, Number(process.env.CHAINMIND_CRON_INSPECT_LIMIT ?? 12) || 12));
 
   const base = appBaseUrl();
-  const scoreUrl = `${base}/api/score?scope=${encodeURIComponent(scope)}&window=${window}&hours=${hours}`;
-  const inspectUrl = `${base}/api/inspect?address=${encodeURIComponent(scope)}&limit=${inspectLimit}`;
-  const pingUrl = `${base}/api/ping`;
 
-  const [scorePack, inspectPack, pingPack] = await Promise.all([
-    fetchJson(scoreUrl),
-    fetchJson(inspectUrl),
-    fetchJson(pingUrl),
-  ]);
-
-  if (!scorePack.r.ok) {
-    return NextResponse.json(
-      { error: "Score request failed", status: scorePack.r.status, body: scorePack.j },
-      { status: 502 },
-    );
-  }
-
-  const score = scorePack.j;
-  const inspect = inspectPack.r.ok
-    ? inspectPack.j
-    : { ok: false, error: inspectPack.j?.error ?? `HTTP ${inspectPack.r.status}` };
-  const ping = pingPack.r.ok ? pingPack.j : { error: pingPack.j?.error ?? `HTTP ${pingPack.r.status}` };
-
-  const risk = deriveRiskProfile(score);
-  const coActivityScore =
-    risk?.score0_100 != null && Number.isFinite(Number(risk.score0_100)) ? Number(risk.score0_100) / 100 : null;
-
-  if (coActivityScore == null || coActivityScore <= GROQ_AUTO_CO_ACTIVITY) {
+  if (useWatchlist) {
+    let scopes;
+    try {
+      scopes = loadWatchlist();
+    } catch (e) {
+      return NextResponse.json({ error: String(e?.message ?? e) }, { status: 500 });
+    }
+    if (!scopes.length) {
+      return NextResponse.json(
+        {
+          error:
+            "Watchlist mode enabled but no scopes — set CHAINMIND_WATCHLIST_JSON (Vercel) or config/watchlist.json / CHAINMIND_SCOPE",
+        },
+        { status: 400 },
+      );
+    }
+    const slice = scopes.slice(0, maxScopes);
+    /** @type {unknown[]} */
+    const results = [];
+    let groqCalls = 0;
+    let skipped = 0;
+    for (const { address } of slice) {
+      const scope = String(address ?? "").trim();
+      if (!scope) continue;
+      const one = await runAnalystSweepForScope({ baseUrl: base, scope, window, hours, inspectLimit });
+      results.push(one);
+      if (one.ok && !one.skipped) groqCalls++;
+      if (one.skipped) skipped++;
+      if (groqDelayMs > 0 && one.ok && !one.skipped) {
+        await new Promise((r) => setTimeout(r, groqDelayMs));
+      }
+    }
     return NextResponse.json({
       ok: true,
-      skipped: true,
-      reason: "co_activity_below_threshold",
-      scope,
-      coActivityScore,
-      threshold: GROQ_AUTO_CO_ACTIVITY,
+      mode: "watchlist",
+      scanned: slice.length,
+      groqInvocations: groqCalls,
+      skippedBelowThreshold: skipped,
+      maxScopes,
+      results,
     });
   }
 
-  const intelAlerts = buildAlerts({ inspect, score, ping });
-  const evidence = {
-    ...buildGroqEvidence({ address: scope, score, inspect, risk }),
-    rpcCluster: ping?.ok ? { cluster: ping.cluster, slot: ping.slot } : { error: ping?.error ?? "RPC unknown" },
-    inspectLimit,
-    automatedAlerts: intelAlerts.map((a) => ({
-      severity: a.severity,
-      title: a.title,
-      detail: a.detail,
-    })),
-  };
-
-  /** @type {Record<string, string>} */
-  const groqHeaders = { "Content-Type": "application/json" };
-  const briefSecret = process.env.GROQ_BRIEF_SECRET?.trim();
-  if (briefSecret) groqHeaders.Authorization = `Bearer ${briefSecret}`;
-
-  const groqRes = await fetch(`${base}/api/groq-brief`, {
-    method: "POST",
-    headers: groqHeaders,
-    body: JSON.stringify({
-      data: evidence,
-      source: "auto",
-      focus: GROQ_BRIEF_USER_FOCUS,
-    }),
-  });
-  const groqJson = await groqRes.json().catch(() => ({}));
-  if (!groqRes.ok) {
+  const scope = (process.env.CHAINMIND_CRON_SCOPE || process.env.CHAINMIND_SCOPE || "").trim();
+  if (!scope) {
     return NextResponse.json(
-      { error: "groq-brief failed", status: groqRes.status, body: groqJson },
-      { status: 502 },
+      {
+        error:
+          "Set CHAINMIND_CRON_SCOPE or CHAINMIND_SCOPE, or enable CHAINMIND_ANALYST_SWEEP_WATCHLIST=1 with a configured watchlist",
+      },
+      { status: 400 },
     );
   }
 
-  return NextResponse.json({
-    ok: true,
-    scope,
-    coActivityScore,
-    analysis: groqJson.analysis,
-    webhook: groqJson.webhook,
-    model: groqJson.model,
-  });
+  const one = await runAnalystSweepForScope({ baseUrl: base, scope, window, hours, inspectLimit });
+  if (!one.ok && one.skipped === undefined) {
+    const status = one.error === "score_failed" ? 502 : one.error === "groq_brief_failed" ? 502 : 500;
+    return NextResponse.json(one, { status });
+  }
+  if (one.skipped) {
+    return NextResponse.json({ ok: true, mode: "single", ...one });
+  }
+  return NextResponse.json({ ok: true, mode: "single", ...one });
 }
