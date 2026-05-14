@@ -21,6 +21,7 @@
     "turso:sync": "node scripts/sync-sqlite-to-turso.mjs",
     "pipeline": "node scripts/pipeline-worker.mjs",
     "pipeline:once": "node scripts/pipeline-worker.mjs --once",
+    "mirror:up": "npm run pipeline:once && npm run turso:sync",
     "watch": "node scripts/watch.mjs"
   },
   "dependencies": {
