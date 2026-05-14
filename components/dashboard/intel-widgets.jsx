@@ -403,6 +403,89 @@ function formatTimeIso(unix) {
   return new Date(unix * 1000).toLocaleString();
 }
 
+const surfaceSeverityBar = {
+  critical: "border-l-cm-threat",
+  high: "border-l-orange-400",
+  medium: "border-l-cm-warn",
+  low: "border-l-cm-border",
+};
+
+/**
+ * Autonomous surface queue (from Turso, filled by `/api/cron/surface-scan`).
+ * @param {{
+ *   hits: Array<{ id: number, created_at: string, scope_address: string, rule_id: string, severity: string, detail: string, entities?: string[] }>,
+ *   loading?: boolean,
+ *   hint?: string | null,
+ *   onPickScope?: (address: string) => void,
+ * }} props
+ */
+export function SurfaceFeedStrip({ hits, loading, hint, onPickScope }) {
+  const reduce = useReducedMotion() ?? false;
+  return (
+    <motion.div
+      className="rounded-md border border-cm-border bg-cm-card/80 px-4 py-4 sm:px-5"
+      initial={{ opacity: 0, y: 10 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={reduce ? { duration: 0 } : springGentle}
+    >
+      <div className="mb-3 flex flex-wrap items-end justify-between gap-2">
+        <div>
+          <p className="font-mono text-[10px] font-semibold uppercase tracking-[0.22em] text-cm-faint">
+            Autonomous surfaces
+          </p>
+          <p className="mt-1 text-xs text-cm-muted">
+            Watchlist scan rules · Click a scope to load it as watch target
+          </p>
+        </div>
+        {loading ? (
+          <span className="font-mono text-[10px] text-cm-faint">Loading…</span>
+        ) : (
+          <span className="font-mono text-[10px] text-cm-terminal">{hits?.length ?? 0} rows</span>
+        )}
+      </div>
+      {hint ? <p className="mb-3 text-[11px] text-cm-warn/90">{hint}</p> : null}
+      {!loading && (!hits || hits.length === 0) ? (
+        <p className="text-sm text-cm-faint">
+          No rows yet. On Vercel: set{" "}
+          <code className="text-cm-muted">CHAINMIND_WATCHLIST_JSON</code>, <code className="text-cm-muted">CRON_SECRET</code>,
+          and schedule <code className="text-cm-muted">GET /api/cron/surface-scan</code> (see{" "}
+          <code className="text-cm-muted">vercel.json</code>
+          ). Apply Turso <code className="text-cm-muted">surface_hits</code> migration.
+        </p>
+      ) : null}
+      {hits && hits.length > 0 ? (
+        <ul className="max-h-64 space-y-2 overflow-y-auto pr-1">
+          {hits.map((row) => {
+            const sev = surfaceSeverityBar[row.severity] ?? surfaceSeverityBar.low;
+            return (
+              <li
+                key={row.id}
+                className={`rounded-md border border-cm-border-subtle border-l-4 bg-cm-row/30 px-3 py-2 ${sev}`}
+              >
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <button
+                    type="button"
+                    onClick={() => onPickScope?.(row.scope_address)}
+                    className="font-mono text-[11px] font-medium text-cm-accent-bright underline-offset-2 hover:underline"
+                    title={row.scope_address}
+                  >
+                    {shortAddr(row.scope_address)}
+                  </button>
+                  <span className="font-mono text-[9px] uppercase tracking-wide text-cm-faint">
+                    {row.rule_id.replace(/_/g, " ")}
+                  </span>
+                </div>
+                <p className="mt-1 text-[11px] leading-snug text-cm-subtle">{row.detail}</p>
+                <p className="mt-1 font-mono text-[9px] text-cm-faint">{row.created_at}</p>
+              </li>
+            );
+          })}
+        </ul>
+      ) : null}
+    </motion.div>
+  );
+}
+
 export function IntelDocsHint() {
   return (
     <p className="text-[11px] leading-relaxed text-cm-faint">
