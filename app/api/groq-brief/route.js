@@ -79,14 +79,23 @@ function normalizeAnalysis(raw) {
   if (named_entities.length === 0) named_entities = toStringArray(o.namedEntities);
 
   let manipulation_vs_benign = "";
-  if (typeof o.manipulation_vs_benign === "string") manipulation_vs_benign = o.manipulation_vs_benign.trim();
-  else if (typeof o.manipulationVsBenign === "string") manipulation_vs_benign = o.manipulationVsBenign.trim();
-  else if (o.manipulation_vs_benign && typeof o.manipulation_vs_benign === "object") {
-    try {
-      manipulation_vs_benign = JSON.stringify(o.manipulation_vs_benign);
-    } catch {
-      manipulation_vs_benign = "";
+  if (typeof o.manipulation_vs_benign === "object" && o.manipulation_vs_benign !== null) {
+    // New schema: { for: "...", against: "..." }
+    const f = o.manipulation_vs_benign.for ?? o.manipulation_vs_benign.FOR ?? "";
+    const a = o.manipulation_vs_benign.against ?? o.manipulation_vs_benign.AGAINST ?? "";
+    if (f || a) {
+      manipulation_vs_benign = `FOR: ${f} | AGAINST: ${a}`;
+    } else {
+      try {
+        manipulation_vs_benign = JSON.stringify(o.manipulation_vs_benign);
+      } catch {
+        manipulation_vs_benign = "";
+      }
     }
+  } else if (typeof o.manipulation_vs_benign === "string") {
+    manipulation_vs_benign = o.manipulation_vs_benign.trim();
+  } else if (typeof o.manipulationVsBenign === "string") {
+    manipulation_vs_benign = o.manipulationVsBenign.trim();
   }
 
   let reasoning = toStringArray(o.reasoning);
