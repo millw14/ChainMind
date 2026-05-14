@@ -23,7 +23,6 @@ function authorizeCron(request) {
 
 /**
  * GET — Vercel Cron (daily). Refreshes `scope_baselines` for every watchlist scope (Turso events).
- * Defaults `BASELINE_UPDATE_FORCE` to persist shallow baselines unless set to `0`.
  */
 export async function GET(request) {
   const denied = authorizeCron(request);
@@ -62,10 +61,8 @@ export async function GET(request) {
     24 * 90,
     Math.max(1, Number(process.env.BASELINE_LOOKBACK_HOURS ?? "168") || 168),
   );
-  const forceEnv = process.env.BASELINE_UPDATE_FORCE?.trim();
-  const force = forceEnv === undefined || forceEnv === "" ? true : forceEnv !== "0";
 
-  const results = await updateBaselinesForWatchlist(client, scopes, windowMinutes, { lastHours, force });
+  const results = await updateBaselinesForWatchlist(client, scopes, windowMinutes, { lastHours });
 
   const okCount = results.filter((r) => r.status === "ok").length;
   const skipCount = results.filter((r) => r.status === "skip").length;
@@ -74,7 +71,6 @@ export async function GET(request) {
     ok: true,
     windowMinutes,
     lastHours,
-    forceShallow: force,
     scopes: scopes.length,
     updated: okCount,
     skipped: skipCount,
