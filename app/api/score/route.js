@@ -1,10 +1,17 @@
 import { NextResponse } from "next/server";
 import { PublicKey } from "@solana/web3.js";
+import { runAiDetectors } from "@/lib/ai-detectors.js";
 import { summarizeFundingGraphFromEdges } from "@/lib/funding-graph-summary.js";
 import { computeCoactivityScoreFromRows } from "@/lib/score-math.js";
-import { getTursoClient, tursoFetchInboundFundingEdges, tursoFetchScoreRows } from "@/lib/turso.js";
+import {
+  getTursoClient,
+  tursoFetchInboundFundingEdges,
+  tursoFetchPayerPeerEdges,
+  tursoFetchScoreRows,
+  tursoFetchTransfersWindow,
+} from "@/lib/turso.js";
 
-export const maxDuration = 30;
+export const maxDuration = 45;
 export const runtime = "nodejs";
 
 export async function GET(request) {
@@ -47,15 +54,56 @@ export async function GET(request) {
     const result = computeCoactivityScoreFromRows(rows, scope, windowMinutes, lastHours);
 
     let fundingGraph = { status: "skipped", reason: "empty_or_insufficient_events" };
+    /** @type {{ from: string, to: string, mint: string | null, amount: string, block_time: number }[]} */
+    let transfers = [];
+    /** @type {{ from: string, to: string, edge_type: string, mint: string | null, block_time: number }[]} */
+    let peerEdges = [];
+
     if (result.ok && !result.empty && Array.isArray(result.topPayerLinks) && result.topPayerLinks.length > 0) {
       const payers = result.topPayerLinks.slice(0, 8).map((x) => x.payer).filter(Boolean);
       if (payers.length > 0) {
         const edgeRows = await tursoFetchInboundFundingEdges(client, scope, payers, cutoff);
         fundingGraph = summarizeFundingGraphFromEdges(payers, edgeRows);
       }
+      const peers = result.topPayerLinks.slice(0, 12).map((x) => x.payer).filter(Boolean);
+      try {
+        const [trows, prow] = await Promise.all([
+          tursoFetchTransfersWindow(client, scope, cutoff, 2500),
+          tursoFetchPayerPeerEdges(client, scope, peers, cutoff, 800),
+        ]);
+        transfers = trows;
+        peerEdges = prow;
+      } catch {
+        transfers = [];
+        peerEdges = [];
+      }
     }
 
-    return NextResponse.json({ ...result, fundingGraph, database: "turso" });
+    let aiDetection = null;
+    if (result.ok && !result.empty) {
+      aiDetection = runAiDetectors({
+        scope,
+        eventRows: rows,
+        scoreResult: result,
+        fundingGraph,
+        transfers,
+        peerEdges,
+      });
+      if (Array.isArray(result.drivers)) {
+        const d = aiDetection.detectors;
+        const fired = Object.values(d)
+          .filter((x) => x?.triggered)
+          .map((x) => x.name)
+          .join(", ");
+        result.drivers.push(
+          `AI detection v2 composite ${aiDetection.composite.score0_100}/100` +
+            (fired ? `; triggered: ${fired}` : "") +
+            ` — see aiDetection JSON.`,
+        );
+      }
+    }
+
+    return NextResponse.json({ ...result, fundingGraph, database: "turso", ...(aiDetection ? { aiDetection } : {}) });
   } catch (e) {
     return NextResponse.json(
       { ok: false, error: String(e?.message ?? e) },
