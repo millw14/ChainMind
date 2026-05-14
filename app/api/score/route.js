@@ -84,30 +84,6 @@ export async function GET(request) {
       }
     }
 
-    let aiDetection = null;
-    if (result.ok && !result.empty) {
-      aiDetection = runAiDetectors({
-        scope,
-        eventRows: rows,
-        scoreResult: result,
-        fundingGraph,
-        transfers,
-        peerEdges,
-      });
-      if (Array.isArray(result.drivers)) {
-        const d = aiDetection.detectors;
-        const fired = Object.values(d)
-          .filter((x) => x?.triggered)
-          .map((x) => x.name)
-          .join(", ");
-        result.drivers.push(
-          `AI detection v2 composite ${aiDetection.composite.score0_100}/100` +
-            (fired ? `; triggered: ${fired}` : "") +
-            ` — see aiDetection JSON.`,
-        );
-      }
-    }
-
     /** @type {ReturnType<typeof buildWalletLedgerAge> | null} */
     let walletLedgerAge = null;
     try {
@@ -164,6 +140,31 @@ export async function GET(request) {
       }
     } catch {
       walletLedgerAge = null;
+    }
+
+    let aiDetection = null;
+    if (result.ok && !result.empty) {
+      aiDetection = runAiDetectors({
+        scope,
+        eventRows: rows,
+        scoreResult: result,
+        fundingGraph,
+        transfers,
+        peerEdges,
+        walletLedgerAge,
+      });
+      if (Array.isArray(result.drivers)) {
+        const d = aiDetection.detectors;
+        const fired = Object.values(d)
+          .filter((x) => x?.triggered)
+          .map((x) => x.name)
+          .join(", ");
+        result.drivers.push(
+          `AI detection v2 composite ${aiDetection.composite.score0_100}/100` +
+            (fired ? `; triggered: ${fired}` : "") +
+            ` — see aiDetection JSON.`,
+        );
+      }
     }
 
     return NextResponse.json({
