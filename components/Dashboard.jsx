@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { motion, useReducedMotion } from "framer-motion";
-import { useCallback, useEffect, useMemo, useRef, useState, Fragment } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   AlertStrip,
   buildAlerts,
@@ -19,6 +19,8 @@ import {
 import { buildEntityClassificationContext, classifyNamedEntityLine } from "@/lib/entity-classify.js";
 import { buildGroqEvidence } from "@/lib/groq-evidence.js";
 import { GROQ_BRIEF_USER_FOCUS } from "@/lib/groq-brief-defaults.js";
+import { enrichAnalysisWithVerdictStructure, shortenIdCompact } from "@/lib/groq-verdict-card.js";
+import { buildGroqUserEvidence } from "@/lib/groq-user-evidence.js";
 import { staggerContainer, fadeUp, springGentle } from "@/components/motion/presets";
 
 const USDC_MAINNET = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
@@ -415,12 +417,6 @@ function ScoreBody({ data, loading, hideMainScore }) {
   );
 }
 
-const verdictStyle = {
-  manipulation_detected: "bg-cm-threat/20 text-cm-bad ring-1 ring-cm-bad/35",
-  suspicious: "bg-cm-warn/15 text-cm-warn ring-1 ring-cm-warn/30",
-  clean: "bg-cm-ok/15 text-cm-ok ring-1 ring-cm-ok/25",
-};
-
 const riskStyle = {
   critical: "text-cm-bad",
   high: "text-orange-300",
@@ -428,25 +424,68 @@ const riskStyle = {
   low: "text-cm-muted",
 };
 
+const verdictTone = {
+  manipulation_detected: "text-cm-bad",
+  suspicious: "text-cm-warn",
+  clean: "text-cm-ok",
+};
+
+function severityAccent(sev) {
+  switch (String(sev).toUpperCase()) {
+    case "HIGH":
+      return "text-cm-bad";
+    case "MEDIUM":
+    case "MED":
+      return "text-cm-warn";
+    case "LOW":
+      return "text-cm-muted";
+    case "SKIPPED":
+    case "NOT_FETCHED":
+    case "NOT FETCHED":
+      return "text-cm-faint";
+    default:
+      return "text-cm-muted";
+  }
+}
+
 /**
- * @param {{ analysis: Record<string, unknown> | null, error: string | null, loading: boolean, webhookMeta?: object | null, entityContext: ReturnType<typeof buildEntityClassificationContext> | null }} props
+ * @param {{
+ *   analysis: Record<string, unknown> | null,
+ *   error: string | null,
+ *   loading: boolean,
+ *   webhookMeta?: object | null,
+ *   entityContext: ReturnType<typeof buildEntityClassificationContext> | null,
+ *   evidenceSnapshot: Record<string, unknown> | null,
+ * }} props
  */
-function BriefBody({ analysis, error, loading, webhookMeta, entityContext }) {
+function BriefBody({ analysis, error, loading, webhookMeta, entityContext, evidenceSnapshot }) {
+  const enriched = useMemo(() => {
+    if (!analysis) return null;
+    if (!evidenceSnapshot) return /** @type {Record<string, unknown>} */ (analysis);
+    try {
+      return enrichAnalysisWithVerdictStructure(
+        /** @type {Record<string, unknown>} */ (analysis),
+        buildGroqUserEvidence(evidenceSnapshot),
+      );
+    } catch {
+      return /** @type {Record<string, unknown>} */ (analysis);
+    }
+  }, [analysis, evidenceSnapshot]);
+
   if (loading) {
     return <p className="py-8 text-center text-sm text-cm-faint">Running ChainMind analyst…</p>;
   }
   if (error) {
     return <GroqErrorCallout message={error} />;
   }
-  if (!analysis) {
+  if (!enriched) {
     return (
       <p className="text-sm text-cm-muted">
         Live reasoning runs when panels have data (requires{" "}
         <code className="text-cm-accent-bright">GROQ_API_KEY</code>
         ). Analysis refreshes as the{" "}
         <span className="font-mono text-cm-muted">{(LIVE_POLL_MS / 1000).toFixed(0)}s</span> sweep updates
-        evidence—at most about every {Math.ceil(GROQ_REASONING_MIN_INTERVAL_MS / 60_000)} minutes per scope. Webhooks:
-        {" "}
+        evidence—at most about every {Math.ceil(GROQ_REASONING_MIN_INTERVAL_MS / 60_000)} minutes per scope. Webhooks:{" "}
         <Link href="/docs" className="font-medium text-cm-text underline underline-offset-2 hover:text-cm-accent">
           Docs
         </Link>
@@ -455,136 +494,143 @@ function BriefBody({ analysis, error, loading, webhookMeta, entityContext }) {
     );
   }
 
-  const verdict = typeof analysis.verdict === "string" ? analysis.verdict : "—";
-  const confidence =
-    typeof analysis.confidence === "number" && Number.isFinite(analysis.confidence)
-      ? analysis.confidence
-      : null;
-  const manipulationType =
-    typeof analysis.manipulation_type === "string" ? analysis.manipulation_type : "none";
-  const riskLevel = typeof analysis.risk_level === "string" ? analysis.risk_level : "—";
-  const reasoning = Array.isArray(analysis.reasoning) ? analysis.reasoning : [];
-  const nextSteps = Array.isArray(analysis.next_steps) ? analysis.next_steps : [];
-  const confidenceReasoning =
-    typeof analysis.confidence_reasoning === "string" ? analysis.confidence_reasoning.trim() : "";
-  const namedEntities = Array.isArray(analysis.named_entities) ? analysis.named_entities : [];
-  const manipulationVsBenign =
-    typeof analysis.manipulation_vs_benign === "string" ? analysis.manipulation_vs_benign.trim() : "";
+  const verdict = typeof enriched.verdict === "string" ? enriched.verdict : "suspicious";
+  const riskLevel = typeof enriched.risk_level === "string" ? enriched.risk_level : "medium";
+  const confPct =
+    typeof enriched.confidence_pct === "number" && Number.isFinite(enriched.confidence_pct)
+      ? enriched.confidence_pct
+      : typeof enriched.confidence === "number" && Number.isFinite(enriched.confidence)
+        ? Math.round(Number(enriched.confidence) * 100)
+        : null;
+  const signals = Array.isArray(enriched.signals) ? enriched.signals : [];
+  const limiting = Array.isArray(enriched.limiting_factors) ? enriched.limiting_factors : [];
+  const namedEntities = Array.isArray(enriched.named_entities) ? enriched.named_entities : [];
+  const nextSteps = Array.isArray(enriched.next_steps) ? enriched.next_steps : [];
+  const calibration =
+    typeof enriched.confidence_reasoning === "string" ? enriched.confidence_reasoning.trim() : "";
+  const manipVsBenign =
+    typeof enriched.manipulation_vs_benign === "string" ? enriched.manipulation_vs_benign.trim() : "";
 
-  const vClass = verdictStyle[verdict] ?? "bg-cm-row text-cm-muted ring-1 ring-cm-border";
-  const rClass = riskStyle[riskLevel] ?? "text-cm-muted";
+  const ctx = entityContext ?? buildEntityClassificationContext({});
+  /** @type {{ fullId: string, shortId: string, role: string }[]} */
+  const entityRows = [];
+  const seenE = new Set();
+  for (const line of namedEntities) {
+    const raw = String(line ?? "").trim();
+    if (!raw) continue;
+    const { rows } = classifyNamedEntityLine(raw, ctx);
+    if (rows.length > 0) {
+      for (const r of rows) {
+        if (seenE.has(r.fullId)) continue;
+        seenE.add(r.fullId);
+        entityRows.push({ ...r, shortId: shortenIdCompact(r.fullId) });
+      }
+    } else {
+      const stub = raw.slice(0, 88);
+      if (!seenE.has(stub)) {
+        seenE.add(stub);
+        entityRows.push({
+          fullId: stub,
+          shortId: shortenIdCompact(stub),
+          role: "Analyst reference (non-id text)",
+        });
+      }
+    }
+  }
+
+  const vTone = verdictTone[verdict] ?? "text-cm-muted";
 
   return (
-    <div className="space-y-4 rounded-md border border-cm-border-subtle bg-cm-row/30 px-3 py-3 sm:px-4 sm:py-4">
-      <div className="flex flex-wrap items-center gap-2">
-        <span
-          className={`rounded px-2 py-0.5 font-mono text-[10px] font-bold uppercase tracking-wide ${vClass}`}
-        >
+    <div className="overflow-hidden rounded-lg border border-cm-border bg-cm-card/95 shadow-cm">
+      <div className="flex flex-wrap items-end justify-between gap-4 border-b border-cm-border-subtle bg-cm-row/35 px-4 py-5 sm:px-5">
+        <h3 className={`max-w-[min(100%,28rem)] text-2xl font-black uppercase tracking-tight sm:text-3xl ${vTone}`}>
           {verdict.replace(/_/g, " ")}
-        </span>
-        {confidence != null ? (
-          <span className="font-mono text-xs tabular-nums text-cm-subtle">
-            Confidence {(confidence * 100).toFixed(0)}%
-          </span>
-        ) : null}
-        <span className="font-mono text-[10px] uppercase tracking-wider text-cm-faint">·</span>
-        {manipulationType !== "none" ? (
-          <>
-            <span className="font-mono text-[10px] uppercase tracking-wider text-cm-muted">
-              {manipulationType.replace(/_/g, " ")}
-            </span>
-            <span className="font-mono text-[10px] uppercase tracking-wider text-cm-faint">·</span>
-          </>
-        ) : null}
-        <span className={`font-mono text-[10px] font-bold uppercase tracking-wider ${rClass}`}>
-          {riskLevel} risk
-        </span>
-      </div>
-      {confidenceReasoning ? (
-        <div>
-          <p className="font-mono text-[10px] font-semibold uppercase tracking-wide text-cm-faint">
-            Confidence calibration
+        </h3>
+        <div className="flex flex-wrap items-end justify-end gap-4 text-right">
+          <p className={`font-mono text-sm font-bold uppercase tracking-wider ${riskStyle[riskLevel] ?? "text-cm-muted"}`}>
+            {riskLevel.replace(/_/g, " ")} risk
           </p>
-          <p className="mt-2 text-sm leading-relaxed text-cm-subtle">{confidenceReasoning}</p>
+          {confPct != null ? (
+            <p className="font-mono text-4xl font-black tabular-nums leading-none text-cm-text">{confPct}%</p>
+          ) : (
+            <p className="font-mono text-lg text-cm-faint">—</p>
+          )}
+        </div>
+      </div>
+
+      <div className="border-b border-cm-border-subtle px-4 py-4 sm:px-5">
+        <p className="font-mono text-[10px] font-semibold uppercase tracking-[0.2em] text-cm-faint">Signals detected</p>
+        <ul className="mt-3 divide-y divide-cm-border-subtle/60">
+          {signals.length > 0 ? (
+            signals.map((s, i) => (
+              <li key={`${String(s.name)}-${i}`} className="flex flex-wrap items-baseline gap-x-3 gap-y-1 py-2 font-mono text-xs first:pt-0 last:pb-0">
+                <span className="text-cm-faint shrink-0">●</span>
+                <span className="min-w-[10rem] shrink-0 text-cm-muted">{s.name}</span>
+                <span className="min-w-0 flex-1 tabular-nums text-cm-text">{s.value}</span>
+                <span className={`shrink-0 text-[10px] font-bold uppercase tracking-wide ${severityAccent(s.severity)}`}>
+                  {String(s.severity).replace(/_/g, " ")}
+                </span>
+              </li>
+            ))
+          ) : (
+            <li className="py-2 text-sm text-cm-faint">No structured signals in this response.</li>
+          )}
+        </ul>
+      </div>
+
+      {limiting.length > 0 ? (
+        <div className="border-b border-cm-border-subtle bg-cm-warn/[0.06] px-4 py-4 sm:px-5">
+          <p className="font-mono text-[10px] font-semibold uppercase tracking-[0.2em] text-cm-faint">
+            Limiting factors
+          </p>
+          <ul className="mt-2 space-y-1.5 text-sm leading-snug text-cm-muted">
+            {limiting.map((line, i) => (
+              <li key={i} className="flex gap-2">
+                <span className="text-cm-warn">·</span>
+                <span>{line}</span>
+              </li>
+            ))}
+          </ul>
+          <p className="mt-3 text-[11px] text-cm-faint">Confidence capped until these resolve or evidence deepens.</p>
         </div>
       ) : null}
-      {namedEntities.length > 0 ? (
-        <div>
-          <p className="font-mono text-[10px] font-semibold uppercase tracking-wide text-cm-faint">
+
+      {entityRows.length > 0 ? (
+        <div className="px-4 py-4 sm:px-5">
+          <p className="font-mono text-[10px] font-semibold uppercase tracking-[0.2em] text-cm-faint">
             Named entities
+            <span className="ml-2 font-normal text-cm-muted">{entityRows.length} flagged</span>
           </p>
           <div className="mt-2 overflow-x-auto rounded-md border border-cm-border-subtle">
-            <table className="w-full table-fixed border-separate border-spacing-0 font-mono text-[11px] leading-snug">
+            <table className="w-full border-separate border-spacing-0 text-left font-mono text-[11px]">
               <thead>
                 <tr className="border-b border-cm-border-subtle bg-cm-row/50 text-[10px] uppercase tracking-wide text-cm-faint">
-                  <th className="w-[40%] px-3 py-2 text-left font-medium sm:w-[36%]">Id</th>
+                  <th className="px-3 py-2 font-medium">Id</th>
                   <th className="w-10 px-0 py-2 text-center font-medium sm:w-12" aria-hidden="true" />
-                  <th className="px-3 py-2 text-left font-medium">Classification</th>
+                  <th className="px-3 py-2 font-medium">Classification</th>
                 </tr>
               </thead>
               <tbody>
-                {namedEntities.map((line, i) => {
-                  const ctx = entityContext ?? buildEntityClassificationContext({});
-                  const { raw, rows } = classifyNamedEntityLine(String(line), ctx);
-                  return (
-                    <Fragment key={i}>
-                      <tr className="bg-cm-row/25">
-                        <td
-                          colSpan={3}
-                          className="border-t border-cm-border-subtle px-3 py-2 font-sans text-xs text-cm-muted"
-                        >
-                          {raw}
-                        </td>
-                      </tr>
-                      {rows.length > 0 ? (
-                        rows.map((r, j) => (
-                          <tr
-                            key={`${i}-${j}`}
-                            className="border-t border-cm-border-subtle/70 hover:bg-cm-row/20"
-                          >
-                            <td className="px-3 py-1.5 align-top">
-                              <span className="block truncate text-cm-accent-bright" title={r.fullId}>
-                                {r.shortId}
-                              </span>
-                            </td>
-                            <td className="w-10 px-0 py-1.5 align-top text-center text-cm-faint select-none sm:w-12">
-                              →
-                            </td>
-                            <td className="px-3 py-1.5 align-top text-cm-subtle">{r.role}</td>
-                          </tr>
-                        ))
-                      ) : null}
-                    </Fragment>
-                  );
-                })}
+                {entityRows.map((r, i) => (
+                  <tr key={`${r.fullId}-${i}`} className="border-t border-cm-border-subtle/80 bg-cm-row/20">
+                    <td className="px-3 py-2 align-top">
+                      <span className="text-cm-accent-bright" title={r.fullId}>
+                        {r.shortId}
+                      </span>
+                    </td>
+                    <td className="w-10 px-0 py-2 text-center text-cm-faint select-none sm:w-12">→</td>
+                    <td className="px-3 py-2 align-top text-cm-subtle">{r.role}</td>
+                  </tr>
+                ))}
               </tbody>
             </table>
           </div>
         </div>
       ) : null}
-      {manipulationVsBenign ? (
-        <div>
-          <p className="font-mono text-[10px] font-semibold uppercase tracking-wide text-cm-faint">
-            Manipulation vs benign
-          </p>
-          <p className="mt-2 text-sm leading-relaxed text-cm-muted">{manipulationVsBenign}</p>
-        </div>
-      ) : null}
-      {!confidenceReasoning && reasoning.length > 0 ? (
-        <div>
-          <p className="font-mono text-[10px] font-semibold uppercase tracking-wide text-cm-faint">Reasoning</p>
-          <ul className="mt-2 list-inside list-disc space-y-1.5 text-sm leading-relaxed text-cm-subtle">
-            {reasoning.map((line, i) => (
-              <li key={i}>{String(line)}</li>
-            ))}
-          </ul>
-        </div>
-      ) : null}
+
       {nextSteps.length > 0 ? (
-        <div>
-          <p className="font-mono text-[10px] font-semibold uppercase tracking-wide text-cm-faint">
-            Next steps
-          </p>
+        <div className="border-t border-cm-border-subtle px-4 py-4 sm:px-5">
+          <p className="font-mono text-[10px] font-semibold uppercase tracking-[0.2em] text-cm-faint">Next steps</p>
           <ol className="mt-2 list-inside list-decimal space-y-1.5 text-sm leading-relaxed text-cm-accent-bright/90">
             {nextSteps.map((line, i) => (
               <li key={i}>{String(line)}</li>
@@ -592,22 +638,50 @@ function BriefBody({ analysis, error, loading, webhookMeta, entityContext }) {
           </ol>
         </div>
       ) : null}
+
+      {calibration || manipVsBenign ? (
+        <div className="border-t border-cm-border-subtle px-4 py-3 sm:px-5">
+          {calibration ? (
+            <details className="rounded-md bg-cm-surface/40">
+              <summary className="cursor-pointer px-3 py-2 font-mono text-[10px] uppercase tracking-wide text-cm-faint hover:text-cm-muted">
+                Confidence calibration (detail)
+              </summary>
+              <p className="border-t border-cm-border-subtle px-3 py-2 text-xs leading-relaxed text-cm-subtle">
+                {calibration}
+              </p>
+            </details>
+          ) : null}
+          {manipVsBenign ? (
+            <details className={`rounded-md bg-cm-surface/40 ${calibration ? "mt-2" : ""}`}>
+              <summary className="cursor-pointer px-3 py-2 font-mono text-[10px] uppercase tracking-wide text-cm-faint hover:text-cm-muted">
+                Manipulation vs benign
+              </summary>
+              <p className="border-t border-cm-border-subtle px-3 py-2 text-xs leading-relaxed text-cm-muted">
+                {manipVsBenign}
+              </p>
+            </details>
+          ) : null}
+        </div>
+      ) : null}
+
       {webhookMeta?.attempted && webhookMeta?.delivered ? (
-        <p className="border-t border-cm-border-subtle pt-3 font-mono text-[10px] text-cm-terminal">
+        <p className="border-t border-cm-border-subtle px-4 py-3 font-mono text-[10px] text-cm-terminal sm:px-5">
           Investigation webhook POST succeeded (high-confidence auto verdict).
         </p>
       ) : null}
       {webhookMeta?.attempted && webhookMeta?.skipped ? (
-        <p className="border-t border-cm-border-subtle pt-3 font-mono text-[10px] text-cm-faint">
+        <p className="border-t border-cm-border-subtle px-4 py-3 font-mono text-[10px] text-cm-faint sm:px-5">
           High-confidence auto verdict — set{" "}
           <code className="text-cm-muted">CHAINMIND_VERDICT_WEBHOOK_URL</code> to notify Slack or your SOAR stack.
         </p>
       ) : null}
       {webhookMeta?.error ? (
-        <p className="border-t border-cm-border-subtle pt-3 font-mono text-[10px] text-cm-bad">
+        <p className="border-t border-cm-border-subtle px-4 py-3 font-mono text-[10px] text-cm-bad sm:px-5">
           Webhook error: {String(webhookMeta.error)}
         </p>
       ) : null}
+
+      <ExpandableRaw label="Full analyst payload (JSON)" data={enriched} />
     </div>
   );
 }
@@ -1096,6 +1170,7 @@ export function Dashboard() {
               loading={loadingGroq}
               webhookMeta={groqWebhookMeta}
               entityContext={entityClassificationContext}
+              evidenceSnapshot={groqEvidence}
             />
           </Panel>
         </motion.div>

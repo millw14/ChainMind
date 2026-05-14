@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getGeoqApiKey, geoqFetch } from "@/lib/geoq.js";
 import { sendVerdictWebhook } from "@/lib/groq-webhook.js";
+import { enrichAnalysisWithVerdictStructure, normalizeSignalsArray } from "@/lib/groq-verdict-card.js";
 import { buildGroqUserEvidence } from "@/lib/groq-user-evidence.js";
 
 export const maxDuration = 60;
@@ -23,13 +24,21 @@ Respond with ONLY valid JSON (no markdown fences, no commentary before or after 
 {
   "verdict": "manipulation_detected | suspicious | clean",
   "confidence": 0.0,
-  "confidence_reasoning": "string: why this confidence; what evidence would raise or lower it",
-  "named_entities": ["full or shortened wallet base58, or signature, or program id you cite"],
-  "manipulation_vs_benign": "string: contrast plausible manipulation narrative vs benign explanations",
+  "risk_level": "critical | high | medium | low",
+  "confidence_reasoning": "short string: why confidence is capped; no long prose — limiting factors go in limiting_factors",
+  "signals": [
+    { "name": "Failure rate", "value": "0.58", "severity": "HIGH | MEDIUM | LOW | SKIPPED | NOT_FETCHED" }
+  ],
+  "limiting_factors": ["funding graph skipped", "account age not fetched"],
+  "named_entities": ["identifiers only — no sentences; use base58 or signature strings"],
+  "manipulation_vs_benign": "one tight contrast line OR two short sentences max",
   "next_steps": ["specific step naming an entity from named_entities or evidence signatures"]
 }
 
-confidence is from 0 through 1. named_entities and next_steps must be non-empty arrays when the evidence contains any wallets or signatures; if the evidence is empty, say so in those fields with one honest entry each.`;
+confidence is 0..1. risk_level should match verdict + confidence.
+signals: align with Evidence.failureRate, sampled txs, coActivityScore, fundingGraph.status, accountAge when possible.
+Do NOT paste long paragraph reasoning into confidence_reasoning — keep calibration concise; Evidence JSON has the numbers.
+named_entities must be identifiers only (no narrative paragraphs). If evidence is empty, use one honest placeholder entry.`;
 const VERDICTS = new Set(["manipulation_detected", "suspicious", "clean"]);
 const MANIP_TYPES = new Set(["coordinated_accumulation", "wash_trade", "sybil_pump", "none"]);
 const RISK_LEVELS = new Set(["critical", "high", "medium", "low"]);
@@ -147,7 +156,12 @@ function normalizeAnalysis(raw) {
     ? o.risk_level
     : inferRiskLevel(verdict, confidence);
 
-  return {
+  const signals = normalizeSignalsArray(o.signals);
+  let limiting_factors = toStringArray(o.limiting_factors);
+  if (limiting_factors.length === 0) limiting_factors = toStringArray(o.limitingFactors);
+
+  /** @type {Record<string, unknown>} */
+  const base = {
     verdict,
     confidence,
     confidence_reasoning,
@@ -157,10 +171,13 @@ function normalizeAnalysis(raw) {
     next_steps,
     manipulation_type,
     risk_level,
+    signals: signals ?? [],
+    limiting_factors,
     key_evidence: key_evidence_legacy.length
       ? key_evidence_legacy
       : [...named_entities.filter((x) => x.startsWith("(") === false), ...next_steps].slice(0, 8),
   };
+  return base;
 }
 function webhookConfidenceThreshold() {
   const raw = process.env.CHAINMIND_WEBHOOK_MIN_CONFIDENCE?.trim();
@@ -265,6 +282,7 @@ export async function POST(request) {
   let analysis;
   try {
     analysis = normalizeAnalysis(JSON.parse(extractJsonObject(text)));
+    analysis = enrichAnalysisWithVerdictStructure(analysis, userEvidence);
   } catch (e) {
     console.error("[groq-brief] parse analysis", e, text.slice(0, 800));
     return NextResponse.json(
