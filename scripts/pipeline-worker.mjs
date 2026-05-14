@@ -1,4 +1,6 @@
 import { execSync } from "node:child_process";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { dirname, resolve } from "node:path";
 import { loadEnv } from "../lib/load-env.js";
 loadEnv();
 
@@ -37,6 +39,29 @@ const ingestLimit = Math.min(
 );
 const ingestThrottleMs = Math.max(0, Number(flags["ingest-throttle"] ?? process.env.INGEST_THROTTLE_MS ?? "900") || 900);
 
+const BASELINE_INTERVAL_MS = 86_400_000;
+const baselineStampPath = resolve(process.cwd(), "data/.pipeline-baseline-last");
+
+function shouldRunDailyBaseline() {
+  if (process.env.PIPELINE_BASELINE_DAILY !== "1") return false;
+  try {
+    const t = Number(readFileSync(baselineStampPath, "utf8").trim());
+    if (Number.isFinite(t) && Date.now() - t < BASELINE_INTERVAL_MS) return false;
+  } catch {
+    /* first run */
+  }
+  return true;
+}
+
+function markDailyBaselineRun() {
+  try {
+    mkdirSync(dirname(baselineStampPath), { recursive: true });
+    writeFileSync(baselineStampPath, String(Date.now()), "utf8");
+  } catch (e) {
+    console.error("[pipeline] baseline stamp", e);
+  }
+}
+
 function sleep(ms) {
   return new Promise((r) => setTimeout(r, ms));
 }
@@ -66,6 +91,12 @@ See docs/strategic-plan-data-pipeline.md (Phase 1).
   console.log("Head catch-up : max", headMax, "new sigs / scope / round, page", headPage);
   console.log("Parse         : up to", ingestLimit, "txs / scope / round, throttle", ingestThrottleMs, "ms");
   console.log("Turso sync    :", tursoSync ? "yes (end of each round)" : "no (pass --turso-sync)");
+  console.log(
+    "Daily baseline:",
+    process.env.PIPELINE_BASELINE_DAILY === "1"
+      ? "yes (baseline:update --force, at most once / 24h)"
+      : "no (set PIPELINE_BASELINE_DAILY=1)",
+  );
   console.log("");
 
   let round = 0;
@@ -101,6 +132,16 @@ See docs/strategic-plan-data-pipeline.md (Phase 1).
         execSync("node scripts/sync-sqlite-to-turso.mjs", { stdio: "inherit", cwd: process.cwd() });
       } catch {
         console.error("Turso sync failed (see log above). Continuing.");
+      }
+    }
+
+    if (shouldRunDailyBaseline()) {
+      try {
+        console.log("— [daily] baseline:update --force (watchlist)");
+        execSync("node scripts/baseline-update.mjs --force", { stdio: "inherit", cwd: process.cwd() });
+        markDailyBaselineRun();
+      } catch {
+        console.error("baseline:update failed (see log above). Continuing.");
       }
     }
 
