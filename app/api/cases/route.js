@@ -4,10 +4,12 @@ import { PublicKey } from "@solana/web3.js";
 import { appBaseUrl } from "@/lib/app-base-url.js";
 import { buildInvestigationCasePayload } from "@/lib/case-file.js";
 import { expandFundingTreeInbound } from "@/lib/funding-tree-turso.js";
+import { runGroqBriefForInvestigationCase } from "@/lib/groq-auto-for-case.js";
 import { buildTursoScoreBundle } from "@/lib/score-bundle.js";
 import { getTursoClient, tursoInsertInvestigationCase } from "@/lib/turso.js";
 
-export const maxDuration = 60;
+/** Groq auto-run adds an LLM round-trip (self-fetch to /api/groq-brief). */
+export const maxDuration = 120;
 export const runtime = "nodejs";
 
 function authorizeCaseCreate(request) {
@@ -42,8 +44,14 @@ export async function POST(request) {
   const windowMinutes = Math.min(60, Math.max(1, Number(body.windowMinutes ?? body.window ?? 5) || 5));
   const lastHours = Math.min(24 * 30, Math.max(1, Number(body.lastHours ?? body.hours ?? 24) || 24));
   const title = body.title != null ? String(body.title).slice(0, 240) : null;
-  const groqAnalysis =
+  let groqAnalysis =
     body.groqAnalysis != null && typeof body.groqAnalysis === "object" ? body.groqAnalysis : null;
+
+  const autoGroq =
+    groqAnalysis == null &&
+    (Boolean(body.autoGroq) || String(process.env.CASE_AUTO_GROQ ?? "").trim() === "1");
+
+  const inspectLimit = Math.min(100, Math.max(1, Number(body.inspectLimit) || 12));
 
   const fundingMaxDepth = Math.min(8, Math.max(1, Number(body.fundingMaxDepth) || 4));
   const fundingMaxNodes = Math.min(200, Math.max(24, Number(body.fundingMaxNodes) || 96));
@@ -62,6 +70,20 @@ export async function POST(request) {
       { scope, windowMinutes, lastHours },
       { includeCaseInternal: true },
     );
+
+    if (autoGroq) {
+      const groqJson = await runGroqBriefForInvestigationCase({
+        scope,
+        scoreBundle: bundle,
+        inspectLimit,
+      });
+      groqAnalysis = {
+        analysis: groqJson.analysis,
+        model: groqJson.model,
+        webhook: groqJson.webhook,
+        source: "auto_investigation_case",
+      };
+    }
 
     const seeds =
       Array.isArray(bundle.topPayerLinks) && bundle.topPayerLinks.length > 0
@@ -108,6 +130,7 @@ export async function POST(request) {
       permalink: payload.permalink,
       apiJsonUrl: payload.apiJsonUrl,
       apiMarkdownUrl: payload.apiMarkdownUrl,
+      autoGroqUsed: Boolean(autoGroq),
     });
   } catch (e) {
     const msg = String(e?.message ?? e);
