@@ -8,3 +8,5 @@ out/
 !.env.example
 .vercel
 config/watchlist.json
+
+node_modules/
