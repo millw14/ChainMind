@@ -1002,9 +1002,18 @@ export function Dashboard() {
     await runDb();
     await runInspect();
     await runScore();
+    // Queue address for background ingestion
+    const s = focusAddress.trim();
+    if (s) {
+      fetch("/api/watchlist", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ address: s, note: "dashboard scan" }),
+      }).catch(() => {});
+    }
     const t = Date.now();
     setNextDataSweepAt(t + LIVE_POLL_MS);
-  }, [runPing, runDb, runInspect, runScore]);
+  }, [runPing, runDb, runInspect, runScore, focusAddress]);
 
   const toggleCompareScope = useCallback((addr) => {
     const a = String(addr ?? "").trim();
