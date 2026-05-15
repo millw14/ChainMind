@@ -1,0 +1,5 @@
+﻿[phases.install]
+cmds = ["npm install --platform=linux --arch=x64"]
+
+[start]
+cmd = "node scripts/pipeline-worker.mjs --turso-sync"
