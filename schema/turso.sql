@@ -224,3 +224,20 @@ CREATE TABLE IF NOT EXISTS scan_queue (
   last_picked_at INTEGER,
   note TEXT
 );
+
+CREATE TABLE IF NOT EXISTS scope_baselines (
+  scope_address TEXT NOT NULL,
+  bucket_width_minutes INTEGER NOT NULL,
+  baseline_start_sec INTEGER NOT NULL,
+  baseline_end_sec INTEGER NOT NULL,
+  mean_event_count REAL NOT NULL,
+  std_event_count REAL NOT NULL,
+  mean_wallet_count REAL NOT NULL,
+  std_wallet_count REAL NOT NULL,
+  bucket_count INTEGER NOT NULL,
+  regime TEXT NOT NULL DEFAULT 'calm',
+  computed_at INTEGER NOT NULL,
+  PRIMARY KEY (scope_address, bucket_width_minutes)
+);
+CREATE INDEX IF NOT EXISTS idx_scope_baselines_computed
+  ON scope_baselines (computed_at);
