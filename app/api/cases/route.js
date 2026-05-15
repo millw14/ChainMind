@@ -6,11 +6,24 @@ import { buildInvestigationCasePayload } from "@/lib/case-file.js";
 import { expandFundingTreeInbound } from "@/lib/funding-tree-turso.js";
 import { runGroqBriefForInvestigationCase } from "@/lib/groq-auto-for-case.js";
 import { buildTursoScoreBundle } from "@/lib/score-bundle.js";
-import { getTursoClient, tursoInsertInvestigationCase } from "@/lib/turso.js";
+import { getTursoClient, tursoInsertInvestigationCase, tursoFetchRecentCases } from "@/lib/turso.js";
 
 /** Groq auto-run adds an LLM round-trip (self-fetch to /api/groq-brief). */
 export const maxDuration = 120;
 export const runtime = "nodejs";
+
+export async function GET(request) {
+  const client = getTursoClient();
+  if (!client) return NextResponse.json({ ok: false, error: "Turso not configured" }, { status: 503 });
+  const { searchParams } = new URL(request.url);
+  const limit = Math.min(50, Math.max(1, Number(searchParams.get("limit") ?? 20) || 20));
+  try {
+    const cases = await tursoFetchRecentCases(client, limit);
+    return NextResponse.json({ ok: true, cases });
+  } catch (e) {
+    return NextResponse.json({ ok: false, error: String(e?.message ?? e) }, { status: 500 });
+  }
+}
 
 function authorizeCaseCreate(request) {
   const secret = process.env.CASE_CREATE_SECRET?.trim();
