@@ -958,16 +958,44 @@ export function Dashboard() {
     }
   }, [scoreHours]);
 
+  const runCreateCase = useCallback(async (scoreData) => {
+    if (!scoreData || scoreData.empty || scoreData.ok === false) return;
+    const s = focusAddress.trim();
+    if (!s) return;
+    try {
+      const res = await fetch("/api/cases", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          scope: s,
+          windowMinutes: Number(scoreWindow) || 5,
+          lastHours: Number(scoreHours) || 24,
+          autoGroq: true,
+        }),
+      });
+      const json = await res.json();
+      if (json.ok && json.caseId) {
+        // Dispatch event so RecentCases panel refreshes
+        window.dispatchEvent(new CustomEvent("chainmind:case-created", { detail: json }));
+      }
+    } catch {
+      // Silent — case creation is best-effort
+    }
+  }, [focusAddress, scoreWindow, scoreHours]);
+
   const runScore = useCallback(async () => {
     const s = focusAddress.trim();
     if (!s) return;
     const u = `/api/score?scope=${encodeURIComponent(s)}&window=${encodeURIComponent(scoreWindow || "5")}&hours=${encodeURIComponent(scoreHours || "24")}`;
     try {
-      setScore(await fetchJson(u, "score"));
+      const result = await fetchJson(u, "score");
+      setScore(result);
+      // Auto-create case in background after successful score
+      runCreateCase(result);
     } catch (e) {
       setScore({ ok: false, error: String(e.message) });
     }
-  }, [focusAddress, scoreWindow, scoreHours, fetchJson]);
+  }, [focusAddress, scoreWindow, scoreHours, fetchJson, runCreateCase]);
 
   const runAllSync = useCallback(async () => {
     await runPing();
