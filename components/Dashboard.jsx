@@ -1244,8 +1244,8 @@ export function Dashboard() {
   return (
     <div className="relative min-w-0 max-w-[100vw] overflow-x-clip pb-[max(6rem,calc(env(safe-area-inset-bottom,0px)+4rem))] cm-war-grid">
       <div className="sticky top-12 z-40 border-b border-cm-border bg-cm-card/95 backdrop-blur-md sm:top-14">
-        <div className="mx-auto flex max-w-[88rem] flex-col gap-4 px-3 py-3 sm:flex-row sm:items-center sm:justify-between sm:px-6 sm:py-4">
-          <div className="flex min-w-0 flex-wrap items-center gap-4">
+        <div className="mx-auto flex max-w-[88rem] flex-row items-center justify-between gap-3 px-3 py-2 sm:px-6 sm:py-3">
+          <div className="flex min-w-0 flex-1 flex-wrap items-center gap-3">
             <span className="relative flex h-3 w-3 shrink-0">
               <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-cm-terminal/50 opacity-35" />
               <span className="relative inline-flex h-3 w-3 rounded-full bg-cm-terminal shadow-[0_0_12px_rgba(74,222,128,0.45)]" />
