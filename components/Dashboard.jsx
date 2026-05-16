@@ -838,8 +838,8 @@ export function Dashboard() {
   const [inspectLimit, setInspectLimit] = useState("12");
   const [inspect, setInspect] = useState(null);
 
-  const [scoreWindow, setScoreWindow] = useState("5");
-  const [scoreHours, setScoreHours] = useState("168");
+  const [scoreWindow, setScoreWindow] = useState("60");
+  const [scoreHours, setScoreHours] = useState("24");
   const [score, setScore] = useState(null);
 
   const [dbStats, setDbStats] = useState(null);
@@ -993,11 +993,24 @@ export function Dashboard() {
   const runScore = useCallback(async () => {
     const s = focusAddress.trim();
     if (!s) return;
-    const u = `/api/score?scope=${encodeURIComponent(s)}&window=${encodeURIComponent(scoreWindow || "5")}&hours=${encodeURIComponent(scoreHours || "24")}`;
+    const hours = encodeURIComponent(scoreHours || "24");
+    const buildUrl = (w) => `/api/score?scope=${encodeURIComponent(s)}&window=${w}&hours=${hours}`;
     try {
-      const result = await fetchJson(u, "score");
+      // Try requested window first
+      let result = await fetchJson(buildUrl(scoreWindow || "5"), "score");
+      // Auto-widen if only 1 bucket — not enough to draw a chart
+      if (result?.ok && !result?.empty && (result?.timelineBuckets?.length ?? 0) <= 1) {
+        const wider = [60, 360, 1440];
+        for (const w of wider) {
+          if (w <= Number(scoreWindow || "5")) continue;
+          const retry = await fetchJson(buildUrl(w), "score");
+          if ((retry?.timelineBuckets?.length ?? 0) > 1) {
+            result = retry;
+            break;
+          }
+        }
+      }
       setScore(result);
-      // Auto-create case in background after successful score
       runCreateCase(result);
     } catch (e) {
       setScore({ ok: false, error: String(e.message) });
