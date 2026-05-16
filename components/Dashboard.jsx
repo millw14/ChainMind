@@ -1200,8 +1200,8 @@ export function Dashboard() {
 
   const runGroqAuto = useCallback(async () => {
     if (groqAutoInFlightRef.current || !groqEvidence?.address) return;
-    if (loading.inspect) return; // wait for signatures to load
-    if (!inspect?.signatures?.length) return; // no signatures yet
+    // Prefer to wait for signatures but don't block forever
+    if (loading.inspect && !inspect?.signatures?.length) return;
     const now = Date.now();
     if (
       groqLastReasoningAtRef.current !== 0 &&
