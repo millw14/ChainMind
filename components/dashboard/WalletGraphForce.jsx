@@ -1,255 +1,274 @@
 "use client";
 
-import * as d3 from "d3";
 import { useCallback, useEffect, useRef } from "react";
 
 /**
- * Force-directed wallet graph.
- * Props:
- *   graph: { center: string, nodes: [{id, kind, label, eventCount}], links: [{source, target, events}] }
- *   onNodeClick: (address: string) => void
+ * Threat Radar — wallets as blips on a rotating scanner.
+ * High-event wallets appear closer to center (higher threat).
+ * Scanner line rotates continuously.
  */
 export function WalletGraphForce({ graph, onNodeClick }) {
-  const svgRef = useRef(null);
-  const simRef = useRef(null);
+  const canvasRef = useRef(null);
+  const animRef = useRef(null);
+  const angleRef = useRef(0);
+  const blipsRef = useRef([]);
+  const trailsRef = useRef([]);
 
-  const draw = useCallback(() => {
-    simRef.current?.stop();
-    simRef.current = null;
-    if (!svgRef.current || !graph?.nodes?.length) return;
-
-    const container = svgRef.current.parentElement;
-    const W = container?.clientWidth || 500;
-    const H = 340;
-
-    // Clear previous
-    d3.select(svgRef.current).selectAll("*").remove();
-
-    const nodes = graph.nodes.map((n) => ({ ...n }));
-    const links = (graph.links || []).map((l) => ({ ...l }));
-
+  const buildBlips = useCallback(() => {
+    if (!graph?.nodes?.length) return [];
+    const nodes = graph.nodes.filter((n) => n.kind !== "scope");
     const maxEvents = Math.max(1, ...nodes.map((n) => n.eventCount ?? 1));
 
-    // Node radius by event count
-    const nodeR = (n) => {
-      if (n.kind === "scope") return 20;
-      const e = n.eventCount ?? 1;
-      return Math.max(6, Math.min(16, 6 + Math.sqrt(e / maxEvents) * 10));
-    };
+    return nodes.map((n, i) => {
+      const eventRatio = (n.eventCount ?? 1) / maxEvents;
+      // High activity = closer to center (more threatening)
+      const distRatio = 0.2 + (1 - eventRatio) * 0.7;
+      // Spread around the radar
+      const angle = (2 * Math.PI * i) / nodes.length + Math.random() * 0.3;
+      const isHot = eventRatio > 0.5;
+      const isMid = eventRatio > 0.25;
+      return {
+        id: n.id,
+        label: n.id ? `${n.id.slice(0, 4)}…${n.id.slice(-3)}` : "",
+        distRatio,
+        angle,
+        eventCount: n.eventCount ?? 1,
+        isHot,
+        isMid,
+        size: 2 + eventRatio * 4,
+        // Track when scanner passes over this blip
+        lastHit: -999,
+      };
+    });
+  }, [graph]);
 
-    // Node color by role
-    const nodeColor = (n) => {
-      if (n.kind === "scope") return "#8b5cf6";
-      const e = n.eventCount ?? 1;
-      if (e >= maxEvents * 0.6) return "#ef4444"; // top actor — red
-      if (e >= maxEvents * 0.3) return "#f97316"; // mid actor — orange
-      return "#3b2d6e"; // low actor — dim purple
-    };
+  const draw = useCallback(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext("2d");
+    const W = canvas.width;
+    const H = canvas.height;
+    const cx = W / 2;
+    const cy = H / 2;
+    const maxR = Math.min(cx, cy) - 20;
 
-    const nodeBorder = (n) => {
-      if (n.kind === "scope") return "#c4b5fd";
-      const e = n.eventCount ?? 1;
-      if (e >= maxEvents * 0.6) return "rgba(239,68,68,0.8)";
-      if (e >= maxEvents * 0.3) return "rgba(249,115,22,0.6)";
-      return "rgba(139,92,246,0.4)";
-    };
+    // Background — dark with fade trail
+    ctx.fillStyle = "rgba(8, 6, 18, 0.18)";
+    ctx.fillRect(0, 0, W, H);
 
-    const maxLinkEvents = Math.max(1, ...links.map((l) => l.events ?? 1));
-    const linkWidth = (l) => 0.5 + (l.events / maxLinkEvents) * 2.5;
-    const linkColor = (l) => {
-      const ratio = (l.events ?? 1) / maxLinkEvents;
-      if (ratio > 0.6) return "rgba(239,68,68,0.5)";
-      if (ratio > 0.3) return "rgba(249,115,22,0.35)";
-      return "rgba(139,92,246,0.25)";
-    };
-
-    const svg = d3
-      .select(svgRef.current)
-      .attr("width", W)
-      .attr("height", H)
-      .attr("viewBox", `0 0 ${W} ${H}`);
-
-    // Defs
-    const defs = svg.append("defs");
-    defs
-      .append("radialGradient")
-      .attr("id", "scopeGlow")
-      .attr("cx", "50%")
-      .attr("cy", "50%")
-      .attr("r", "50%")
-      .selectAll("stop")
-      .data([
-        { offset: "0%", color: "rgba(139,92,246,0.5)" },
-        { offset: "100%", color: "rgba(139,92,246,0)" },
-      ])
-      .join("stop")
-      .attr("offset", (d) => d.offset)
-      .attr("stop-color", (d) => d.color);
-
-    const glowFilter = defs.append("filter").attr("id", "nodeGlow");
-    glowFilter.append("feGaussianBlur").attr("stdDeviation", "2").attr("result", "blur");
-    const merge = glowFilter.append("feMerge");
-    merge.append("feMergeNode").attr("in", "blur");
-    merge.append("feMergeNode").attr("in", "SourceGraphic");
-
-    // Zoom + pan
-    const g = svg.append("g");
-    svg.call(d3.zoom().scaleExtent([0.4, 3]).on("zoom", (event) => g.attr("transform", event.transform)));
-
-    // Background glow at center
-    g.append("circle").attr("cx", W / 2).attr("cy", H / 2).attr("r", 80).attr("fill", "url(#scopeGlow)");
-
-    // Simulation
-    const sim = d3
-      .forceSimulation(nodes)
-      .force(
-        "link",
-        d3
-          .forceLink(links)
-          .id((d) => d.id)
-          .distance((l) => {
-            const r = (l.events ?? 1) / maxLinkEvents;
-            return 80 + (1 - r) * 60; // high-activity nodes closer to center
-          })
-          .strength(0.6),
-      )
-      .force("charge", d3.forceManyBody().strength(-120))
-      .force("center", d3.forceCenter(W / 2, H / 2))
-      .force("collision", d3.forceCollide().radius((n) => nodeR(n) + 14));
-
-    simRef.current = sim;
-
-    // Links
-    const linkSel = g.append("g").selectAll("line").data(links).join("line").attr("stroke", linkColor).attr("stroke-width", linkWidth).attr("stroke-linecap", "round");
-
-    // Node groups
-    const nodeSel = g
-      .append("g")
-      .selectAll("g")
-      .data(nodes)
-      .join("g")
-      .attr("cursor", (n) => (n.kind !== "scope" ? "pointer" : "default"))
-      .call(
-        d3
-          .drag()
-          .on("start", (event, d) => {
-            if (!event.active) sim.alphaTarget(0.3).restart();
-            d.fx = d.x;
-            d.fy = d.y;
-          })
-          .on("drag", (event, d) => {
-            d.fx = event.x;
-            d.fy = event.y;
-          })
-          .on("end", (event, d) => {
-            if (!event.active) sim.alphaTarget(0);
-            d.fx = null;
-            d.fy = null;
-          }),
-      )
-      .on("click", (event, d) => {
-        if (d.kind !== "scope" && onNodeClick) {
-          onNodeClick(d.id);
-        }
-      });
-
-    // Pulse ring for high-activity nodes
-    nodeSel
-      .filter((n) => n.kind !== "scope" && (n.eventCount ?? 0) >= maxEvents * 0.6)
-      .append("circle")
-      .attr("r", (n) => nodeR(n) + 5)
-      .attr("fill", "none")
-      .attr("stroke", "rgba(239,68,68,0.4)")
-      .attr("stroke-width", 1)
-      .attr("class", "pulse-ring");
-
-    // Main circle
-    nodeSel
-      .append("circle")
-      .attr("r", nodeR)
-      .attr("fill", nodeColor)
-      .attr("stroke", nodeBorder)
-      .attr("stroke-width", 1.5)
-      .attr("filter", "url(#nodeGlow)");
-
-    // Address label
-    nodeSel
-      .filter((n) => n.kind !== "scope")
-      .append("text")
-      .attr("text-anchor", "middle")
-      .attr("dy", (n) => nodeR(n) + 10)
-      .attr("font-size", "7")
-      .attr("fill", "rgba(196,181,253,0.55)")
-      .text((n) => (n.id ? `${n.id.slice(0, 4)}…${n.id.slice(-3)}` : ""));
-
-    // Scope label
-    nodeSel
-      .filter((n) => n.kind === "scope")
-      .append("text")
-      .attr("text-anchor", "middle")
-      .attr("dy", 4)
-      .attr("font-size", "9")
-      .attr("font-weight", "bold")
-      .attr("fill", "white")
-      .attr("letter-spacing", "1")
-      .text("FOCUS");
-
-    // Tooltip title
-    nodeSel.append("title").text((n) => `${n.label ?? n.id}${n.eventCount ? ` · ${n.eventCount} events` : ""}`);
-
-    // Tick
-    sim.on("tick", () => {
-      linkSel
-        .attr("x1", (l) => l.source.x)
-        .attr("y1", (l) => l.source.y)
-        .attr("x2", (l) => l.target.x)
-        .attr("y2", (l) => l.target.y);
-      nodeSel.attr("transform", (n) => `translate(${n.x},${n.y})`);
+    // Grid rings
+    const rings = [0.25, 0.5, 0.75, 1.0];
+    rings.forEach((r) => {
+      ctx.beginPath();
+      ctx.arc(cx, cy, maxR * r, 0, Math.PI * 2);
+      ctx.strokeStyle = "rgba(139,92,246,0.12)";
+      ctx.lineWidth = 1;
+      ctx.stroke();
     });
 
-    // Fade in nodes after sim stabilizes
-    nodeSel.attr("opacity", 0);
-    linkSel.attr("opacity", 0);
-    setTimeout(() => {
-      nodeSel.transition().duration(600).attr("opacity", 1);
-      linkSel.transition().duration(800).attr("opacity", 1);
-    }, 300);
-  }, [graph, onNodeClick]);
+    // Cross hairs
+    ctx.strokeStyle = "rgba(139,92,246,0.08)";
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(cx, cy - maxR);
+    ctx.lineTo(cx, cy + maxR);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(cx - maxR, cy);
+    ctx.lineTo(cx + maxR, cy);
+    ctx.stroke();
 
-  useEffect(() => {
+    // Diagonal cross hairs
+    const d = maxR * 0.707;
+    ctx.beginPath();
+    ctx.moveTo(cx - d, cy - d);
+    ctx.lineTo(cx + d, cy + d);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(cx + d, cy - d);
+    ctx.lineTo(cx - d, cy + d);
+    ctx.stroke();
+
+    // Scanner sweep — gradient arc
+    const sweepAngle = angleRef.current;
+    const sweepLen = Math.PI * 0.6;
+    const grad = ctx.createConicalGradient
+      ? null // not widely supported
+      : null;
+
+    // Draw sweep as multiple lines for gradient effect
+    const steps = 40;
+    for (let s = 0; s < steps; s++) {
+      const a = sweepAngle - (s / steps) * sweepLen;
+      const alpha = (1 - s / steps) * 0.35;
+      ctx.beginPath();
+      ctx.moveTo(cx, cy);
+      ctx.lineTo(cx + Math.cos(a) * maxR, cy + Math.sin(a) * maxR);
+      ctx.strokeStyle = `rgba(139,92,246,${alpha})`;
+      ctx.lineWidth = 2;
+      ctx.stroke();
+    }
+
+    // Scanner leading edge
+    ctx.beginPath();
+    ctx.moveTo(cx, cy);
+    ctx.lineTo(cx + Math.cos(sweepAngle) * maxR, cy + Math.sin(sweepAngle) * maxR);
+    ctx.strokeStyle = "rgba(196,181,253,0.9)";
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+
+    // Center dot
+    ctx.beginPath();
+    ctx.arc(cx, cy, 4, 0, Math.PI * 2);
+    ctx.fillStyle = "#8b5cf6";
+    ctx.fill();
+
+    // Blips
+    blipsRef.current.forEach((b) => {
+      const bx = cx + Math.cos(b.angle) * (maxR * b.distRatio);
+      const by = cy + Math.sin(b.angle) * (maxR * b.distRatio);
+
+      // Check if scanner just passed over this blip
+      const normalizedSweep = ((sweepAngle % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2);
+      const normalizedBlip = ((b.angle % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2);
+      const diff = Math.abs(normalizedSweep - normalizedBlip);
+      if (diff < 0.08 || diff > Math.PI * 2 - 0.08) {
+        b.lastHit = Date.now();
+      }
+
+      const timeSinceHit = Date.now() - b.lastHit;
+      const hitAlpha = Math.max(0, 1 - timeSinceHit / 2000);
+
+      // Blip glow when scanner hits
+      if (hitAlpha > 0) {
+        const glowR = b.size + hitAlpha * 12;
+        const glowGrad = ctx.createRadialGradient(bx, by, 0, bx, by, glowR);
+        const color = b.isHot ? "239,68,68" : b.isMid ? "249,115,22" : "139,92,246";
+        glowGrad.addColorStop(0, `rgba(${color},${hitAlpha * 0.9})`);
+        glowGrad.addColorStop(1, `rgba(${color},0)`);
+        ctx.beginPath();
+        ctx.arc(bx, by, glowR, 0, Math.PI * 2);
+        ctx.fillStyle = glowGrad;
+        ctx.fill();
+      }
+
+      // Blip core — always visible but dim
+      const baseAlpha = 0.3 + hitAlpha * 0.7;
+      ctx.beginPath();
+      ctx.arc(bx, by, b.size, 0, Math.PI * 2);
+      ctx.fillStyle = b.isHot
+        ? `rgba(239,68,68,${baseAlpha})`
+        : b.isMid
+          ? `rgba(249,115,22,${baseAlpha})`
+          : `rgba(139,92,246,${baseAlpha})`;
+      ctx.fill();
+
+      // Label on hit
+      if (hitAlpha > 0.3) {
+        ctx.font = "7px monospace";
+        ctx.fillStyle = `rgba(196,181,253,${hitAlpha})`;
+        ctx.fillText(b.label, bx + b.size + 3, by + 3);
+      }
+    });
+
+    // SCOPE label at center
+    ctx.font = "bold 8px monospace";
+    ctx.fillStyle = "rgba(196,181,253,0.7)";
+    ctx.textAlign = "center";
+    ctx.fillText("SCOPE", cx, cy + 16);
+    ctx.textAlign = "left";
+
+    // Ring labels
+    ctx.font = "7px monospace";
+    ctx.fillStyle = "rgba(139,92,246,0.4)";
+    ctx.fillText("HIGH", cx + 4, cy - maxR * 0.25 + 3);
+    ctx.fillText("MED", cx + 4, cy - maxR * 0.5 + 3);
+    ctx.fillText("LOW", cx + 4, cy - maxR * 0.75 + 3);
+  }, []);
+
+  const tick = useCallback(() => {
+    angleRef.current += 0.012; // rotation speed
     draw();
-    return () => simRef.current?.stop();
+    animRef.current = requestAnimationFrame(tick);
   }, [draw]);
 
-  // Redraw on resize
   useEffect(() => {
-    const ro = new ResizeObserver(() => draw());
-    if (svgRef.current?.parentElement) ro.observe(svgRef.current.parentElement);
-    return () => ro.disconnect();
-  }, [draw]);
+    blipsRef.current = buildBlips();
+  }, [buildBlips]);
 
-  if (!graph?.nodes?.length) {
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const container = canvas.parentElement;
+    const size = Math.min(container?.clientWidth || 340, 340);
+    canvas.width = size;
+    canvas.height = size;
+
+    // Fill background once
+    const ctx = canvas.getContext("2d");
+    ctx.fillStyle = "#080612";
+    ctx.fillRect(0, 0, size, size);
+
+    animRef.current = requestAnimationFrame(tick);
+    return () => {
+      if (animRef.current) cancelAnimationFrame(animRef.current);
+    };
+  }, [tick]);
+
+  // Click handler
+  const handleClick = useCallback(
+    (e) => {
+      if (!onNodeClick || !canvasRef.current) return;
+      const rect = canvasRef.current.getBoundingClientRect();
+      const mx = e.clientX - rect.left;
+      const my = e.clientY - rect.top;
+      const W = canvasRef.current.width;
+      const H = canvasRef.current.height;
+      const cx = W / 2;
+      const cy = H / 2;
+      const maxR = Math.min(cx, cy) - 20;
+
+      for (const b of blipsRef.current) {
+        const bx = cx + Math.cos(b.angle) * (maxR * b.distRatio);
+        const by = cy + Math.sin(b.angle) * (maxR * b.distRatio);
+        const dist = Math.sqrt((mx - bx) ** 2 + (my - by) ** 2);
+        if (dist < 12) {
+          onNodeClick(b.id);
+          return;
+        }
+      }
+    },
+    [onNodeClick],
+  );
+
+  if (!graph?.nodes?.filter((n) => n.kind !== "scope").length) {
     return (
       <div className="flex h-[340px] items-center justify-center rounded-md border border-dashed border-cm-border px-4 text-center text-sm text-cm-faint">
-        Set a watchlist address and load activity, or connect Turso to draw payer links from synced events.
+        Load activity to render threat radar.
       </div>
     );
   }
 
   return (
-    <div className="relative overflow-hidden rounded-md border border-cm-border bg-[#0d0b14]">
-      <svg ref={svgRef} className="w-full" style={{ height: 340 }} />
-      <div className="absolute bottom-2 right-2 flex gap-3 font-mono text-[9px] text-cm-faint">
-        <span className="flex items-center gap-1">
-          <span className="inline-block h-2 w-2 rounded-full bg-red-500" /> high activity
-        </span>
-        <span className="flex items-center gap-1">
-          <span className="inline-block h-2 w-2 rounded-full bg-orange-500" /> mid
-        </span>
-        <span className="flex items-center gap-1">
-          <span className="inline-block h-2 w-2 rounded-full bg-purple-700" /> low
-        </span>
-        <span className="text-cm-faint/50">scroll to zoom · drag to pan</span>
+    <div className="relative overflow-hidden rounded-md border border-cm-border bg-[#080612]">
+      <canvas
+        ref={canvasRef}
+        onClick={handleClick}
+        style={{ display: "block", width: "100%", cursor: "crosshair" }}
+      />
+      <div className="absolute bottom-2 left-2 right-2 flex justify-between font-mono text-[8px] text-cm-faint/60">
+        <div className="flex gap-3">
+          <span className="flex items-center gap-1">
+            <span className="inline-block h-1.5 w-1.5 rounded-full bg-red-500" /> high risk
+          </span>
+          <span className="flex items-center gap-1">
+            <span className="inline-block h-1.5 w-1.5 rounded-full bg-orange-500" /> mid
+          </span>
+          <span className="flex items-center gap-1">
+            <span className="inline-block h-1.5 w-1.5 rounded-full bg-purple-600" /> low
+          </span>
+        </div>
+        <span>click blip to investigate</span>
       </div>
     </div>
   );
