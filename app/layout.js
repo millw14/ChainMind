@@ -17,6 +17,14 @@ export const metadata = {
     "Detect and prove coordinated manipulation on Solana before it surfaces — graphs, detectors, webhook alerts.",
 };
 
+export const viewport = {
+  width: "device-width",
+  initialScale: 1,
+  maximumScale: 5,
+  viewportFit: "cover",
+  themeColor: "#0a090c",
+};
+
 export default function RootLayout({ children }) {
   return (
     <html lang="en" className={`${inter.variable} ${jetbrains.variable}`}>

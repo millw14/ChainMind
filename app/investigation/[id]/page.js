@@ -106,24 +106,40 @@ export default async function InvestigationPage({ params }) {
   return (
     <main className="min-h-screen bg-zinc-950 text-zinc-100" style={{ fontFamily: "'IBM Plex Mono', 'Courier New', monospace" }}>
       {/* Header */}
-      <div className="border-b border-zinc-800 bg-zinc-950/80 backdrop-blur sticky top-0 z-10">
-        <div className="mx-auto max-w-5xl px-4 py-3 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <Link href="/dashboard" className="text-zinc-500 hover:text-zinc-300 text-xs">← Dashboard</Link>
-            <span className="text-zinc-700">·</span>
+      <div className="sticky top-12 z-30 border-b border-zinc-800 bg-zinc-950/80 backdrop-blur sm:top-14">
+        <div className="mx-auto flex max-w-5xl flex-wrap items-center justify-between gap-x-3 gap-y-2 px-3 py-3 sm:px-4">
+          <div className="flex min-w-0 flex-wrap items-center gap-2 sm:gap-3">
+            <Link href="/dashboard" className="min-h-[44px] inline-flex items-center text-xs text-zinc-500 hover:text-zinc-300">
+              ← Dashboard
+            </Link>
+            <span className="hidden text-zinc-700 sm:inline">·</span>
             <span className="text-xs text-zinc-500 uppercase tracking-widest">Case File</span>
           </div>
-          <div className="flex gap-3 text-xs">
-            <a href={`/api/cases/${caseId}`} target="_blank" rel="noreferrer" className="text-zinc-500 hover:text-cyan-400">JSON</a>
-            <a href={`/api/cases/${caseId}?format=markdown`} target="_blank" rel="noreferrer" className="text-zinc-500 hover:text-cyan-400">Markdown</a>
+          <div className="flex shrink-0 gap-4 text-xs">
+            <a
+              href={`/api/cases/${caseId}`}
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex min-h-[44px] items-center text-zinc-500 hover:text-cyan-400"
+            >
+              JSON
+            </a>
+            <a
+              href={`/api/cases/${caseId}?format=markdown`}
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex min-h-[44px] items-center text-zinc-500 hover:text-cyan-400"
+            >
+              Markdown
+            </a>
           </div>
         </div>
       </div>
 
-      <div className="mx-auto max-w-5xl px-4 py-10 space-y-8">
+      <div className="mx-auto max-w-5xl space-y-8 px-3 py-8 pb-[max(2.5rem,env(safe-area-inset-bottom,0px))] sm:px-4 sm:py-10">
 
         {/* Hero */}
-        <div className={`rounded-xl border p-6 ${riskColor}`}>
+        <div className={`rounded-xl border p-4 sm:p-6 ${riskColor}`}>
           <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
             <div className="space-y-2">
               <p className="text-xs uppercase tracking-widest text-zinc-500">Scope</p>
@@ -186,8 +202,8 @@ export default async function InvestigationPage({ params }) {
         {topEvidence.filter(e => e.signature && e.signature !== "none").length > 0 && (
           <section>
             <h2 className="text-xs uppercase tracking-widest text-zinc-500 mb-4">Top Evidence</h2>
-            <div className="rounded-lg border border-zinc-800 overflow-hidden">
-              <table className="w-full text-xs">
+            <div className="rounded-lg border border-zinc-800 overflow-x-auto">
+              <table className="w-full min-w-[320px] text-xs">
                 <thead className="bg-zinc-900 text-zinc-500 uppercase tracking-wider">
                   <tr>
                     <th className="px-4 py-2 text-left">Signature</th>

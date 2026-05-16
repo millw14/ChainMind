@@ -1242,9 +1242,9 @@ export function Dashboard() {
   const panelV = fadeUp(reduceMotion);
 
   return (
-    <div className="relative pb-24 cm-war-grid">
-      <div className="border-b border-cm-border bg-cm-card/95 backdrop-blur-md">
-        <div className="mx-auto flex max-w-[88rem] flex-col gap-4 px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-6">
+    <div className="relative min-w-0 max-w-[100vw] overflow-x-clip pb-[max(6rem,calc(env(safe-area-inset-bottom,0px)+4rem))] cm-war-grid">
+      <div className="sticky top-12 z-40 border-b border-cm-border bg-cm-card/95 backdrop-blur-md sm:top-14">
+        <div className="mx-auto flex max-w-[88rem] flex-col gap-4 px-3 py-3 sm:flex-row sm:items-center sm:justify-between sm:px-6 sm:py-4">
           <div className="flex min-w-0 flex-wrap items-center gap-4">
             <span className="relative flex h-3 w-3 shrink-0">
               <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-cm-terminal/50 opacity-35" />
@@ -1275,7 +1275,7 @@ export function Dashboard() {
             type="button"
             onClick={() => void runAllSync()}
             disabled={syncing}
-            className="inline-flex items-center justify-center gap-2 rounded-md border border-cm-accent/40 bg-cm-accent px-4 py-2.5 text-xs font-bold uppercase tracking-wide text-cm-on-accent shadow-[0_0_24px_-4px_rgba(139,92,246,0.55)] transition hover:bg-cm-accent-bright disabled:opacity-45"
+            className="inline-flex w-full min-h-[44px] items-center justify-center gap-2 rounded-md border border-cm-accent/40 bg-cm-accent px-4 py-3 text-xs font-bold uppercase tracking-wide text-cm-on-accent shadow-[0_0_24px_-4px_rgba(139,92,246,0.55)] transition hover:bg-cm-accent-bright disabled:opacity-45 sm:w-auto sm:min-h-0 sm:py-2.5"
             whileHover={syncing || reduceMotion ? undefined : { scale: 1.04 }}
             whileTap={reduceMotion ? undefined : { scale: 0.96 }}
             animate={
@@ -1307,7 +1307,7 @@ export function Dashboard() {
       </div>
 
       <motion.main
-        className="mx-auto max-w-[88rem] space-y-6 px-4 py-8 sm:px-6"
+        className="mx-auto max-w-[88rem] space-y-6 px-3 py-6 sm:px-6 sm:py-8"
         initial="hidden"
         animate="show"
         variants={mainStagger}
@@ -1355,7 +1355,7 @@ export function Dashboard() {
           subtitle="Everything downstream keys off this pubkey — mint, wallet, or program."
         >
           <div className="grid gap-4 lg:grid-cols-12 lg:gap-6">
-            <div className="lg:col-span-6">
+            <div className="min-w-0 lg:col-span-6">
               <label className="mb-1.5 block font-mono text-[10px] font-semibold uppercase tracking-wider text-cm-faint">
                 Solana address (base58)
               </label>
@@ -1368,7 +1368,7 @@ export function Dashboard() {
                 autoComplete="off"
               />
             </div>
-            <div className="grid grid-cols-3 gap-3 lg:col-span-6 lg:gap-4">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3 lg:col-span-6 lg:gap-4">
               <div>
                 <label className="mb-1.5 block font-mono text-[10px] font-semibold uppercase tracking-wider text-cm-faint">
                   Sig depth
@@ -1485,7 +1485,7 @@ export function Dashboard() {
         <motion.div variants={panelV}>
           <details className="group">
             <summary className="cursor-pointer list-none">
-              <div className="flex items-center justify-between rounded-xl border border-cm-border bg-cm-surface/40 px-5 py-4 hover:bg-cm-row-hover transition-colors">
+              <div className="flex min-h-[48px] items-center justify-between gap-3 rounded-xl border border-cm-border bg-cm-surface/40 px-4 py-3 transition-colors active:bg-cm-row-hover hover:bg-cm-row-hover sm:min-h-0 sm:px-5 sm:py-4">
                 <div>
                   <p className="font-mono text-[10px] font-semibold uppercase tracking-[0.22em] text-cm-faint">Evidence</p>
                   <p className="mt-0.5 text-sm font-semibold text-cm-text">Wallet table</p>

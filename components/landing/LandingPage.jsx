@@ -13,7 +13,7 @@ import {
   springGentle,
 } from "@/components/motion/presets";
 
-const shell = "mx-auto w-full max-w-6xl px-4 sm:px-6";
+const shell = "mx-auto w-full max-w-6xl px-3 sm:px-6";
 
 function HeroGraphDecor({ reduce }) {
   return (
@@ -125,7 +125,7 @@ function ScanInput() {
 
   return (
     <form onSubmit={handleSubmit} className="flex flex-col gap-2">
-      <div className="flex gap-2">
+      <div className="flex flex-col gap-2 sm:flex-row sm:gap-2">
         <input
           type="text"
           value={address}
@@ -134,13 +134,14 @@ function ScanInput() {
             setError("");
           }}
           placeholder="Paste a Solana mint or wallet address"
-          className="h-11 flex-1 rounded-md border border-cm-border bg-cm-elevated px-4 font-mono text-sm text-cm-text placeholder:text-cm-faint focus:border-cm-accent focus:outline-none"
+          className="min-h-[44px] flex-1 rounded-md border border-cm-border bg-cm-elevated px-4 font-mono text-sm text-cm-text placeholder:text-cm-faint focus:border-cm-accent focus:outline-none"
           spellCheck={false}
           autoComplete="off"
+          enterKeyHint="go"
         />
         <button
           type="submit"
-          className="h-11 rounded-md bg-cm-accent px-5 text-sm font-semibold text-cm-on-accent transition-colors hover:bg-cm-accent-bright"
+          className="min-h-[44px] shrink-0 rounded-md bg-cm-accent px-5 text-sm font-semibold text-cm-on-accent transition-colors hover:bg-cm-accent-bright active:bg-cm-accent-dim sm:min-w-[6rem]"
         >
           Scan
         </button>
