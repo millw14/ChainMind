@@ -1,6 +1,8 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { useState } from "react";
 import { motion, useReducedMotion } from "framer-motion";
 import {
   fadeScale,
@@ -104,6 +106,51 @@ function CtaLink({ href, className, children }) {
   );
 }
 
+function ScanInput() {
+  const router = useRouter();
+  const [address, setAddress] = useState("");
+  const [error, setError] = useState("");
+
+  function handleSubmit(e) {
+    e.preventDefault();
+    const val = address.trim();
+    if (!val) return;
+    if (val.length < 32 || val.length > 44) {
+      setError("Enter a valid Solana address");
+      return;
+    }
+    setError("");
+    router.push(`/dashboard?address=${encodeURIComponent(val)}`);
+  }
+
+  return (
+    <form onSubmit={handleSubmit} className="flex flex-col gap-2">
+      <div className="flex gap-2">
+        <input
+          type="text"
+          value={address}
+          onChange={(e) => {
+            setAddress(e.target.value);
+            setError("");
+          }}
+          placeholder="Paste a Solana mint or wallet address"
+          className="h-11 flex-1 rounded-md border border-cm-border bg-cm-elevated px-4 font-mono text-sm text-cm-text placeholder:text-cm-faint focus:border-cm-accent focus:outline-none"
+          spellCheck={false}
+          autoComplete="off"
+        />
+        <button
+          type="submit"
+          className="h-11 rounded-md bg-cm-accent px-5 text-sm font-semibold text-cm-on-accent transition-colors hover:bg-cm-accent-bright"
+        >
+          Scan
+        </button>
+      </div>
+      {error ? <p className="text-xs text-red-400">{error}</p> : null}
+      <p className="text-xs text-cm-faint">No signup needed — paste any mint or wallet to run a free scan.</p>
+    </form>
+  );
+}
+
 export function LandingPage() {
   const reduceMotion = useReducedMotion() ?? false;
   const fv = fadeUp(reduceMotion);
@@ -139,27 +186,24 @@ export function LandingPage() {
                 ChainMind watches funding graphs, fee-payer concentration, and time-clustered activity—so you see
                 coordination forming while others are still reading the tape.
               </motion.p>
-              <motion.div variants={fv} className="mt-8 flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
-                <CtaLink
-                  href="/dashboard"
-                  className="inline-flex h-11 items-center justify-center rounded-md bg-cm-accent px-6 text-sm font-semibold text-cm-on-accent transition-colors hover:bg-cm-accent-bright"
-                >
-                  Open investigation console
-                </CtaLink>
-                <CtaLink
-                  href="/#how-it-works"
-                  className="inline-flex h-11 items-center justify-center rounded-md border border-cm-border bg-cm-elevated/90 px-6 text-sm font-medium text-cm-text backdrop-blur-sm transition-colors hover:border-cm-accent/40 hover:bg-cm-row-hover"
-                >
-                  How signals are produced
-                </CtaLink>
-                <motion.div whileHover={{ x: 3 }} transition={springGentle}>
-                  <Link
-                    href="/docs"
-                    className="inline-flex px-2 text-sm font-medium text-cm-muted underline-offset-4 hover:text-cm-text hover:underline sm:px-4"
+              <motion.div variants={fv} className="mt-8 flex flex-col gap-3 sm:max-w-xl">
+                <ScanInput />
+                <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
+                  <CtaLink
+                    href="/#how-it-works"
+                    className="inline-flex h-9 items-center justify-center rounded-md border border-cm-border bg-cm-elevated/90 px-5 text-sm font-medium text-cm-text backdrop-blur-sm transition-colors hover:border-cm-accent/40 hover:bg-cm-row-hover"
                   >
-                    Operator setup →
-                  </Link>
-                </motion.div>
+                    How signals are produced
+                  </CtaLink>
+                  <motion.div whileHover={{ x: 3 }} transition={springGentle}>
+                    <Link
+                      href="/docs"
+                      className="inline-flex px-2 text-sm font-medium text-cm-muted underline-offset-4 hover:text-cm-text hover:underline sm:px-4"
+                    >
+                      Operator setup →
+                    </Link>
+                  </motion.div>
+                </div>
               </motion.div>
             </motion.div>
 
