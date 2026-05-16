@@ -26,7 +26,7 @@ import { MultiScopeComparePanel } from "@/components/dashboard/multi-scope-compa
 import WalletTable from "@/components/dashboard/WalletTable";
 import { staggerContainer, fadeUp, springGentle } from "@/components/motion/presets";
 
-const USDC_MAINNET = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
+const USDC_MAINNET = "Xqfwj8PrgpjksqgnopR9DwDuNZAXrqVHDbdcQ34pump";
 
 const INSPECT_DEBOUNCE_MS = 350;
 const LIVE_POLL_MS = 42_000;
@@ -1131,7 +1131,7 @@ export function Dashboard() {
   const groqEvidence = useMemo(() => {
     const addr = focusAddress.trim();
     if (!addr) return null;
-    const scopeHumanHint = addr === USDC_MAINNET ? "USDC mint (mainnet)" : null;
+    const scopeHumanHint = null;
     const evidenceCore = buildGroqEvidence({
       address: focusAddress,
       score,
