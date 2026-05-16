@@ -199,19 +199,27 @@ export function WalletGraphForce({ graph, onNodeClick }) {
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
-    const container = canvas.parentElement;
-    const size = Math.min(container?.clientWidth || 340, 340);
-    canvas.width = size;
-    canvas.height = size;
 
-    // Fill background once
-    const ctx = canvas.getContext("2d");
-    ctx.fillStyle = "#080612";
-    ctx.fillRect(0, 0, size, size);
+    const setSize = () => {
+      const container = canvas.parentElement;
+      const size = Math.min(container?.clientWidth || 340, 340);
+      canvas.width = size;
+      canvas.height = size;
+      const ctx = canvas.getContext("2d");
+      ctx.fillStyle = "#080612";
+      ctx.fillRect(0, 0, size, size);
+    };
+
+    setSize();
+
+    const ro = new ResizeObserver(setSize);
+    const parent = canvas.parentElement;
+    if (parent) ro.observe(parent);
 
     animRef.current = requestAnimationFrame(tick);
     return () => {
       if (animRef.current) cancelAnimationFrame(animRef.current);
+      ro.disconnect();
     };
   }, [tick]);
 
