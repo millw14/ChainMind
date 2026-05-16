@@ -11,30 +11,7 @@ export function WalletGraphForce({ graph, onNodeClick }) {
 
   useEffect(() => setMounted(true), []);
 
-  // Build blips from graph data
-  useEffect(() => {
-    if (!graph?.nodes?.length) return;
-    const nodes = graph.nodes.filter((n) => n.kind !== "scope");
-    const maxEvents = Math.max(1, ...nodes.map((n) => n.eventCount ?? 1));
-    blipsRef.current = nodes.map((n, i) => {
-      const eventRatio = (n.eventCount ?? 1) / maxEvents;
-      const distRatio = 0.15 + (1 - eventRatio) * 0.72;
-      const angle = (2 * Math.PI * i) / Math.max(nodes.length, 1) + (i % 2 === 0 ? 0.15 : -0.15);
-      return {
-        id: n.id,
-        label: n.id ? `${n.id.slice(0, 4)}…${n.id.slice(-3)}` : "",
-        distRatio,
-        angle,
-        eventCount: n.eventCount ?? 1,
-        isHot: eventRatio > 0.5,
-        isMid: eventRatio > 0.25 && eventRatio <= 0.5,
-        size: 2.5 + eventRatio * 4.5,
-        lastHit: -9999,
-      };
-    });
-  }, [graph]);
-
-  const drawFrame = useCallback(() => {
+  const drawFrame = () => {
     const canvas = canvasRef.current;
     if (!canvas) return;
     const ctx = canvas.getContext("2d");
@@ -158,7 +135,30 @@ export function WalletGraphForce({ graph, onNodeClick }) {
 
     angleRef.current += 0.013;
     animRef.current = requestAnimationFrame(drawFrame);
-  }, []);
+  };
+
+  // Build blips from graph data
+  useEffect(() => {
+    if (!graph?.nodes?.length) return;
+    const nodes = graph.nodes.filter((n) => n.kind !== "scope");
+    const maxEvents = Math.max(1, ...nodes.map((n) => n.eventCount ?? 1));
+    blipsRef.current = nodes.map((n, i) => {
+      const eventRatio = (n.eventCount ?? 1) / maxEvents;
+      const distRatio = 0.15 + (1 - eventRatio) * 0.72;
+      const angle = (2 * Math.PI * i) / Math.max(nodes.length, 1) + (i % 2 === 0 ? 0.15 : -0.15);
+      return {
+        id: n.id,
+        label: n.id ? `${n.id.slice(0, 4)}…${n.id.slice(-3)}` : "",
+        distRatio,
+        angle,
+        eventCount: n.eventCount ?? 1,
+        isHot: eventRatio > 0.5,
+        isMid: eventRatio > 0.25 && eventRatio <= 0.5,
+        size: 2.5 + eventRatio * 4.5,
+        lastHit: -9999,
+      };
+    });
+  }, [graph]);
 
   useEffect(() => {
     if (!mounted) return;
@@ -182,7 +182,8 @@ export function WalletGraphForce({ graph, onNodeClick }) {
     return () => {
       if (animRef.current) cancelAnimationFrame(animRef.current);
     };
-  }, [mounted, drawFrame]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mounted]);
 
   const handleClick = useCallback((e) => {
     if (!onNodeClick || !canvasRef.current) return;
