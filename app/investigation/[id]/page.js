@@ -306,9 +306,17 @@ export default async function InvestigationPage({ params }) {
 
         {/* Evidence Rows Sample */}
         {evidenceRows.length > 0 && (
-          <section>
-            <h2 className="text-xs uppercase tracking-widest text-zinc-500 mb-4">Transfer Evidence ({evidenceRows.length} rows)</h2>
-            <div className="rounded-lg border border-zinc-800 overflow-auto max-h-64">
+          <details className="group">
+            <summary className="cursor-pointer list-none">
+              <div className="flex items-center justify-between rounded-lg border border-zinc-800 bg-zinc-900/40 px-4 py-3 hover:bg-zinc-800/60">
+                <p className="font-mono text-xs uppercase tracking-widest text-zinc-500">
+                  Transfer Evidence ({evidenceRows.length} rows)
+                </p>
+                <span className="text-xs text-zinc-600 group-open:hidden">▼ expand</span>
+                <span className="hidden text-xs text-zinc-600 group-open:block">▲ collapse</span>
+              </div>
+            </summary>
+            <div className="mt-2 rounded-lg border border-zinc-800 overflow-auto max-h-64">
               <table className="w-full text-xs">
                 <thead className="bg-zinc-900 text-zinc-500 uppercase tracking-wider sticky top-0">
                   <tr>
@@ -328,7 +336,7 @@ export default async function InvestigationPage({ params }) {
                 </tbody>
               </table>
             </div>
-          </section>
+          </details>
         )}
 
         {/* Footer */}
