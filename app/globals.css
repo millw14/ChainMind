@@ -47,6 +47,13 @@
 
 body {
   @apply min-h-screen antialiased bg-cm-bg text-cm-text;
+  padding-left: env(safe-area-inset-left, 0px);
+  padding-right: env(safe-area-inset-right, 0px);
+}
+
+/* Mobile: avoid horizontal rubber-banding on wide tables / SVG */
+html {
+  overflow-x: clip;
 }
 
 /* Investigation / war-room surfaces */

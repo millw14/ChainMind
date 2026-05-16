@@ -9,7 +9,7 @@ export const metadata = {
 export default function SolanaDashboardPage() {
   return (
     <>
-      <div className="border-b border-cm-border-subtle bg-cm-surface/40 px-4 py-5 sm:px-6">
+      <div className="border-b border-cm-border-subtle bg-cm-surface/40 px-3 py-4 sm:px-6 sm:py-5">
         <div className="mx-auto max-w-[88rem]">
           <div className="flex flex-wrap items-end justify-between gap-4">
             <div>
@@ -27,7 +27,7 @@ export default function SolanaDashboardPage() {
         </div>
       </div>
       <Dashboard />
-      <div className="mx-auto max-w-[88rem] px-4 py-6">
+      <div className="mx-auto max-w-[88rem] px-3 pb-[max(1.5rem,env(safe-area-inset-bottom,0px))] pt-4 sm:px-4 sm:py-6">
         <RecentCases limit={10} />
       </div>
     </>
