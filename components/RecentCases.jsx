@@ -8,20 +8,32 @@ function shortAddr(a) {
   return `${a.slice(0, 4)}…${a.slice(-4)}`;
 }
 
+function timeAgo(unixSec) {
+  const diff = Math.floor(Date.now() / 1000) - unixSec;
+  if (diff < 60) return `${diff}s ago`;
+  if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
+  if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
+  return `${Math.floor(diff / 86400)}d ago`;
+}
+
 function verdictStyle(v) {
   if (v === "escalate") return "bg-red-500/15 text-red-400 border-red-500/35";
   if (v === "monitor") return "bg-amber-500/15 text-amber-300 border-amber-500/30";
   return "bg-zinc-500/10 text-zinc-400 border-zinc-600/40";
 }
 
-/**
- * @param {{ limit?: number }} props
- */
+function riskDot(risk) {
+  if (risk === "critical") return "bg-red-500 animate-pulse";
+  if (risk === "high") return "bg-orange-500";
+  if (risk === "medium") return "bg-yellow-500";
+  return "bg-zinc-500";
+}
+
 export function RecentCases({ limit = 10 }) {
   const lim = Math.min(50, Math.max(1, Number(limit) || 10));
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(/**  @type {string | null} */ (null));
-  const [cases, setCases] = useState(/** @type {unknown[]} */ ([]));
+  const [error, setError] = useState(null);
+  const [cases, setCases] = useState([]);
 
   useEffect(() => {
     let cancel = false;
@@ -87,7 +99,7 @@ export function RecentCases({ limit = 10 }) {
     return (
       <section className="rounded-md border border-cm-border bg-cm-surface/80 px-4 py-6 sm:px-5">
         <p className="font-mono text-[10px] font-semibold uppercase tracking-[0.18em] text-cm-faint">Case history</p>
-        <p className="mt-2 text-xs text-cm-muted">No saved investigation cases yet. Create one via POST /api/cases.</p>
+        <p className="mt-2 text-xs text-cm-muted">No investigations yet — scan an address to create one.</p>
       </section>
     );
   }
@@ -100,26 +112,45 @@ export function RecentCases({ limit = 10 }) {
       </div>
       <div className="divide-y divide-cm-border-subtle">
         {cases.map((c) => {
-          const row = /** @type {{ id?: string, verdict?: string, confidence?: number, scope_address?: string, pattern?: string, created_at?: number }} */ (c);
+          const row = c;
           const v = String(row.verdict ?? "dismiss");
-          const created = row.created_at ? new Date(Number(row.created_at) * 1000).toISOString() : "";
+          const created = row.created_at ? Number(row.created_at) : 0;
+
           return (
             <Link
               key={row.id}
               href={`/investigation/${row.id}`}
-              className="flex flex-wrap items-center gap-3 px-4 py-3 transition-colors hover:bg-cm-surface/60 sm:px-5"
+              className="flex items-center gap-2 px-4 py-3 transition-colors hover:bg-cm-surface/60 sm:gap-3 sm:px-5"
             >
-              <span className={`rounded border px-2 py-0.5 font-mono text-[10px] font-semibold uppercase tracking-wider ${verdictStyle(v)}`}>
+              {/* Risk dot */}
+              <span className={`h-2 w-2 flex-shrink-0 rounded-full ${riskDot(row.risk_level ?? "low")}`} />
+
+              {/* Verdict badge */}
+              <span
+                className={`flex-shrink-0 rounded border px-2 py-0.5 font-mono text-[10px] font-semibold uppercase tracking-wider ${verdictStyle(v)}`}
+              >
                 {v}
               </span>
-              <span className="font-mono text-xs text-cm-accent-bright">{Math.round(Number(row.confidence ?? 0) * 100)}%</span>
-              <span className="min-w-0 flex-1 font-mono text-xs text-cm-muted">
-                <span className="text-cm-text">{shortAddr(row.scope_address ?? "")}</span>
-                {row.pattern && row.pattern !== "unknown" ? (
-                  <span className="ml-2 text-cm-faint">· {String(row.pattern).replace(/-/g, " ")}</span>
-                ) : null}
+
+              {/* Confidence */}
+              <span className="flex-shrink-0 font-mono text-xs text-cm-accent-bright">
+                {Math.round(Number(row.confidence ?? 0) * 100)}%
               </span>
-              {created ? <span className="font-mono text-[10px] text-cm-faint">{created.slice(0, 19).replace("T", " ")}</span> : null}
+
+              {/* Address */}
+              <span className="min-w-0 flex-1 truncate font-mono text-xs text-cm-text">{shortAddr(row.scope_address ?? "")}</span>
+
+              {/* Pattern — hidden on mobile */}
+              {row.pattern && row.pattern !== "unknown" ? (
+                <span className="hidden max-w-[120px] flex-shrink-0 truncate font-mono text-[10px] text-cm-faint sm:block">
+                  {String(row.pattern).replace(/-/g, " ")}
+                </span>
+              ) : null}
+
+              {/* Time */}
+              {created ? (
+                <span className="flex-shrink-0 whitespace-nowrap font-mono text-[10px] text-cm-faint">{timeAgo(created)}</span>
+              ) : null}
             </Link>
           );
         })}
