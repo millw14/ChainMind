@@ -323,6 +323,7 @@ export function inspectFallbackGraph(focusAddress, signatures) {
  * @param {Array<{ startSec: number, walletCount: number, eventCount?: number }>} buckets
  */
 export function CoordinationTimeline({ buckets }) {
+  console.log("[CoordinationTimeline] buckets:", buckets); // ADD THIS
   if (!buckets?.length) {
     return (
       <div className="flex h-32 items-center justify-center rounded-md border border-dashed border-cm-border text-xs text-cm-faint">
