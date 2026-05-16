@@ -1451,14 +1451,6 @@ export function Dashboard() {
           </div>
         </motion.div>
 
-        <motion.div variants={panelV}>
-          <WalletTable
-            ref={walletTableRef}
-            scope={focusAddress.trim()}
-            lookback={evidenceLookbackHours}
-          />
-        </motion.div>
-
         <motion.div variants={panelV} className="grid gap-6 lg:grid-cols-2">
           <Panel kicker="Corpus" title="Synced datastore" subtitle="Signatures & parsed events mirrored for analysis">
             <DbBody data={dbStats} loading={loading.db && dbStats == null} watchScope={focusAddress} />
@@ -1489,6 +1481,27 @@ export function Dashboard() {
               evidenceSnapshot={groqEvidence}
             />
           </Panel>
+        </motion.div>
+        <motion.div variants={panelV}>
+          <details className="group">
+            <summary className="cursor-pointer list-none">
+              <div className="flex items-center justify-between rounded-xl border border-cm-border bg-cm-surface/40 px-5 py-4 hover:bg-cm-row-hover transition-colors">
+                <div>
+                  <p className="font-mono text-[10px] font-semibold uppercase tracking-[0.22em] text-cm-faint">Evidence</p>
+                  <p className="mt-0.5 text-sm font-semibold text-cm-text">Wallet table</p>
+                </div>
+                <span className="font-mono text-xs text-cm-faint select-none group-open:hidden">▼ expand</span>
+                <span className="hidden font-mono text-xs text-cm-faint select-none group-open:block">▲ collapse</span>
+              </div>
+            </summary>
+            <div className="mt-2">
+              <WalletTable
+                ref={walletTableRef}
+                scope={focusAddress.trim()}
+                lookback={evidenceLookbackHours}
+              />
+            </div>
+          </details>
         </motion.div>
       </motion.main>
     </div>
