@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef } from "react";
+import { useEffect, useRef, useCallback, useState } from "react";
 
 /**
  * Threat Radar — wallets as blips on a rotating scanner.
@@ -8,6 +8,9 @@ import { useCallback, useEffect, useRef } from "react";
  * Scanner line rotates continuously.
  */
 export function WalletGraphForce({ graph, onNodeClick }) {
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
+
   const canvasRef = useRef(null);
   const animRef = useRef(null);
   const angleRef = useRef(0);
@@ -255,6 +258,10 @@ export function WalletGraphForce({ graph, onNodeClick }) {
         Load activity to render threat radar.
       </div>
     );
+  }
+
+  if (!mounted) {
+    return <div className="h-[340px] rounded-md border border-cm-border bg-[#080612]" />;
   }
 
   return (
