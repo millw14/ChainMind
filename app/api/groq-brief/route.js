@@ -319,7 +319,7 @@ export async function POST(request) {
   /** @type {{ attempted: boolean, delivered?: boolean, skipped?: boolean, error?: string }} */
   const webhook = { attempted: false };
 
-  if (source === "auto" && analysis.confidence > webhookConfidenceThreshold()) {
+  if ((source === "auto" || source === "auto_investigation_case") && analysis.confidence > webhookConfidenceThreshold()) {
     webhook.attempted = true;
     const payload = {
       event: "chainmind.high_confidence_verdict",
