@@ -119,7 +119,7 @@ export function MultiScopeComparePanel({
           <span className="font-mono text-[10px] text-cm-faint">Loading watchlist…</span>
         ) : watchlist.length === 0 ? (
           <span className="font-mono text-[10px] text-cm-faint">
-            No watchlist in env — set CHAINMIND_WATCHLIST_JSON or config/watchlist.json
+            No saved scopes yet — scan an address to add it to your watchlist.
           </span>
         ) : (
           watchlist.map(({ address, note }) => {

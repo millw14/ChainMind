@@ -448,11 +448,7 @@ export function SurfaceFeedStrip({ hits, loading, hint, onPickScope, onPinCompar
       {hint ? <p className="mb-3 text-[11px] text-cm-warn/90">{hint}</p> : null}
       {!loading && (!hits || hits.length === 0) ? (
         <p className="text-sm text-cm-faint">
-          No rows yet. On Vercel: set{" "}
-          <code className="text-cm-muted">CHAINMIND_WATCHLIST_JSON</code>, <code className="text-cm-muted">CRON_SECRET</code>,
-          and schedule <code className="text-cm-muted">GET /api/cron/surface-scan</code> (see{" "}
-          <code className="text-cm-muted">vercel.json</code>
-          ). Apply Turso <code className="text-cm-muted">surface_hits</code> migration.
+          No signals yet — scans run automatically as addresses are ingested. Check back after the next pipeline round.
         </p>
       ) : null}
       {hits && hits.length > 0 ? (
@@ -559,8 +555,7 @@ export function GlobalIntelFeedStrip({ entries, loading, hint, meta, onPickScope
       {hint ? <p className="mb-3 text-[11px] text-cm-warn/90">{hint}</p> : null}
       {!loading && list.length === 0 ? (
         <p className="text-sm text-cm-faint">
-          No intel rows yet. Run cross-mint recompute / surface cron (see <code className="text-cm-muted">vercel.json</code>) and
-          ensure Turso <code className="text-cm-muted">intel_*</code> migrations are applied.
+          No cross-scope overlaps yet — intel populates as more addresses are scanned and compared.
         </p>
       ) : null}
       {list.length > 0 ? (
