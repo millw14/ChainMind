@@ -999,7 +999,7 @@ export function Dashboard() {
       // Try requested window first
       let result = await fetchJson(buildUrl(scoreWindow || "5"), "score");
       // Auto-widen if only 1 bucket — not enough to draw a chart
-      if (result?.ok && !result?.empty && (result?.timelineBuckets?.length ?? 0) <= 1) {
+      if (result?.ok && !result?.empty && (result?.timelineBuckets?.length ?? 0) < 3) {
         const wider = [60, 360, 1440];
         for (const w of wider) {
           if (w <= Number(scoreWindow || "5")) continue;
