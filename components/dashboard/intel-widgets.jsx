@@ -341,7 +341,7 @@ export function CoordinationTimeline({ buckets }) {
           return (
             <div key={`${b.startSec}-${i}`} className="group relative flex w-1.5 min-w-[3px] flex-1 flex-col justify-end">
               <div
-                className="w-full rounded-t-sm bg-gradient-to-t from-cm-accent-dim to-cm-accent-bright opacity-90 group-hover:opacity-100"
+                className="w-full rounded-t-sm bg-cm-accent opacity-80 group-hover:opacity-100"
                 style={{ height: `${hPct}%` }}
                 title={`${new Date(b.startSec * 1000).toLocaleString()} · ${b.walletCount} payers`}
               />
