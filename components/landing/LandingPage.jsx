@@ -124,8 +124,8 @@ function ScanInput() {
   }
 
   return (
-    <form onSubmit={handleSubmit} className="flex flex-col gap-2">
-      <div className="flex flex-col gap-2 sm:flex-row sm:gap-2">
+    <form onSubmit={handleSubmit} className="flex w-full min-w-0 max-w-full flex-col gap-2">
+      <div className="flex w-full min-w-0 flex-col gap-2 md:flex-row md:items-stretch md:gap-2">
         <input
           type="text"
           value={address}
@@ -133,15 +133,15 @@ function ScanInput() {
             setAddress(e.target.value);
             setError("");
           }}
-          placeholder="Paste a Solana mint or wallet address"
-          className="min-h-[44px] flex-1 rounded-md border border-cm-border bg-cm-elevated px-4 font-mono text-sm text-cm-text placeholder:text-cm-faint focus:border-cm-accent focus:outline-none"
+          placeholder="Wallet or mint (base58)"
+          className="min-h-[44px] w-full min-w-0 flex-1 rounded-md border border-cm-border bg-cm-elevated px-3 font-mono text-sm text-cm-text placeholder:text-cm-faint focus:border-cm-accent focus:outline-none sm:px-4"
           spellCheck={false}
           autoComplete="off"
           enterKeyHint="go"
         />
         <button
           type="submit"
-          className="min-h-[44px] shrink-0 rounded-md bg-cm-accent px-5 text-sm font-semibold text-cm-on-accent transition-colors hover:bg-cm-accent-bright active:bg-cm-accent-dim sm:min-w-[6rem]"
+          className="min-h-[44px] w-full shrink-0 rounded-md bg-cm-accent px-5 text-sm font-semibold text-cm-on-accent transition-colors hover:bg-cm-accent-bright active:bg-cm-accent-dim md:w-auto md:min-w-[6.5rem]"
         >
           Scan
         </button>
@@ -163,7 +163,7 @@ export function LandingPage() {
 
   return (
     <>
-      <section className="relative overflow-hidden border-b border-cm-border-subtle bg-cm-bg bg-cm-hero cm-war-grid cm-war-grid-motion">
+      <section className="relative overflow-x-clip border-b border-cm-border-subtle bg-cm-bg bg-cm-hero cm-war-grid cm-war-grid-motion">
         <HeroGraphDecor reduce={reduceMotion} />
         <div className={`relative ${shell} pb-20 pt-14 sm:pb-24 sm:pt-20`}>
           <motion.div
@@ -187,7 +187,7 @@ export function LandingPage() {
                 ChainMind watches funding graphs, fee-payer concentration, and time-clustered activity—so you see
                 coordination forming while others are still reading the tape.
               </motion.p>
-              <motion.div variants={fv} className="mt-8 flex flex-col gap-3 sm:max-w-xl">
+              <motion.div variants={fv} className="mt-8 w-full min-w-0 max-w-full flex flex-col gap-3 md:max-w-xl">
                 <ScanInput />
                 <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
                   <CtaLink

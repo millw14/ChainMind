@@ -9,8 +9,8 @@ const nav = [
 
 export function SiteHeader() {
   return (
-    <header className="sticky top-0 z-50 border-b border-cm-border bg-cm-card/90 backdrop-blur-md">
-      <div className="mx-auto flex h-12 max-w-[88rem] items-center justify-between gap-3 px-4 sm:h-14 sm:px-6">
+    <header className="sticky top-0 z-50 border-b border-cm-border bg-cm-card/90 pt-[env(safe-area-inset-top,0px)] backdrop-blur-md">
+      <div className="mx-auto flex min-h-12 max-w-[88rem] items-center justify-between gap-2 px-3 sm:min-h-14 sm:gap-3 sm:px-6">
         <Link href="/" className="flex min-w-0 items-center gap-2.5 text-sm font-semibold tracking-tight text-cm-text">
           <span className="relative flex h-8 w-8 shrink-0 items-center justify-center rounded border border-cm-accent/35 bg-gradient-to-br from-cm-accent to-cm-accent-dim font-mono text-[11px] font-bold text-cm-on-accent shadow-[0_0_20px_-6px_rgba(139,92,246,0.75)]">
             CM
@@ -33,15 +33,19 @@ export function SiteHeader() {
         </nav>
         <Link
           href="/dashboard"
-          className="shrink-0 rounded-md border border-cm-accent/30 bg-cm-accent px-3 py-1.5 font-mono text-xs font-bold uppercase tracking-wide text-cm-on-accent hover:bg-cm-accent-bright sm:py-2"
+          className="inline-flex min-h-[40px] shrink-0 items-center rounded-md border border-cm-accent/30 bg-cm-accent px-3 py-2 font-mono text-xs font-bold uppercase tracking-wide text-cm-on-accent hover:bg-cm-accent-bright sm:py-2"
         >
           Console
         </Link>
       </div>
-      <nav className="flex border-t border-cm-border-subtle px-3 py-2 md:hidden">
-        <div className="flex w-full flex-wrap justify-around gap-x-2 gap-y-1 font-mono text-[10px]">
+      <nav className="flex border-t border-cm-border-subtle px-2 py-2 sm:px-3 md:hidden">
+        <div className="flex w-full flex-wrap justify-center gap-x-3 gap-y-2 font-mono text-[11px] leading-tight">
           {nav.map((item) => (
-            <Link key={item.href} href={item.href} className="text-cm-muted hover:text-cm-text">
+            <Link
+              key={item.href}
+              href={item.href}
+              className="inline-flex min-h-[40px] items-center px-2 text-cm-muted hover:text-cm-text"
+            >
               {item.label}
             </Link>
           ))}
