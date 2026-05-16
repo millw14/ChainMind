@@ -17,7 +17,7 @@ const evs = local.prepare(`SELECT * FROM events`).all();
 const state = local.prepare(`SELECT * FROM ingest_state`).all();
 const signers = local.prepare(`SELECT * FROM signers`).all();
 const transfers = local.prepare(`SELECT * FROM transfers`).all();
-const programCalls = local.prepare(`SELECT * FROM program_calls`).all();
+const programCalls = []; // skipped — not used by scoring or detection
 const edges = local.prepare(`SELECT * FROM edges`).all();
 local.close();
 
@@ -98,6 +98,7 @@ for (const r of transfers) {
 }
 console.log("Uploaded transfers:", n);
 
+/*
 n = 0;
 for (const r of programCalls) {
   await turso.execute({
@@ -117,6 +118,7 @@ for (const r of programCalls) {
   n++;
 }
 console.log("Uploaded program_calls:", n);
+*/
 
 n = 0;
 for (const r of edges) {
