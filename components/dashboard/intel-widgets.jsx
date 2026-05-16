@@ -323,7 +323,6 @@ export function inspectFallbackGraph(focusAddress, signatures) {
  * @param {Array<{ startSec: number, walletCount: number, eventCount?: number }>} buckets
  */
 export function CoordinationTimeline({ buckets }) {
-  console.log("[CoordinationTimeline] buckets:", buckets); // ADD THIS
   if (!buckets?.length) {
     return (
       <div className="flex h-32 items-center justify-center rounded-md border border-dashed border-cm-border text-xs text-cm-faint">
@@ -335,23 +334,39 @@ export function CoordinationTimeline({ buckets }) {
   return (
     <div className="space-y-2">
       <p className="text-[11px] text-cm-faint">Distinct fee payers per time bucket (ingested events)</p>
-      <div className="flex h-36 items-end gap-1 overflow-x-auto rounded-md border border-cm-border bg-zinc-900 px-2 pb-2 pt-2">
+      <div
+        style={{
+          display: "flex",
+          alignItems: "flex-end",
+          gap: "2px",
+          height: "144px",
+          background: "#18181b",
+          borderRadius: "6px",
+          border: "1px solid #27272a",
+          padding: "8px 4px 4px 4px",
+          overflowX: "auto",
+        }}
+      >
         {buckets.map((b, i) => {
           const hPct = 8 + (b.walletCount / maxW) * 92;
           return (
-            <div key={`${b.startSec}-${i}`} className="group relative flex w-1.5 min-w-[3px] flex-1 flex-col justify-end">
-              <div
-                className="w-full rounded-t-sm flex-shrink-0"
-                style={{ height: `${hPct}%`, backgroundColor: "#8b5cf6", minWidth: "8px" }}
-                title={`${new Date(b.startSec * 1000).toLocaleString()} · ${b.walletCount} payers`}
-              />
-            </div>
+            <div
+              key={`${b.startSec}-${i}`}
+              title={`${new Date(b.startSec * 1000).toLocaleString()} · ${b.walletCount} payers`}
+              style={{
+                flex: "1 1 0",
+                minWidth: "6px",
+                height: `${hPct}%`,
+                background: "linear-gradient(to top, #7c3aed, #a78bfa)",
+                borderRadius: "2px 2px 0 0",
+                cursor: "default",
+              }}
+            />
           );
         })}
       </div>
       <p className="text-[10px] text-cm-faint">
-        Tallest bars mark windows where many unique wallets paid fees into this scope — the same signal behind the
-        coordination score.
+        Tallest bars mark windows where many unique wallets paid fees into this scope — the same signal behind the coordination score.
       </p>
     </div>
   );
