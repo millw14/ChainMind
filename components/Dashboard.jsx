@@ -1271,38 +1271,21 @@ export function Dashboard() {
               Auto sweep <span className="text-cm-muted">{LIVE_POLL_MS / 1000}s</span>
             </p>
           </div>
-          <motion.button
+          <button
             type="button"
             onClick={() => void runAllSync()}
             disabled={syncing}
-            className="inline-flex w-full min-h-[44px] items-center justify-center gap-2 rounded-md border border-cm-accent/40 bg-cm-accent px-4 py-3 text-xs font-bold uppercase tracking-wide text-cm-on-accent shadow-[0_0_24px_-4px_rgba(139,92,246,0.55)] transition hover:bg-cm-accent-bright disabled:opacity-45 sm:w-auto sm:min-h-0 sm:py-2.5"
-            whileHover={syncing || reduceMotion ? undefined : { scale: 1.04 }}
-            whileTap={reduceMotion ? undefined : { scale: 0.96 }}
-            animate={
-              syncing || reduceMotion
-                ? {}
-                : {
-                    boxShadow: [
-                      "0 0 22px -4px rgba(139,92,246,0.5)",
-                      "0 0 36px -2px rgba(196,181,253,0.45)",
-                      "0 0 22px -4px rgba(139,92,246,0.5)",
-                    ],
-                  }
-            }
-            transition={{
-              boxShadow: { duration: 2.4, repeat: Infinity, ease: "easeInOut" },
-              layout: springGentle,
-            }}
+            className="inline-flex items-center justify-center gap-2 rounded-md border border-cm-border bg-cm-elevated px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wide text-cm-muted transition hover:border-cm-accent/40 hover:text-cm-text disabled:opacity-45"
           >
             {syncing ? (
               <>
-                <span className="inline-block h-3 w-3 animate-spin rounded-full border-2 border-cm-on-accent border-t-transparent" />
+                <span className="inline-block h-3 w-3 animate-spin rounded-full border-2 border-cm-border border-t-cm-accent" />
                 Pulling…
               </>
             ) : (
               <>Full resync</>
             )}
-          </motion.button>
+          </button>
         </div>
       </div>
 
