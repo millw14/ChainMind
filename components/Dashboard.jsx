@@ -15,8 +15,8 @@ import {
   RpcActivityTimeline,
   SurfaceFeedStrip,
   GlobalIntelFeedStrip,
-  WalletGraphSvg,
 } from "@/components/dashboard/intel-widgets";
+import { WalletGraphForce } from "@/components/dashboard/WalletGraphForce";
 import { buildEntityClassificationContext, classifyNamedEntityLine } from "@/lib/entity-classify.js";
 import { buildGroqEvidence } from "@/lib/groq-evidence.js";
 import { GROQ_BRIEF_USER_FOCUS } from "@/lib/groq-brief-defaults.js";
@@ -1429,7 +1429,7 @@ export function Dashboard() {
             <RiskHero profile={risk} scopeLabel={focusAddress.trim() ? shortSig(focusAddress.trim()) : "—"} />
 
             <Panel kicker="Topology" title="Scope graph" subtitle="Fee payers from ingest · RPC satellites fallback">
-              <WalletGraphSvg graph={walletGraphVisual} />
+              <WalletGraphForce graph={walletGraphVisual} onNodeClick={(addr) => setFocusAddress(addr)} />
               <IntelDocsHint />
             </Panel>
 
