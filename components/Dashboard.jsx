@@ -1200,6 +1200,8 @@ export function Dashboard() {
 
   const runGroqAuto = useCallback(async () => {
     if (groqAutoInFlightRef.current || !groqEvidence?.address) return;
+    if (loading.inspect) return; // wait for signatures to load
+    if (!inspect?.signatures?.length) return; // no signatures yet
     const now = Date.now();
     if (
       groqLastReasoningAtRef.current !== 0 &&
@@ -1229,7 +1231,7 @@ export function Dashboard() {
       setLoadingGroq(false);
       groqAutoInFlightRef.current = false;
     }
-  }, [runGroqAnalysis, groqEvidence?.address]);
+  }, [runGroqAnalysis, groqEvidence?.address, loading.inspect, inspect?.signatures]);
 
   const walletGraphVisual = useMemo(() => {
     if (score?.walletGraph?.nodes?.length > 1) return score.walletGraph;
