@@ -165,7 +165,7 @@ export default async function InvestigationPage({ params }) {
             <div className="space-y-3">
               {signals.filter(s => s.weight > 0).sort((a, b) => b.weight - a.weight).map((s, i) => (
                 <div key={i} className="rounded-lg border border-zinc-800 bg-zinc-900/40 px-4 py-3 flex items-start gap-4">
-                  <div className="min-w-[140px]">
+                  <div className="min-w-[100px] sm:min-w-[140px]">
                     <p className="text-xs font-semibold uppercase tracking-wider text-zinc-300">{s.type?.replace(/-/g, " ")}</p>
                     <SignalBar weight={s.weight} />
                   </div>
