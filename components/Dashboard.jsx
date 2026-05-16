@@ -1,7 +1,6 @@
 "use client";
 
 import Link from "next/link";
-import { useSearchParams } from "next/navigation";
 import { motion, useReducedMotion } from "framer-motion";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -827,9 +826,15 @@ function BriefBody({ analysis, error, loading, webhookMeta, entityContext, evide
 }
 
 export function Dashboard() {
-  const searchParams = useSearchParams();
   const [ping, setPing] = useState(null);
-  const [focusAddress, setFocusAddress] = useState(USDC_MAINNET);
+  const [focusAddress, setFocusAddress] = useState(() => {
+    if (typeof window !== "undefined") {
+      const params = new URLSearchParams(window.location.search);
+      const addr = params.get("address")?.trim();
+      if (addr && addr.length >= 32 && addr.length <= 44) return addr;
+    }
+    return USDC_MAINNET;
+  });
   const [inspectLimit, setInspectLimit] = useState("12");
   const [inspect, setInspect] = useState(null);
 
@@ -866,11 +871,6 @@ export function Dashboard() {
   const [loadingGroq, setLoadingGroq] = useState(false);
 
   const setLoad = (key, v) => setLoading((s) => ({ ...s, [key]: v }));
-
-  useEffect(() => {
-    const a = searchParams.get("address")?.trim() ?? "";
-    if (a.length >= 32 && a.length <= 44) setFocusAddress(a);
-  }, [searchParams]);
 
   const fetchJson = useCallback(async (url, key) => {
     setLoad(key, true);
