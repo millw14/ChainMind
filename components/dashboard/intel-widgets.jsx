@@ -246,13 +246,15 @@ export function LiveActivityFeed({ rows, loading, solscanTx }) {
 
 /**
  * Radial wallet graph — scope in center, payers or activity nodes on the rim.
- * @param {{ centerId: string, nodes: { id: string, kind: string }[], links?: { source: string, target: string }[] }} graph
+ * @param {{ centerId?: string, nodes: { id: string, kind: string, label?: string, eventCount?: number }[], links?: { source: string, target: string }[] }} graph
  */
 export function WalletGraphSvg({ graph }) {
   const w = 340;
   const h = 300;
   const cx = w / 2;
   const cy = h / 2;
+  const reduceMotion = useReducedMotion() ?? false;
+
   if (!graph?.nodes?.length) {
     return (
       <div className="flex h-[300px] items-center justify-center rounded-md border border-dashed border-cm-border px-4 text-center text-sm text-cm-faint">
@@ -264,46 +266,156 @@ export function WalletGraphSvg({ graph }) {
   const center = graph.nodes.find((n) => n.kind === "scope") ?? graph.nodes[0];
   const orbit = graph.nodes.filter((n) => n.id !== center?.id);
   const r = Math.min(w, h) * 0.36;
-  const lines = [];
 
-  for (let i = 0; i < orbit.length; i++) {
+  const nodes = orbit.map((node, i) => {
     const angle = (2 * Math.PI * i) / Math.max(orbit.length, 1) - Math.PI / 2;
     const x = cx + r * Math.cos(angle);
     const y = cy + r * Math.sin(angle);
-    lines.push({ id: orbit[i].id, x, y, node: orbit[i] });
-  }
+    const eventCount = typeof node.eventCount === "number" ? node.eventCount : 1;
+    const nodeR = Math.max(7, Math.min(14, 7 + Math.sqrt(eventCount) * 1.2));
+    const isFlagged = node.kind === "flagged" || (typeof node.eventCount === "number" && node.eventCount >= 5);
+    return { ...node, x, y, nodeR, isFlagged };
+  });
+
+  // Line draw animation using SVG strokeDashoffset
+  const lineVariants = {
+    hidden: { pathLength: 0, opacity: 0 },
+    visible: (i) => ({
+      pathLength: 1,
+      opacity: 1,
+      transition: { duration: 0.6, delay: 0.1 + i * 0.04, ease: "easeOut" },
+    }),
+  };
+
+  const nodeVariants = {
+    hidden: { scale: 0, opacity: 0 },
+    visible: (i) => ({
+      scale: 1,
+      opacity: 1,
+      transition: { duration: 0.4, delay: 0.3 + i * 0.05, ease: [0.34, 1.56, 0.64, 1] },
+    }),
+  };
 
   return (
-    <svg viewBox={`0 0 ${w} ${h}`} className="h-[300px] w-full text-cm-muted" role="img" aria-label="Wallet link graph">
+    <svg viewBox={`0 0 ${w} ${h}`} className="h-[300px] w-full" role="img" aria-label="Wallet link graph">
       <defs>
         <radialGradient id="cglow" cx="50%" cy="50%" r="55%">
-          <stop offset="0%" stopColor="rgba(139, 92, 246, 0.35)" />
+          <stop offset="0%" stopColor="rgba(139, 92, 246, 0.4)" />
           <stop offset="100%" stopColor="rgba(139, 92, 246, 0)" />
         </radialGradient>
+        <radialGradient id="fglow" cx="50%" cy="50%" r="50%">
+          <stop offset="0%" stopColor="rgba(239, 68, 68, 0.5)" />
+          <stop offset="100%" stopColor="rgba(239, 68, 68, 0)" />
+        </radialGradient>
+        <filter id="glow">
+          <feGaussianBlur stdDeviation="2" result="blur" />
+          <feMerge>
+            <feMergeNode in="blur" />
+            <feMergeNode in="SourceGraphic" />
+          </feMerge>
+        </filter>
       </defs>
+
+      {/* Background glow */}
       <circle cx={cx} cy={cy} r={r + 28} fill="url(#cglow)" />
-      {lines.map((p) => (
-        <line
+
+      {/* Orbit ring */}
+      <motion.circle
+        cx={cx}
+        cy={cy}
+        r={r}
+        fill="none"
+        stroke="rgba(139, 92, 246, 0.12)"
+        strokeWidth={1}
+        strokeDasharray="4 6"
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        transition={{ duration: 1, delay: 0.2 }}
+      />
+
+      {/* Connecting lines */}
+      {nodes.map((p, i) => (
+        <motion.line
           key={`e-${p.id}`}
           x1={cx}
           y1={cy}
           x2={p.x}
           y2={p.y}
-          stroke="rgba(139, 92, 246, 0.35)"
-          strokeWidth={1}
+          stroke={p.isFlagged ? "rgba(239,68,68,0.4)" : "rgba(139,92,246,0.3)"}
+          strokeWidth={p.isFlagged ? 1.5 : 1}
+          custom={i}
+          variants={reduceMotion ? {} : lineVariants}
+          initial="hidden"
+          animate="visible"
         />
       ))}
-      {lines.map((p) => (
-        <g key={p.id}>
-          <circle cx={p.x} cy={p.y} r={10} fill="#1a1620" stroke="rgba(255,255,255,0.12)" strokeWidth={1} />
-          <title>{p.node.label ?? p.node.id}</title>
-        </g>
+
+      {/* Satellite nodes */}
+      {nodes.map((p, i) => (
+        <motion.g
+          key={p.id}
+          custom={i}
+          variants={reduceMotion ? {} : nodeVariants}
+          initial="hidden"
+          animate="visible"
+          whileHover={{ scale: 1.3 }}
+          style={{ originX: `${p.x}px`, originY: `${p.y}px`, cursor: "pointer" }}
+        >
+          {/* Flagged pulse ring */}
+          {p.isFlagged && !reduceMotion ? (
+            <motion.circle
+              cx={p.x}
+              cy={p.y}
+              r={p.nodeR + 4}
+              fill="none"
+              stroke="rgba(239,68,68,0.5)"
+              strokeWidth={1}
+              animate={{ r: [p.nodeR + 4, p.nodeR + 10], opacity: [0.6, 0] }}
+              transition={{ duration: 1.8, repeat: Infinity, ease: "easeOut" }}
+            />
+          ) : null}
+          <circle
+            cx={p.x}
+            cy={p.y}
+            r={p.nodeR}
+            fill={p.isFlagged ? "#7f1d1d" : "#1e1b2e"}
+            stroke={p.isFlagged ? "rgba(239,68,68,0.7)" : "rgba(139,92,246,0.5)"}
+            strokeWidth={1.5}
+            filter="url(#glow)"
+          />
+          {/* Short address label */}
+          <text x={p.x} y={p.y + p.nodeR + 9} textAnchor="middle" fontSize="7" fill="rgba(196,181,253,0.6)">
+            {p.id ? `${p.id.slice(0, 4)}…` : ""}
+          </text>
+          <title>{`${p.label ?? p.id}${typeof p.eventCount === "number" ? ` · ${p.eventCount} events` : ""}`}</title>
+        </motion.g>
       ))}
-      <circle cx={cx} cy={cy} r={22} fill="#8b5cf6" opacity={0.95} />
-      <circle cx={cx} cy={cy} r={32} fill="none" stroke="rgba(196, 181, 253, 0.35)" strokeWidth={1} />
-      <text x={cx} y={cy + 4} textAnchor="middle" className="fill-cm-on-accent text-[10px] font-bold">
-        FOCUS
-      </text>
+
+      {/* Center focus node */}
+      <motion.g
+        initial={{ scale: 0, opacity: 0 }}
+        animate={{ scale: 1, opacity: 1 }}
+        transition={{ duration: 0.5, ease: [0.34, 1.56, 0.64, 1] }}
+        style={{ originX: `${cx}px`, originY: `${cy}px` }}
+      >
+        {!reduceMotion ? (
+          <motion.circle
+            cx={cx}
+            cy={cy}
+            r={32}
+            fill="none"
+            stroke="rgba(196,181,253,0.2)"
+            strokeWidth={1}
+            animate={{ r: [32, 40], opacity: [0.3, 0] }}
+            transition={{ duration: 2.5, repeat: Infinity, ease: "easeOut" }}
+          />
+        ) : null}
+        <circle cx={cx} cy={cy} r={22} fill="#8b5cf6" filter="url(#glow)" />
+        <circle cx={cx} cy={cy} r={22} fill="none" stroke="rgba(196,181,253,0.5)" strokeWidth={1.5} />
+        <text x={cx} y={cy + 4} textAnchor="middle" fontSize="9" fontWeight="bold" fill="white" letterSpacing="1">
+          FOCUS
+        </text>
+      </motion.g>
     </svg>
   );
 }
