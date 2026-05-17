@@ -1,5 +1,5 @@
 ﻿[phases.install]
-cmds = ["npm install --platform=linux --arch=x64"]
+cmds = ["npm install --platform=linux --arch=x64", "rm -rf node_modules/@libsql/client/node_modules/libsql"]
 
 [start]
 cmd = "node scripts/pipeline-worker.mjs --turso-sync"
