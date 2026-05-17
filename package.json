@@ -28,10 +28,11 @@
     "helius-scan": "node scripts/helius-watchlist-scanner.mjs",
     "helius-scan:once": "node scripts/helius-watchlist-scanner.mjs --once",
     "baseline:update": "node scripts/baseline-update.mjs",
-    "evidence": "node scripts/run-evidence.mjs"
+    "evidence": "node scripts/run-evidence.mjs",
+    "postinstall": "node -e \"const fs=require('fs');const p='node_modules/@libsql/client/node_modules/libsql';try{fs.rmSync(p,{recursive:true});console.log('removed nested libsql')}catch(e){console.log('nested libsql not found, ok')}\""
   },
   "dependencies": {
-    "@libsql/client": "^0.17.3",
+    "@libsql/client": "^0.14.0",
     "@solana/spl-token": "^0.4.14",
     "@solana/web3.js": "^1.98.4",
     "better-sqlite3": "^11.8.1",
