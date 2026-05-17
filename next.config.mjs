@@ -1,6 +1,6 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  serverExternalPackages: ["@libsql/client", "better-sqlite3"],
+  serverExternalPackages: ["better-sqlite3"],
   webpack: (config, { isServer }) => {
     if (isServer) {
       config.resolve.alias = {
