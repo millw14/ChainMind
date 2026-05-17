@@ -29,7 +29,7 @@
     "helius-scan:once": "node scripts/helius-watchlist-scanner.mjs --once",
     "baseline:update": "node scripts/baseline-update.mjs",
     "evidence": "node scripts/run-evidence.mjs",
-    "postinstall": "node -e \"const fs=require('fs');const p='node_modules/@libsql/client/node_modules/libsql';try{fs.rmSync(p,{recursive:true});console.log('removed nested libsql')}catch(e){console.log('nested libsql not found, ok')}\""
+    "postinstall": "node -e \"const fs=require('fs');const p='node_modules/@libsql/client/node_modules/libsql';try{fs.rmSync(p,{recursive:true})}catch(e){}fs.mkdirSync(p+'/lib-esm',{recursive:true});fs.writeFileSync(p+'/lib-esm/sqlite3.js','export default class Database{constructor(){}close(){}}');fs.writeFileSync(p+'/package.json',JSON.stringify({name:'libsql',version:'0.0.1',type:'module',exports:{'.':{'import':'./lib-esm/sqlite3.js'}}}));\""
   },
   "dependencies": {
     "@libsql/client": "^0.14.0",
