@@ -8,7 +8,7 @@ import { openDb } from "../lib/db.js";
 import { getSolanaConnection } from "../lib/solana.js";
 import { loadWatchlist } from "../lib/watchlist.js";
 import { ingestPendingEventsForScope, syncHeadSignaturesForScope } from "../lib/pipeline-sync.js";
-import { getTursoClient, tursoFetchPendingScanQueue, tursoMarkScanQueuePicked } from "../lib/turso.js";
+import { tursoHttpFetchPendingScanQueue, tursoHttpMarkScanQueuePicked } from "../lib/turso-http.js";
 
 function parseFlags(argv) {
   /** @type {Record<string, string | boolean>} */
@@ -107,20 +107,17 @@ See docs/strategic-plan-data-pipeline.md (Phase 1).
     console.log(`=== Round ${round} @ ${new Date().toISOString()} ===`);
 
     // Merge any new addresses from scan queue
-    const tursoClient = getTursoClient();
-    if (tursoClient) {
-      try {
-        const queued = await tursoFetchPendingScanQueue(tursoClient, 20);
-        for (const q of queued) {
-          if (!scopes.find((s) => s.address === q.address)) {
-            scopes.push({ address: q.address, note: q.note ?? "from scan queue" });
-            await tursoMarkScanQueuePicked(tursoClient, q.address);
-            console.log(`+ queue: ${q.address}`);
-          }
+    try {
+      const queued = await tursoHttpFetchPendingScanQueue(20);
+      for (const q of queued) {
+        if (!scopes.find((s) => s.address === q.address)) {
+          scopes.push({ address: q.address, note: q.note ?? "from scan queue" });
+          await tursoHttpMarkScanQueuePicked(q.address);
+          console.log(`+ queue: ${q.address}`);
         }
-      } catch (e) {
-        console.error("[queue] fetch failed:", e.message);
       }
+    } catch (e) {
+      console.error("[queue] fetch failed:", e.message);
     }
 
     for (const s of scopes) {
