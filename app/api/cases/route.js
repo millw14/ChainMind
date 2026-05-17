@@ -98,10 +98,11 @@ export async function POST(request) {
       };
     }
 
-    const seeds =
-      Array.isArray(bundle.topPayerLinks) && bundle.topPayerLinks.length > 0
-        ? bundle.topPayerLinks.slice(0, 16).map((x) => String(x.payer ?? "").trim()).filter(Boolean)
-        : [];
+    const seeds = (bundle.walletGraph?.nodes ?? [])
+      .filter(n => n.kind === "wallet")
+      .slice(0, 16)
+      .map(n => String(n.id ?? "").trim())
+      .filter(Boolean);
 
     const internal = Object.getOwnPropertyDescriptor(bundle, "_caseInternal")?.value;
     const cutoff = internal?.cutoffUnix ?? Math.floor(Date.now() / 1000) - lastHours * 3600;
