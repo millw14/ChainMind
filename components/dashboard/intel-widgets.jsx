@@ -465,7 +465,7 @@ export function CoordinationTimeline({ buckets }) {
           return (
             <div
               key={`${b.startSec}-${i}`}
-              title={`${new Date(b.startSec * 1000).toLocaleString()} · ${b.walletCount} payers`}
+              title={`${new Date(b.startSec * 1000).toLocaleString()} · ${b.walletCount} wallets`}
               style={{
                 flex: "1 1 0",
                 minWidth: "8px",

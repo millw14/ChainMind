@@ -563,20 +563,16 @@ function BriefBody({ analysis, error, loading, webhookMeta, entityContext, evide
 
   return (
     <div className="overflow-hidden rounded-lg border border-cm-border bg-cm-card/95 shadow-cm">
-      <div className="flex flex-wrap items-end justify-between gap-4 border-b border-cm-border-subtle bg-cm-row/35 px-4 py-5 sm:px-5">
-        <h3 className={`max-w-[min(100%,28rem)] text-2xl font-black uppercase tracking-tight sm:text-3xl ${vTone}`}>
-          {verdictLabel(verdict)}
-        </h3>
-        <div className="flex flex-wrap items-end justify-end gap-4 text-right">
-          <p className={`font-mono text-sm font-bold uppercase tracking-wider ${riskStyle[riskLevel] ?? "text-cm-muted"}`}>
-            {riskLevel.replace(/_/g, " ")} risk
-          </p>
-          {confPct != null ? (
-            <p className="font-mono text-4xl font-black tabular-nums leading-none text-cm-text">{confPct}%</p>
-          ) : (
-            <p className="font-mono text-lg text-cm-faint">—</p>
+      <div className="flex flex-col gap-2 border-b border-cm-border-subtle bg-cm-row/35 px-4 py-5 sm:px-5">
+        <div className="flex w-full flex-wrap items-end gap-4">
+          <h3 className={`text-2xl font-black uppercase tracking-tight sm:text-3xl ${vTone}`}>{verdictLabel(verdict)}</h3>
+          {confPct != null && (
+            <p className={`font-mono text-4xl font-black leading-none tabular-nums ${vTone}`}>{confPct}%</p>
           )}
         </div>
+        <p className={`font-mono text-xs font-bold uppercase tracking-wider ${riskStyle[riskLevel] ?? "text-cm-muted"}`}>
+          {riskLevel.replace(/_/g, " ")} risk
+        </p>
       </div>
 
       <div className="border-b border-cm-border-subtle px-4 py-3 sm:px-5 font-mono text-[10px] text-cm-subtle">
@@ -634,7 +630,7 @@ function BriefBody({ analysis, error, loading, webhookMeta, entityContext, evide
                       key={`${String(row.type)}-${i}`}
                       className="flex flex-wrap items-baseline gap-x-3 gap-y-1 py-2 font-mono text-xs first:pt-0 last:pb-0"
                     >
-                      <span className="text-cm-faint shrink-0">●</span>
+                      <span className={`shrink-0 ${pct != null && pct >= 70 ? "text-red-400" : pct != null && pct >= 40 ? "text-yellow-400" : "text-cm-faint"}`}>●</span>
                       <span className="min-w-[9rem] shrink-0 text-cm-muted">
                         {String(row.type ?? "signal").replace(/-/g, " ")}
                       </span>
