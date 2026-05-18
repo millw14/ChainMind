@@ -262,15 +262,33 @@ export function LandingPage() {
                 className="mt-6 max-w-3xl text-[1.75rem] font-semibold leading-[1.12] tracking-tight text-cm-text sm:text-4xl sm:leading-tight lg:text-[2.75rem]"
               >
                 {reduceMotion ? headlineText : typedHeadline}
-                {!reduceMotion && typedHeadline.length < headlineText.length && (
-                  <span className="animate-pulse text-cm-accent">|</span>
+                {!reduceMotion && (
+                  <motion.span
+                    className="text-cm-accent"
+                    animate={{ opacity: typedHeadline.length < headlineText.length ? [1, 0, 1] : [1, 0] }}
+                    transition={{
+                      duration: typedHeadline.length < headlineText.length ? 0.8 : 1.2,
+                      repeat: typedHeadline.length < headlineText.length ? Infinity : 0,
+                      delay: typedHeadline.length >= headlineText.length ? 0.8 : 0,
+                    }}
+                  >|</motion.span>
                 )}
               </motion.h1>
-              <motion.p variants={fv} className="mt-5 max-w-2xl text-base leading-relaxed text-cm-muted sm:text-lg">
+              <motion.p
+                initial={{ opacity: 0, y: 8 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.7, delay: reduceMotion ? 0.2 : 2.2 }}
+                className="mt-5 max-w-2xl text-base leading-relaxed text-cm-muted sm:text-lg"
+              >
                 ChainMind watches funding graphs, fee-payer concentration, and time-clustered activity—so you see
                 coordination forming while others are still reading the tape.
               </motion.p>
-              <motion.div variants={fv} className="mt-8 w-full min-w-0 max-w-full flex flex-col gap-3 md:max-w-xl">
+              <motion.div
+                initial={{ opacity: 0, y: 8 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.7, delay: reduceMotion ? 0.3 : 2.8 }}
+                className="mt-8 w-full min-w-0 max-w-full flex flex-col gap-3 md:max-w-xl"
+              >
                 <ScanInput />
                 <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
                   <CtaLink
