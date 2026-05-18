@@ -54,7 +54,7 @@ export async function POST(request) {
     return NextResponse.json({ ok: false, error: "Invalid base58 scope" }, { status: 400 });
   }
 
-  const windowMinutes = Math.min(60, Math.max(1, Number(body.windowMinutes ?? body.window ?? 5) || 5));
+  const windowMinutes = Math.min(1440, Math.max(1, Number(body.windowMinutes ?? body.window ?? 5) || 5));
   const lastHours = Math.min(24 * 30, Math.max(1, Number(body.lastHours ?? body.hours ?? 24) || 24));
   const title = body.title != null ? String(body.title).slice(0, 240) : null;
   let groqAnalysis =
