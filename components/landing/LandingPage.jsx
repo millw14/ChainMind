@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { motion, useReducedMotion } from "framer-motion";
 import {
   fadeScale,
@@ -12,6 +12,57 @@ import {
   staggerParent,
   springGentle,
 } from "@/components/motion/presets";
+
+function useTypewriter(text, speed = 18, startDelay = 400, enabled = true) {
+  const [displayed, setDisplayed] = useState(() => (enabled ? "" : text));
+  useEffect(() => {
+    if (!enabled) {
+      setDisplayed(text);
+      return;
+    }
+    setDisplayed("");
+    let active = true;
+    let intervalId;
+    const timeoutId = setTimeout(() => {
+      if (!active) return;
+      let i = 0;
+      intervalId = setInterval(() => {
+        if (!active) return;
+        i += 1;
+        setDisplayed(text.slice(0, i));
+        if (i >= text.length) clearInterval(intervalId);
+      }, speed);
+    }, startDelay);
+    return () => {
+      active = false;
+      clearTimeout(timeoutId);
+      clearInterval(intervalId);
+    };
+  }, [text, speed, startDelay, enabled]);
+  return displayed;
+}
+
+function TerminalCard({ reduce }) {
+  const json = `{
+  "flag": "coordinated-accumulation",
+  "confidence": 0.84,
+  "scope": "TOKEN_MINT…",
+  "triggered_at": "2026-05-12T10:22:00Z",
+  "evidence": [
+    { "action": "3 linked wallets bought …", "slot": 123461 }
+  ]
+}`;
+  const typed = useTypewriter(json, 14, 800, !reduce);
+
+  return (
+    <div className="mt-3 max-h-[14rem] overflow-hidden font-mono text-[10px] leading-relaxed text-cm-terminal/90 sm:text-[11px]">
+      <pre className="whitespace-pre-wrap">
+        {typed}
+        {!reduce ? <span className="animate-pulse text-cm-accent">▋</span> : null}
+      </pre>
+    </div>
+  );
+}
 
 const shell = "mx-auto w-full max-w-6xl px-3 sm:px-6";
 
@@ -134,7 +185,7 @@ function ScanInput() {
             setError("");
           }}
           placeholder="Wallet or mint (base58)"
-          className="min-h-[44px] w-full min-w-0 flex-1 rounded-md border border-cm-border bg-cm-elevated px-3 font-mono text-sm text-cm-text placeholder:text-cm-faint focus:border-cm-accent focus:outline-none sm:px-4"
+          className="min-h-[44px] w-full min-w-0 flex-1 rounded-md border border-cm-border bg-cm-elevated px-3 font-mono text-sm text-cm-text placeholder:text-cm-faint focus:border-cm-accent focus:outline-none focus:ring-2 focus:ring-cm-accent/30 focus:shadow-[0_0_20px_-4px_rgba(139,92,246,0.4)] sm:px-4"
           spellCheck={false}
           autoComplete="off"
           enterKeyHint="go"
@@ -220,21 +271,7 @@ export function LandingPage() {
                   </motion.span>
                   <span className="text-cm-threat">SEV-2</span>
                 </div>
-                <motion.pre
-                  className="mt-3 max-h-[14rem] overflow-hidden font-mono text-[10px] leading-relaxed text-cm-terminal/90 sm:text-[11px]"
-                  animate={reduceMotion ? {} : { opacity: [0.88, 1, 0.92] }}
-                  transition={{ duration: 4, repeat: Infinity, ease: "easeInOut" }}
-                >
-                  {`{
-  "flag": "coordinated-accumulation",
-  "confidence": 0.84,
-  "scope": "TOKEN_MINT…",
-  "triggered_at": "2026-05-12T10:22:00Z",
-  "evidence": [
-    { "action": "3 linked wallets bought …", "slot": 123461 }
-  ]
-}`}
-                </motion.pre>
+                <TerminalCard reduce={reduceMotion} />
                 <p className="mt-3 border-t border-cm-border-subtle pt-3 text-[11px] leading-snug text-cm-muted">
                   Push the same structure to Discord, Slack, or your stack via webhook—
                   <span className="text-cm-subtle">
@@ -273,7 +310,16 @@ export function LandingPage() {
               <motion.div
                 key={item.k}
                 variants={fadeScale(reduceMotion)}
-                whileHover={reduceMotion ? {} : { y: -6, transition: springGentle }}
+                whileHover={
+                  reduceMotion
+                    ? {}
+                    : {
+                        y: -6,
+                        boxShadow:
+                          "0 0 0 1px rgba(139,92,246,0.4), 0 8px 32px -8px rgba(139,92,246,0.3)",
+                        transition: springGentle,
+                      }
+                }
                 className="cm-panel-edge border border-cm-border bg-cm-surface/90 p-4 sm:p-5"
               >
                 <p className="font-mono text-[10px] font-semibold uppercase tracking-widest text-cm-faint">{item.k}</p>
@@ -332,6 +378,19 @@ export function LandingPage() {
               </motion.li>
             ))}
           </motion.ol>
+
+          {!reduceMotion && (
+            <div className="mt-4 hidden lg:block">
+              <motion.div
+                className="h-px bg-gradient-to-r from-transparent via-cm-accent to-transparent"
+                initial={{ scaleX: 0, opacity: 0 }}
+                whileInView={{ scaleX: 1, opacity: 1 }}
+                viewport={{ once: true }}
+                transition={{ duration: 1.2, ease: "easeInOut", delay: 0.6 }}
+                style={{ transformOrigin: "left" }}
+              />
+            </div>
+          )}
 
           <motion.p initial={{ opacity: 0 }} whileInView={{ opacity: 1 }} viewport={inViewOpts} className="mt-10 text-xs text-cm-faint">
             <Link href="/how-it-works" className="font-medium text-cm-text underline-offset-4 hover:underline">
@@ -412,12 +471,28 @@ export function LandingPage() {
               </p>
             </motion.div>
             <motion.div variants={fadeUp(reduceMotion)} className="flex flex-shrink-0 flex-wrap gap-3">
-              <CtaLink
-                href="/dashboard"
-                className="inline-flex h-10 items-center justify-center rounded-md bg-cm-accent px-5 text-sm font-semibold text-cm-on-accent hover:bg-cm-accent-bright"
+              <motion.div
+                animate={
+                  reduceMotion
+                    ? {}
+                    : {
+                        boxShadow: [
+                          "0 0 20px -4px rgba(139,92,246,0.4)",
+                          "0 0 36px -2px rgba(139,92,246,0.7)",
+                          "0 0 20px -4px rgba(139,92,246,0.4)",
+                        ],
+                      }
+                }
+                transition={{ duration: 2.4, repeat: Infinity, ease: "easeInOut" }}
+                className="rounded-md"
               >
-                Launch console
-              </CtaLink>
+                <CtaLink
+                  href="/dashboard"
+                  className="inline-flex h-10 items-center justify-center rounded-md bg-cm-accent px-5 text-sm font-semibold text-cm-on-accent hover:bg-cm-accent-bright"
+                >
+                  Launch console
+                </CtaLink>
+              </motion.div>
               <CtaLink
                 href="/docs"
                 className="inline-flex h-10 items-center justify-center rounded-md border border-cm-border bg-cm-surface px-5 text-sm font-medium text-cm-text hover:bg-cm-row-hover"
