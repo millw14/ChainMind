@@ -4,16 +4,23 @@ import { getTursoClient, tursoFetchInvestigationCase } from "@/lib/turso.js";
 
 export const runtime = "nodejs";
 
+function verdictLabel(v) {
+  if (v === "escalate") return "Manipulation Detected";
+  if (v === "monitor") return "Anomaly Flagged";
+  if (v === "dismiss") return "No Threat Found";
+  return String(v).replace(/-/g, " ");
+}
+
 function VerdictBadge({ verdict, confidence }) {
   const colors = {
-    escalate: "bg-red-500/20 text-red-400 border-red-500/40",
+    escalate: "bg-red-500/20 text-red-400 border-red-500/40 shadow-[0_0_20px_-4px_rgba(239,68,68,0.4)]",
     monitor: "bg-yellow-500/20 text-yellow-400 border-yellow-500/40",
     dismiss: "bg-zinc-500/20 text-zinc-400 border-zinc-500/40",
   };
   return (
     <div className={`inline-flex items-center gap-2 rounded-md border px-3 py-1.5 text-sm font-mono font-semibold uppercase tracking-widest ${colors[verdict] ?? colors.dismiss}`}>
       <span className={`h-2 w-2 rounded-full ${verdict === "escalate" ? "bg-red-400 animate-pulse" : verdict === "monitor" ? "bg-yellow-400" : "bg-zinc-400"}`} />
-      {verdict} · {Math.round(confidence * 100)}%
+      {verdictLabel(verdict)} · {Math.round(confidence * 100)}%
     </div>
   );
 }
@@ -21,10 +28,11 @@ function VerdictBadge({ verdict, confidence }) {
 function SignalBar({ weight }) {
   const pct = Math.round(weight * 100);
   const color = pct >= 70 ? "bg-red-500" : pct >= 40 ? "bg-yellow-500" : "bg-zinc-500";
+  const glow = pct >= 70 ? "shadow-[0_0_8px_rgba(239,68,68,0.6)]" : "";
   return (
     <div className="flex items-center gap-2">
-      <div className="h-1.5 w-24 rounded-full bg-zinc-800">
-        <div className={`h-full rounded-full ${color}`} style={{ width: `${pct}%` }} />
+      <div className="h-1.5 w-24 rounded-full bg-zinc-800 overflow-hidden">
+        <div className={`h-full rounded-full ${color} ${glow} transition-all duration-700`} style={{ width: `${pct}%` }} />
       </div>
       <span className="font-mono text-xs text-zinc-500">{pct}</span>
     </div>
@@ -102,7 +110,12 @@ export default async function InvestigationPage({ params }) {
   const detectors = ai?.detectors ?? {};
   const composite = ai?.composite?.score0_100 ?? null;
 
-  const riskColor = verdict === "escalate" ? "border-red-900/60 bg-red-950/20" : verdict === "monitor" ? "border-yellow-900/60 bg-yellow-950/20" : "border-zinc-800 bg-zinc-900/20";
+  const riskColor =
+    verdict === "escalate"
+      ? "border-red-900/60 bg-red-950/20 shadow-[0_0_40px_-8px_rgba(239,68,68,0.3)]"
+      : verdict === "monitor"
+        ? "border-yellow-900/60 bg-yellow-950/20"
+        : "border-zinc-800 bg-zinc-900/20";
 
   return (
     <main className="min-h-screen bg-zinc-950 text-zinc-100" style={{ fontFamily: "'IBM Plex Mono', 'Courier New', monospace" }}>
@@ -289,6 +302,12 @@ export default async function InvestigationPage({ params }) {
             <div className="space-y-2">
               {[...new Set((fundingTree.nodes ?? []).filter(n => n.depth > 0).map(n => n.depth))].sort().map(depth => {
                 const nodesAtDepth = (fundingTree.nodes ?? []).filter(n => n.depth === depth);
+                const depthColor =
+                  depth === 1
+                    ? "text-orange-400 hover:text-orange-300"
+                    : depth === 2
+                      ? "text-yellow-400 hover:text-yellow-300"
+                      : "text-zinc-400 hover:text-zinc-300";
                 return (
                   <div key={depth} className="rounded-lg border border-zinc-800 bg-zinc-900/30 px-4 py-3">
                     <p className="text-[10px] uppercase tracking-widest text-zinc-600 mb-2">
@@ -297,7 +316,7 @@ export default async function InvestigationPage({ params }) {
                     <div className="flex flex-wrap gap-2">
                       {nodesAtDepth.slice(0, 12).map((n, i) => (
                         <a key={i} href={`https://solscan.io/account/${n.address}`} target="_blank" rel="noreferrer"
-                          className="font-mono text-xs text-cyan-400 hover:text-cyan-300 hover:underline">
+                          className={`font-mono text-xs underline-offset-2 hover:underline ${depthColor}`}>
                           {n.address.slice(0, 6)}…{n.address.slice(-4)}
                         </a>
                       ))}

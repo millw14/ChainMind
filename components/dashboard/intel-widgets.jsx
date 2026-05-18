@@ -452,7 +452,8 @@ export function CoordinationTimeline({ buckets }) {
           alignItems: "flex-end",
           gap: "2px",
           height: "144px",
-          background: "#18181b",
+          background:
+            "repeating-linear-gradient(to top, #18181b 0px, #18181b calc(25% - 1px), #27272a calc(25% - 1px), #27272a 25%, #18181b 25%)",
           borderRadius: "6px",
           border: "1px solid #27272a",
           padding: "8px 4px 4px 4px",
@@ -467,9 +468,11 @@ export function CoordinationTimeline({ buckets }) {
               title={`${new Date(b.startSec * 1000).toLocaleString()} · ${b.walletCount} payers`}
               style={{
                 flex: "1 1 0",
-                minWidth: "6px",
+                minWidth: "8px",
                 height: `${hPct}%`,
-                background: "linear-gradient(to top, #7c3aed, #a78bfa)",
+                background: "linear-gradient(to top, #6d28d9, #a78bfa)",
+                position: "relative",
+                borderTop: "2px solid #c4b5fd",
                 borderRadius: "2px 2px 0 0",
                 cursor: "default",
               }}

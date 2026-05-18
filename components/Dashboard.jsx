@@ -427,6 +427,13 @@ const riskStyle = {
   low: "text-cm-muted",
 };
 
+function verdictLabel(v) {
+  if (v === "escalate") return "Manipulation Detected";
+  if (v === "monitor") return "Anomaly Flagged";
+  if (v === "dismiss") return "No Threat Found";
+  return String(v).replace(/-/g, " ");
+}
+
 const verdictTone = {
   escalate: "text-cm-bad",
   monitor: "text-cm-warn",
@@ -558,7 +565,7 @@ function BriefBody({ analysis, error, loading, webhookMeta, entityContext, evide
     <div className="overflow-hidden rounded-lg border border-cm-border bg-cm-card/95 shadow-cm">
       <div className="flex flex-wrap items-end justify-between gap-4 border-b border-cm-border-subtle bg-cm-row/35 px-4 py-5 sm:px-5">
         <h3 className={`max-w-[min(100%,28rem)] text-2xl font-black uppercase tracking-tight sm:text-3xl ${vTone}`}>
-          {verdict.replace(/-/g, " ")}
+          {verdictLabel(verdict)}
         </h3>
         <div className="flex flex-wrap items-end justify-end gap-4 text-right">
           <p className={`font-mono text-sm font-bold uppercase tracking-wider ${riskStyle[riskLevel] ?? "text-cm-muted"}`}>

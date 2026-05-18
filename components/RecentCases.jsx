@@ -16,6 +16,13 @@ function timeAgo(unixSec) {
   return `${Math.floor(diff / 86400)}d ago`;
 }
 
+function verdictLabel(v) {
+  if (v === "escalate") return "Manipulation Detected";
+  if (v === "monitor") return "Anomaly Flagged";
+  if (v === "dismiss") return "No Threat Found";
+  return v;
+}
+
 function verdictStyle(v) {
   if (v === "escalate") return "bg-red-500/15 text-red-400 border-red-500/35";
   if (v === "monitor") return "bg-amber-500/15 text-amber-300 border-amber-500/30";
@@ -129,7 +136,7 @@ export function RecentCases({ limit = 10 }) {
               <span
                 className={`flex-shrink-0 rounded border px-2 py-0.5 font-mono text-[10px] font-semibold uppercase tracking-wider ${verdictStyle(v)}`}
               >
-                {v}
+                {verdictLabel(v)}
               </span>
 
               {/* Confidence */}
