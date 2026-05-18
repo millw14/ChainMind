@@ -311,11 +311,6 @@ function DbBody({ data, loading, watchScope }) {
           </table>
         </div>
       ) : null}
-      <p className="mt-4 border-t border-cm-border-subtle pt-4 font-mono text-[10px] leading-relaxed text-cm-faint">
-        <strong className="font-semibold text-cm-muted">Funding-like edges</strong> (
-        {(data.graphFundingEdgeTypes ?? ["token_transfer", "fee_payer_cosigner", "mint_to"]).join(", ")}) feed the Groq
-        funding slice when payers match; zero here means backfill/sync has not populated graph rows for this scope.
-      </p>
       <ExpandableRaw data={data} />
     </div>
   );
