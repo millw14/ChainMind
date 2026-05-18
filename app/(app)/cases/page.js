@@ -14,6 +14,13 @@ function timeAgo(unixSec) {
   return `${Math.floor(diff / 86400)}d ago`;
 }
 
+function verdictLabel(v) {
+  if (v === "escalate") return "Manipulation Detected";
+  if (v === "monitor") return "Anomaly Flagged";
+  if (v === "dismiss") return "No Threat Found";
+  return v;
+}
+
 function verdictStyle(v) {
   if (v === "escalate") return "bg-red-500/15 text-red-400 border-red-500/35";
   if (v === "monitor") return "bg-amber-500/15 text-amber-300 border-amber-500/30";
@@ -53,7 +60,6 @@ export default async function CasesPage() {
         </div>
       ) : (
         <div className="rounded-md border border-cm-border bg-cm-surface/95 divide-y divide-cm-border-subtle">
-          {/* Header row */}
           <div className="hidden sm:grid grid-cols-[auto_1fr_auto_auto_auto] gap-4 px-4 py-2 font-mono text-[10px] uppercase tracking-widest text-cm-faint">
             <span>Verdict</span>
             <span>Address</span>
@@ -70,33 +76,23 @@ export default async function CasesPage() {
                 href={`/investigation/${c.id}`}
                 className="flex sm:grid sm:grid-cols-[auto_1fr_auto_auto_auto] items-center gap-2 sm:gap-4 px-4 py-3 hover:bg-cm-row-hover transition-colors"
               >
-                {/* Risk dot — mobile only */}
                 <span className={`sm:hidden h-2 w-2 flex-shrink-0 rounded-full ${riskDot(c.risk_level ?? "low")}`} />
 
-                {/* Verdict badge */}
                 <span className={`flex-shrink-0 rounded border px-2 py-0.5 font-mono text-[10px] font-semibold uppercase tracking-wider ${verdictStyle(v)}`}>
-                  {v}
+                  {verdictLabel(v)}
                 </span>
 
-                {/* Address */}
-                <span className="min-w-0 flex-1 font-mono text-xs text-cm-text truncate">
-                  {shortAddr(c.scope_address ?? "")}
-                </span>
+                <span className="min-w-0 flex-1 font-mono text-xs text-cm-text truncate">{shortAddr(c.scope_address ?? "")}</span>
 
-                {/* Pattern — hidden on mobile */}
                 <span className="hidden sm:block flex-shrink-0 font-mono text-[10px] text-cm-faint truncate max-w-[160px]">
                   {c.pattern && c.pattern !== "unknown" ? String(c.pattern).replace(/-/g, " ") : "—"}
                 </span>
 
-                {/* Confidence */}
                 <span className="flex-shrink-0 font-mono text-xs text-cm-accent-bright">
                   {Math.round(Number(c.confidence ?? 0) * 100)}%
                 </span>
 
-                {/* Time */}
-                <span className="flex-shrink-0 font-mono text-[10px] text-cm-faint whitespace-nowrap">
-                  {created ? timeAgo(created) : "—"}
-                </span>
+                <span className="flex-shrink-0 font-mono text-[10px] text-cm-faint whitespace-nowrap">{created ? timeAgo(created) : "—"}</span>
               </Link>
             );
           })}
