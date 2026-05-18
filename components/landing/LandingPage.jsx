@@ -52,7 +52,7 @@ function TerminalCard({ reduce }) {
     { "action": "3 linked wallets bought …", "slot": 123461 }
   ]
 }`;
-  const typed = useTypewriter(json, 14, 800, !reduce);
+  const typed = useTypewriter(json, 14, 2200, !reduce);
 
   return (
     <div className="mt-3 max-h-[14rem] overflow-hidden font-mono text-[10px] leading-relaxed text-cm-terminal/90 sm:text-[11px]">
@@ -205,6 +205,8 @@ function ScanInput() {
 
 export function LandingPage() {
   const reduceMotion = useReducedMotion() ?? false;
+  const headlineText = "Detect and prove coordinated manipulation before it becomes visible.";
+  const typedHeadline = useTypewriter(headlineText, 28, 200, !reduceMotion);
   const fv = fadeUp(reduceMotion);
   const fs = fadeScale(reduceMotion);
   const scFast = staggerContainer(reduceMotion, { stagger: 0.065, delayChildren: 0.05 });
@@ -232,7 +234,10 @@ export function LandingPage() {
                 variants={fv}
                 className="mt-6 max-w-3xl text-[1.75rem] font-semibold leading-[1.12] tracking-tight text-cm-text sm:text-4xl sm:leading-tight lg:text-[2.75rem]"
               >
-                Detect and prove coordinated manipulation before it becomes visible.
+                {reduceMotion ? headlineText : typedHeadline}
+                {!reduceMotion && typedHeadline.length < headlineText.length && (
+                  <span className="animate-pulse text-cm-accent">|</span>
+                )}
               </motion.h1>
               <motion.p variants={fv} className="mt-5 max-w-2xl text-base leading-relaxed text-cm-muted sm:text-lg">
                 ChainMind watches funding graphs, fee-payer concentration, and time-clustered activity—so you see
