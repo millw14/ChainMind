@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useState } from "react";
 import { motion, useReducedMotion } from "framer-motion";
 
 import { fadeUp, staggerContainer, springGentle } from "@/components/motion/presets";
@@ -435,6 +436,8 @@ export function inspectFallbackGraph(focusAddress, signatures) {
  * @param {Array<{ startSec: number, walletCount: number, eventCount?: number }>} buckets
  */
 export function CoordinationTimeline({ buckets }) {
+  const [tooltip, setTooltip] = useState(null);
+
   if (!buckets?.length) {
     return (
       <div className="flex h-32 items-center justify-center rounded-md border border-dashed border-cm-border text-xs text-cm-faint">
@@ -442,46 +445,75 @@ export function CoordinationTimeline({ buckets }) {
       </div>
     );
   }
+
   const maxW = Math.max(1, ...buckets.map((b) => b.walletCount));
+
   return (
     <div className="space-y-2">
       <p className="text-[11px] text-cm-faint">Distinct fee payers per time bucket (ingested events)</p>
-      <div
-        style={{
-          display: "flex",
-          alignItems: "flex-end",
-          gap: "2px",
-          height: "144px",
-          background:
-            "repeating-linear-gradient(to top, #18181b 0px, #18181b calc(25% - 1px), #27272a calc(25% - 1px), #27272a 25%, #18181b 25%)",
-          borderRadius: "6px",
-          border: "1px solid #27272a",
-          padding: "8px 4px 4px 4px",
-          overflowX: "auto",
-        }}
-      >
-        {buckets.map((b, i) => {
-          const hPct = 8 + (b.walletCount / maxW) * 92;
-          return (
-            <div
-              key={`${b.startSec}-${i}`}
-              title={`${new Date(b.startSec * 1000).toLocaleString()} · ${b.walletCount} wallets`}
-              style={{
-                flex: "1 1 0",
-                minWidth: "8px",
-                height: `${hPct}%`,
-                background: "linear-gradient(to top, #6d28d9, #a78bfa)",
-                position: "relative",
-                borderTop: "2px solid #c4b5fd",
-                borderRadius: "2px 2px 0 0",
-                cursor: "default",
-              }}
-            />
-          );
-        })}
+      <div className="relative">
+        {tooltip && (
+          <div
+            className="pointer-events-none absolute z-10 rounded border border-cm-border bg-cm-card px-2 py-1.5 shadow-lg"
+            style={{ left: tooltip.x, top: -48, transform: "translateX(-50%)" }}
+          >
+            <p className="whitespace-nowrap font-mono text-[10px] text-cm-text">{tooltip.wallets} wallets</p>
+            <p className="whitespace-nowrap font-mono text-[9px] text-cm-faint">{tooltip.date}</p>
+          </div>
+        )}
+        <div
+          style={{
+            display: "flex",
+            alignItems: "flex-end",
+            gap: "2px",
+            height: "144px",
+            background:
+              "repeating-linear-gradient(to top, #18181b 0px, #18181b calc(25% - 1px), #27272a calc(25% - 1px), #27272a 25%, #18181b 25%)",
+            borderRadius: "6px",
+            border: "1px solid #27272a",
+            padding: "8px 4px 4px 4px",
+            overflowX: "auto",
+            position: "relative",
+          }}
+        >
+          {buckets.map((b, i) => {
+            const hPct = 8 + (b.walletCount / maxW) * 92;
+            return (
+              <div
+                key={`${b.startSec}-${i}`}
+                onMouseEnter={(e) => {
+                  const rect = e.currentTarget.getBoundingClientRect();
+                  const parent = e.currentTarget.parentElement.getBoundingClientRect();
+                  setTooltip({
+                    x: rect.left - parent.left + rect.width / 2,
+                    wallets: b.walletCount,
+                    date: new Date(b.startSec * 1000).toLocaleString(undefined, {
+                      month: "short",
+                      day: "numeric",
+                      hour: "2-digit",
+                      minute: "2-digit",
+                    }),
+                  });
+                }}
+                onMouseLeave={() => setTooltip(null)}
+                style={{
+                  flex: "1 1 0",
+                  minWidth: "6px",
+                  height: `${hPct}%`,
+                  background: "linear-gradient(to top, #6d28d9, #a78bfa)",
+                  borderRadius: "2px 2px 0 0",
+                  borderTop: "2px solid #c4b5fd",
+                  cursor: "crosshair",
+                  position: "relative",
+                }}
+              />
+            );
+          })}
+        </div>
       </div>
       <p className="text-[10px] text-cm-faint">
-        Tallest bars mark windows where many unique wallets paid fees into this scope — the same signal behind the coordination score.
+        Tallest bars mark windows where many unique wallets paid fees into this scope — the same signal behind the coordination
+        score.
       </p>
     </div>
   );
