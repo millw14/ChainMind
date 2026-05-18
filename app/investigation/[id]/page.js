@@ -83,6 +83,7 @@ export default async function InvestigationPage({ params }) {
   const groq = payload.groqAnalysis?.analysis ?? null;
   const ai = payload.aiDetection ?? {};
   const fundingGraph = payload.fundingGraph ?? {};
+  const fundingTree = payload.fundingTree ?? null;
   const evidenceRows = payload.evidenceRows ?? [];
   const createdAt = new Date((row.created_at ?? 0) * 1000).toISOString();
 
@@ -277,6 +278,37 @@ export default async function InvestigationPage({ params }) {
                 </div>
               )}
             </div>
+          </section>
+        )}
+
+        {/* Funding Chain */}
+        {fundingTree && fundingTree.nodeCount > 1 && (
+          <section>
+            <h2 className="text-xs uppercase tracking-widest text-zinc-500 mb-4">Funding Chain ({fundingTree.nodeCount} wallets · {fundingTree.edgeCount} edges · {fundingTree.maxDepthConfigured} hops)</h2>
+            <div className="space-y-2">
+              {[...new Set((fundingTree.nodes ?? []).filter(n => n.depth > 0).map(n => n.depth))].sort().map(depth => {
+                const nodesAtDepth = (fundingTree.nodes ?? []).filter(n => n.depth === depth);
+                return (
+                  <div key={depth} className="rounded-lg border border-zinc-800 bg-zinc-900/30 px-4 py-3">
+                    <p className="text-[10px] uppercase tracking-widest text-zinc-600 mb-2">
+                      {depth === 1 ? "Direct funders" : `Hop ${depth} funders`} · {nodesAtDepth.length} wallets
+                    </p>
+                    <div className="flex flex-wrap gap-2">
+                      {nodesAtDepth.slice(0, 12).map((n, i) => (
+                        <a key={i} href={`https://solscan.io/account/${n.address}`} target="_blank" rel="noreferrer"
+                          className="font-mono text-xs text-cyan-400 hover:text-cyan-300 hover:underline">
+                          {n.address.slice(0, 6)}…{n.address.slice(-4)}
+                        </a>
+                      ))}
+                      {nodesAtDepth.length > 12 && (
+                        <span className="text-xs text-zinc-600">+{nodesAtDepth.length - 12} more</span>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+            <p className="mt-2 text-[10px] text-zinc-600">{fundingTree.note}</p>
           </section>
         )}
 
