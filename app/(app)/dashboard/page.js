@@ -1,6 +1,5 @@
 import Link from "next/link";
 import { Dashboard } from "@/components/Dashboard";
-import { RecentCases } from "@/components/RecentCases";
 
 export const metadata = {
   title: "Investigation console",
@@ -16,8 +15,7 @@ export default function SolanaDashboardPage() {
               <p className="font-mono text-[10px] font-semibold uppercase tracking-[0.22em] text-cm-faint">Operations</p>
               <h1 className="mt-1 text-xl font-semibold tracking-tight text-cm-text sm:text-2xl">Investigation console</h1>
               <p className="mt-2 max-w-2xl text-xs leading-relaxed text-cm-muted sm:text-sm">
-                One watch target drives signatures, coordination scoring, graph topology, and alerts — structured like an
-                analyst workflow, not a settings screen.
+                One watch target drives signatures, coordination scoring, graph topology, and alerts — structured like an analyst workflow, not a settings screen.
               </p>
             </div>
             <Link href="/docs" className="font-mono text-xs font-medium text-cm-accent-bright hover:underline">
@@ -27,9 +25,6 @@ export default function SolanaDashboardPage() {
         </div>
       </div>
       <Dashboard />
-      <div className="mx-auto max-w-[88rem] px-3 pb-[max(1.5rem,env(safe-area-inset-bottom,0px))] pt-4 sm:px-4 sm:py-6">
-        <RecentCases limit={10} />
-      </div>
     </>
   );
 }
