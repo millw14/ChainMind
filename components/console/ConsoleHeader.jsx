@@ -1,6 +1,7 @@
 "use client";
 import Link from "next/link";
 import { useState } from "react";
+import { ChainMindLogo } from "@/components/ChainMindLogo";
 
 export function ConsoleHeader() {
   const [open, setOpen] = useState(false);
@@ -11,8 +12,8 @@ export function ConsoleHeader() {
         {/* Logo */}
         <div className="flex min-w-0 items-center gap-2 sm:gap-3">
           <Link href="/" className="flex shrink-0 items-center gap-2 text-sm font-semibold text-cm-text">
-            <span className="flex h-8 w-8 items-center justify-center rounded border border-cm-accent/35 bg-gradient-to-br from-cm-accent to-cm-accent-dim font-mono text-[11px] font-bold text-cm-on-accent">
-              CM
+            <span className="flex h-8 w-8 items-center justify-center rounded border border-cm-accent/20 bg-cm-card">
+              <ChainMindLogo size={22} />
             </span>
             <span className="hidden sm:inline">ChainMind</span>
           </Link>
