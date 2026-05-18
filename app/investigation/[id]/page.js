@@ -107,7 +107,8 @@ export default async function InvestigationPage({ params }) {
   return (
     <main className="min-h-screen bg-zinc-950 text-zinc-100" style={{ fontFamily: "'IBM Plex Mono', 'Courier New', monospace" }}>
       {/* Header */}
-      <div className="sticky top-12 z-30 border-b border-zinc-800 bg-zinc-950/80 backdrop-blur sm:top-14">
+      {/* sticky top-0: no (app) header on this route; old top-12/14 matched ConsoleHeader and drifted with mobile toolbar */}
+      <div className="sticky top-0 z-30 border-b border-zinc-800 bg-zinc-950/80 backdrop-blur pt-[env(safe-area-inset-top,0px)]">
         <div className="mx-auto flex max-w-5xl flex-wrap items-center justify-between gap-x-3 gap-y-2 px-3 py-3 sm:px-4">
           <div className="flex min-w-0 flex-wrap items-center gap-2 sm:gap-3">
             <Link href="/dashboard" className="min-h-[44px] inline-flex items-center text-xs text-zinc-500 hover:text-zinc-300">
