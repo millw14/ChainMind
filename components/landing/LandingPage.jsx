@@ -43,24 +43,51 @@ function useTypewriter(text, speed = 18, startDelay = 400, enabled = true) {
 }
 
 function TerminalCard({ reduce }) {
+  const [confidence, setConfidence] = useState(0);
+  const [visible, setVisible] = useState(false);
+
+  useEffect(() => {
+    if (reduce) {
+      setConfidence(0.84);
+      setVisible(true);
+      return;
+    }
+    const fadeTimer = setTimeout(() => setVisible(true), 2000);
+    let intervalId;
+    const countTimer = setTimeout(() => {
+      let v = 0;
+      intervalId = setInterval(() => {
+        v = Math.min(0.84, v + 0.02);
+        setConfidence(Math.round(v * 100) / 100);
+        if (v >= 0.84) clearInterval(intervalId);
+      }, 30);
+    }, 2400);
+    return () => {
+      clearTimeout(fadeTimer);
+      clearTimeout(countTimer);
+      clearInterval(intervalId);
+    };
+  }, [reduce]);
+
   const json = `{
   "flag": "coordinated-accumulation",
-  "confidence": 0.84,
+  "confidence": ${confidence.toFixed(2)},
   "scope": "TOKEN_MINT…",
   "triggered_at": "2026-05-12T10:22:00Z",
   "evidence": [
     { "action": "3 linked wallets bought …", "slot": 123461 }
   ]
 }`;
-  const typed = useTypewriter(json, 14, 2200, !reduce);
 
   return (
-    <div className="mt-3 max-h-[14rem] overflow-hidden font-mono text-[10px] leading-relaxed text-cm-terminal/90 sm:text-[11px]">
-      <pre className="whitespace-pre-wrap">
-        {typed}
-        {!reduce ? <span className="animate-pulse text-cm-accent">▋</span> : null}
-      </pre>
-    </div>
+    <motion.div
+      className="mt-3 max-h-[14rem] overflow-hidden font-mono text-[10px] leading-relaxed text-cm-terminal/90 sm:text-[11px]"
+      initial={{ opacity: 0 }}
+      animate={{ opacity: visible ? 1 : 0 }}
+      transition={{ duration: 0.8 }}
+    >
+      <pre className="whitespace-pre-wrap">{json}</pre>
+    </motion.div>
   );
 }
 
