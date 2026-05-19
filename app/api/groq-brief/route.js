@@ -300,7 +300,26 @@ export async function POST(request) {
 
   let analysis;
   try {
-    analysis = normalizeAnalysis(JSON.parse(extractJsonObject(text)));
+    const parsedAnalysis = JSON.parse(extractJsonObject(text));
+    // Post-process: remove shared-funder signal if no actual shared funders in evidence
+    const evidenceFg = typeof data === "object" && data !== null ? data?.fundingGraph : null;
+    const hasRealSharedFunders =
+      Array.isArray(evidenceFg?.sharedInboundFunders) && evidenceFg.sharedInboundFunders.length > 0;
+    if (!hasRealSharedFunders && Array.isArray(parsedAnalysis.signals)) {
+      parsedAnalysis.signals = parsedAnalysis.signals.filter(
+        (s) => !(typeof s === "object" && String(s?.type ?? "").includes("shared-funder")),
+      );
+      // If verdict was escalate but shared-funder was the key signal, downgrade
+      const remainingWeight = parsedAnalysis.signals.reduce(
+        (sum, s) => sum + (Number(s?.weight) || 0),
+        0,
+      );
+      if (remainingWeight < 0.6 && parsedAnalysis.verdict === "escalate") {
+        parsedAnalysis.verdict = "monitor";
+        parsedAnalysis.confidence = Math.min(0.55, Number(parsedAnalysis.confidence) || 0.5);
+      }
+    }
+    analysis = normalizeAnalysis(parsedAnalysis);
     analysis = enrichAnalysisWithVerdictStructure(analysis, evidenceForPrompt);
     analysis.model = model;
     if (!analysis.analyzed_at || typeof analysis.analyzed_at !== "string") {
