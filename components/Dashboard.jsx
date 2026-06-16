@@ -30,6 +30,10 @@ const USDC_MAINNET = "Xqfwj8PrgpjksqgnopR9DwDuNZAXrqVHDbdcQ34pump";
 
 const INSPECT_DEBOUNCE_MS = 350;
 const LIVE_POLL_MS = 42_000;
+/** When a searched scope is queued for first-time ingestion, re-check the score on this cadence. */
+const QUEUED_POLL_MS = 25_000;
+/** Stop auto-polling a queued scope after this many tries (~QUEUED_POLL_MS each) to bound RPC/load. */
+const QUEUED_POLL_MAX = 12;
 /** Minimum time between successful Groq reasoning calls (limits API usage during live polling). */
 const GROQ_REASONING_MIN_INTERVAL_MS = 90_000;
 function solscanTx(signature) {
@@ -339,6 +343,23 @@ function ScoreBody({ data, loading, hideMainScore }) {
     );
   }
   if (data.empty) {
+    if (data.queued) {
+      return (
+        <div className="space-y-3">
+          <div className="flex items-start gap-3 rounded-md border border-cm-border bg-cm-row/60 p-3">
+            <span className="mt-0.5 h-2.5 w-2.5 shrink-0 animate-pulse rounded-full bg-cm-accent" aria-hidden />
+            <div className="space-y-1">
+              <p className="text-sm font-medium text-cm-text">Pulling this address in for the first time…</p>
+              <p className="text-xs leading-relaxed text-cm-muted">
+                We haven’t indexed this scope yet, so the ingest worker is fetching its history now. The first scan
+                usually lands within a minute or two — this panel refreshes automatically, no need to re-search.
+              </p>
+            </div>
+          </div>
+          <ExpandableRaw data={data} />
+        </div>
+      );
+    }
     return (
       <div className="space-y-3">
         <p className="text-sm text-cm-muted">{data.message || "No events in this time window."}</p>
@@ -863,6 +884,7 @@ export function Dashboard({ initialAddress } = {}) {
   const groqLastReasoningAtRef = useRef(0);
   const groqAutoInFlightRef = useRef(false);
   const walletTableRef = useRef(/** @type {{ getRawEvidence?: () => unknown } | null} */ (null));
+  const queuedPollCountRef = useRef(0);
 
   const [loading, setLoading] = useState({});
   const [loadingGroq, setLoadingGroq] = useState(false);
@@ -1019,18 +1041,11 @@ export function Dashboard({ initialAddress } = {}) {
     await runDb();
     await runInspect();
     await runScore();
-    // Queue address for background ingestion
-    const s = focusAddress.trim();
-    if (s) {
-      fetch("/api/watchlist", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ address: s, note: "dashboard scan" }),
-      }).catch(() => {});
-    }
+    // Background ingestion is enqueued server-side by /api/score on a miss (empty
+    // result → scan_queue), so no blanket client-side enqueue is needed here.
     const t = Date.now();
     setNextDataSweepAt(t + LIVE_POLL_MS);
-  }, [runPing, runDb, runInspect, runScore, focusAddress]);
+  }, [runPing, runDb, runInspect, runScore]);
 
   const toggleCompareScope = useCallback((addr) => {
     const a = String(addr ?? "").trim();
@@ -1108,6 +1123,24 @@ export function Dashboard({ initialAddress } = {}) {
     }, INSPECT_DEBOUNCE_MS + 120);
     return () => clearTimeout(id);
   }, [focusAddress, scoreWindow, scoreHours, runScore]);
+
+  // Fresh search → reset the queued-ingestion poll budget for the new scope.
+  useEffect(() => {
+    queuedPollCountRef.current = 0;
+  }, [focusAddress, scoreWindow, scoreHours]);
+
+  // While a scope is queued for first-time ingestion, re-check the score until it
+  // lands (the worker syncs to Turso), capped by QUEUED_POLL_MAX to bound load.
+  useEffect(() => {
+    if (!score?.empty || !score?.queued) return;
+    if (queuedPollCountRef.current >= QUEUED_POLL_MAX) return;
+    const id = setTimeout(() => {
+      queuedPollCountRef.current += 1;
+      void runScore();
+    }, QUEUED_POLL_MS);
+    return () => clearTimeout(id);
+    // Depend on the score object (new ref each fetch) so each still-empty poll re-arms the timer.
+  }, [score, runScore]);
 
   useEffect(() => {
     const a = focusAddress.trim();
