@@ -12,7 +12,13 @@ import {
 import { buildGroqEvidenceBlockText } from "@/lib/groq-evidence-block.js";
 import { buildGroqUserEvidence } from "@/lib/groq-user-evidence.js";
 import { buildGroqBriefUserContent, GROQ_BRIEF_SYSTEM_PROMPT } from "@/lib/groq-brief-prompts.js";
-import { getTursoClient, tursoFetchRecentCaseVerdictsForScope } from "@/lib/turso.js";
+import {
+  getTursoClient,
+  tursoFetchRecentCaseVerdictsForScope,
+  tursoFetchLastGroqAnalysis,
+  tursoInsertGroqAnalysisLog,
+} from "@/lib/turso.js";
+import { stableEvidenceHash } from "@/lib/evidence-hash.js";
 
 export const maxDuration = 60;
 export const runtime = "nodejs";
@@ -185,6 +191,21 @@ function webhookConfidenceThreshold() {
 }
 
 /**
+ * Hours within which an unchanged scope reuses its cached verdict instead of
+ * calling Groq again. 0 (or unset → default) disables the cache.
+ * @returns {number}
+ */
+function groqReanalyzeMinHours() {
+  const raw = process.env.CHAINMIND_GROQ_REANALYZE_MIN_HOURS?.trim();
+  if (raw === undefined || raw === "") return 6;
+  const n = Number(raw);
+  return Number.isFinite(n) && n >= 0 ? n : 6;
+}
+
+/** Sources eligible for the verdict cache — non-interactive paths only. */
+const CACHEABLE_SOURCES = new Set(["auto", "auto_investigation_case", "case"]);
+
+/**
  * @param {unknown} data
  */
 function pickEvidenceAddress(data) {
@@ -247,6 +268,34 @@ export async function POST(request) {
     userEvidence && typeof userEvidence === "object" && !("error" in userEvidence)
       ? { ...userEvidence, priorVerdicts }
       : userEvidence;
+
+  // Verdict cache: reuse a recent analysis for the same scope + unchanged evidence
+  // instead of calling Groq again. Covers dashboard auto-invoke, cron sweep, and case
+  // auto-Groq — the non-interactive paths that drive most consumption.
+  const minHours = groqReanalyzeMinHours();
+  const evidenceHash = stableEvidenceHash(data);
+  const cacheEligible =
+    minHours > 0 && evidenceAddr && CACHEABLE_SOURCES.has(String(source ?? ""));
+  if (cacheEligible) {
+    const turso = getTursoClient();
+    if (turso) {
+      try {
+        const last = await tursoFetchLastGroqAnalysis(turso, evidenceAddr);
+        const ageHours = last ? (Date.now() / 1000 - last.created_at) / 3600 : Infinity;
+        if (last && last.evidence_hash === evidenceHash && ageHours < minHours) {
+          return NextResponse.json({
+            analysis: last.analysis,
+            model: last.model ?? null,
+            cached: true,
+            cache: { ageHours: Math.round(ageHours * 100) / 100, reason: "recent_unchanged_evidence" },
+            webhook: { attempted: false, skipped: true },
+          });
+        }
+      } catch (e) {
+        console.error("[groq-brief] verdict cache read", e);
+      }
+    }
+  }
 
   const evidenceNarrative = buildGroqEvidenceBlockText(
     evidenceForPrompt && typeof evidenceForPrompt === "object" ? evidenceForPrompt : {},
@@ -360,6 +409,27 @@ export async function POST(request) {
     } else {
       webhook.error = wh.error ?? `HTTP ${wh.status ?? "?"}`;
       console.error("[groq-brief] webhook", webhook.error);
+    }
+  }
+
+  // Record this verdict so future calls for the same scope + unchanged evidence
+  // can be served from cache (mirrors the read gate above).
+  if (cacheEligible) {
+    const turso = getTursoClient();
+    if (turso) {
+      try {
+        await tursoInsertGroqAnalysisLog(turso, {
+          scope_address: evidenceAddress ?? evidenceAddr,
+          evidence_hash: evidenceHash,
+          source: typeof source === "string" ? source : null,
+          model,
+          verdict: typeof analysis.verdict === "string" ? analysis.verdict : null,
+          confidence: typeof analysis.confidence === "number" ? analysis.confidence : null,
+          analysis,
+        });
+      } catch (e) {
+        console.error("[groq-brief] verdict cache write", e);
+      }
     }
   }
 
