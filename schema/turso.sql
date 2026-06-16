@@ -169,6 +169,23 @@ CREATE INDEX IF NOT EXISTS idx_investigation_cases_scope
 CREATE INDEX IF NOT EXISTS idx_investigation_cases_created
   ON investigation_cases (created_at DESC);
 
+-- Groq verdict cache: lets /api/groq-brief skip a redundant model call when a recent
+-- analysis for the same scope + unchanged evidence already exists (see lib/evidence-hash.js).
+CREATE TABLE IF NOT EXISTS groq_analysis_log (
+  scope_address TEXT NOT NULL,
+  created_at INTEGER NOT NULL,
+  evidence_hash TEXT NOT NULL,
+  source TEXT,
+  model TEXT,
+  verdict TEXT,
+  confidence REAL,
+  analysis_json TEXT NOT NULL,
+  PRIMARY KEY (scope_address, created_at)
+);
+
+CREATE INDEX IF NOT EXISTS idx_groq_analysis_log_scope_created
+  ON groq_analysis_log (scope_address, created_at DESC);
+
 -- Cross-mint intel: top payers per scope, pairwise overlaps, persistent cluster fingerprints
 CREATE TABLE IF NOT EXISTS intel_scope_top_payers (
   scope_address TEXT NOT NULL,
