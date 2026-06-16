@@ -5,7 +5,10 @@ export const metadata = {
   title: "Investigation console",
 };
 
-export default function SolanaDashboardPage() {
+export default async function SolanaDashboardPage({ searchParams }) {
+  const sp = await searchParams;
+  const raw = sp?.address;
+  const initialAddress = typeof raw === "string" ? raw.trim() : undefined;
   return (
     <>
       <div className="border-b border-cm-border-subtle bg-cm-surface/40 px-3 py-4 sm:px-6 sm:py-5">
@@ -24,7 +27,7 @@ export default function SolanaDashboardPage() {
           </div>
         </div>
       </div>
-      <Dashboard />
+      <Dashboard initialAddress={initialAddress} />
     </>
   );
 }

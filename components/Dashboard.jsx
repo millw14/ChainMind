@@ -823,16 +823,15 @@ function BriefBody({ analysis, error, loading, webhookMeta, entityContext, evide
   );
 }
 
-export function Dashboard() {
+export function Dashboard({ initialAddress } = {}) {
   const [ping, setPing] = useState(null);
-  const [focusAddress, setFocusAddress] = useState(() => {
-    if (typeof window !== "undefined") {
-      const params = new URLSearchParams(window.location.search);
-      const addr = params.get("address")?.trim();
-      if (addr && addr.length >= 32 && addr.length <= 44) return addr;
-    }
-    return USDC_MAINNET;
-  });
+  // Scope comes from the server (?address= read in the page's searchParams), so the
+  // correct target is rendered on first paint — no flash, no throwaway fetch.
+  const [focusAddress, setFocusAddress] = useState(
+    typeof initialAddress === "string" && initialAddress.length >= 32 && initialAddress.length <= 44
+      ? initialAddress
+      : USDC_MAINNET,
+  );
   const [inspectLimit, setInspectLimit] = useState("12");
   const [inspect, setInspect] = useState(null);
 
