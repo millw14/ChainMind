@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { PublicKey } from "@solana/web3.js";
 import { buildTursoScoreBundle } from "@/lib/score-bundle.js";
-import { getTursoClient } from "@/lib/turso.js";
+import { getTursoClient, tursoAddToScanQueue } from "@/lib/turso.js";
 import { openDb } from "@/lib/db.js";
 import { computeCoactivityScore } from "@/lib/score-core.js";
 
@@ -109,6 +109,18 @@ export async function GET(request) {
       "score:",
       body.score,
     );
+    // On-demand ingestion: no events yet for this scope → enqueue it so the
+    // pipeline worker pulls + ingests it. INSERT OR IGNORE makes this idempotent,
+    // so repeated searches for the same address don't pile up. The client uses
+    // `queued` to show a "pulling this address in" state instead of the raw message.
+    if (body && body.empty) {
+      try {
+        await tursoAddToScanQueue(client, scope, "on-demand search");
+        body.queued = true;
+      } catch (e) {
+        console.error("[score] scan-queue enqueue", e);
+      }
+    }
     return NextResponse.json(body);
   } catch (e) {
     return NextResponse.json(
