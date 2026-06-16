@@ -10,78 +10,93 @@ if (!TURSO_URL || !TURSO_TOKEN) {
   process.exit(1);
 }
 
-async function tursoHttp(sql, args = []) {
+const BATCH = Math.max(1, Number(process.env.TURSO_SYNC_BATCH) || 100);
+
+/** @param {unknown} a */
+function encodeArg(a) {
+  if (a == null) return { type: "null" };
+  if (typeof a === "number" || typeof a === "bigint") return { type: "integer", value: String(a) };
+  return { type: "text", value: String(a) };
+}
+
+/** Run N statements in one Turso pipeline request; throw on any per-statement error. */
+async function tursoPipeline(stmts) {
   const res = await fetch(`${TURSO_URL}/v2/pipeline`, {
     method: "POST",
-    headers: {
-      Authorization: `Bearer ${TURSO_TOKEN}`,
-      "Content-Type": "application/json",
-    },
+    headers: { Authorization: `Bearer ${TURSO_TOKEN}`, "Content-Type": "application/json" },
     body: JSON.stringify({
-      requests: [{
-        type: "execute",
-        stmt: {
-          sql,
-          args: args.map((a) =>
-            a == null ? { type: "null" }
-            : typeof a === "number" ? { type: "integer", value: String(a) }
-            : { type: "text", value: String(a) }
-          ),
-        },
-      }],
+      requests: stmts.map((s) => ({ type: "execute", stmt: { sql: s.sql, args: (s.args ?? []).map(encodeArg) } })),
     }),
   });
+  if (!res.ok) throw new Error(`Turso HTTP ${res.status}`);
   const data = await res.json();
-  if (data.results?.[0]?.type === "error") throw new Error(data.results[0].error?.message ?? "Turso error");
-  return data.results?.[0]?.response?.result;
-}
-
-async function batchUpsert(rows, sql, argsMapper, label) {
-  let n = 0;
-  for (const r of rows) {
-    await tursoHttp(sql, argsMapper(r));
-    n++;
+  for (const r of data.results ?? []) {
+    if (r?.type === "error") throw new Error(r.error?.message ?? "Turso error");
   }
-  console.log(`Uploaded ${label}:`, n);
+  return data.results ?? [];
 }
 
-const local = openDb();
-const sigs = local.prepare("SELECT * FROM signatures").all();
-const evs = local.prepare("SELECT * FROM events").all();
-const state = local.prepare("SELECT * FROM ingest_state").all();
-const signers = local.prepare("SELECT * FROM signers").all();
-const transfers = local.prepare("SELECT * FROM transfers").all();
-const edges = local.prepare("SELECT * FROM edges").all();
-local.close();
+/** High-water mark already in Turso for a table (so we only push newer local rows). */
+async function tursoMaxMarker(table, col) {
+  const results = await tursoPipeline([{ sql: `SELECT MAX(${col}) AS m FROM ${table}`, args: [] }]);
+  const v = results[0]?.response?.result?.rows?.[0]?.[0]?.value;
+  return v == null ? "" : String(v);
+}
 
-await batchUpsert(sigs,
-  `INSERT OR REPLACE INTO signatures (signature, scope_address, slot, block_time, err, summary_json, ingested_at) VALUES (?, ?, ?, ?, ?, ?, ?)`,
-  (r) => [r.signature, r.scope_address, r.slot, r.block_time, r.err, r.summary_json, r.ingested_at],
-  "signatures");
+/**
+ * Stream local rows newer than Turso's high-water mark and upsert them in batches.
+ * Streaming (.iterate) avoids loading whole tables into memory — the OOM/abort that
+ * killed the old SELECT *.all() approach once data grew.
+ */
+async function syncTable(db, table, columns, { markerCol = "ingested_at", orMode = "REPLACE" } = {}) {
+  const hw = await tursoMaxMarker(table, markerCol);
+  const colList = columns.join(", ");
+  const insertSql = `INSERT OR ${orMode} INTO ${table} (${colList}) VALUES (${columns.map(() => "?").join(", ")})`;
+  const selectSql = hw
+    ? `SELECT ${colList} FROM ${table} WHERE ${markerCol} >= ? ORDER BY ${markerCol}`
+    : `SELECT ${colList} FROM ${table}`;
+  const iterator = hw ? db.prepare(selectSql).iterate(hw) : db.prepare(selectSql).iterate();
 
-await batchUpsert(evs,
-  `INSERT OR REPLACE INTO events (signature, scope_address, slot, block_time, fee_payer, event_type, programs_json, counterparties_json, parse_note, ingested_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-  (r) => [r.signature, r.scope_address, r.slot, r.block_time, r.fee_payer, r.event_type, r.programs_json, r.counterparties_json, r.parse_note, r.ingested_at],
-  "events");
+  let batch = [];
+  let n = 0;
+  for (const row of iterator) {
+    batch.push({ sql: insertSql, args: columns.map((c) => row[c]) });
+    if (batch.length >= BATCH) {
+      await tursoPipeline(batch);
+      n += batch.length;
+      batch = [];
+    }
+  }
+  if (batch.length) {
+    await tursoPipeline(batch);
+    n += batch.length;
+  }
+  console.log(`Synced ${table}: +${n} rows (since ${markerCol} >= ${hw || "BEGINNING"})`);
+  return n;
+}
 
-await batchUpsert(signers,
-  `INSERT OR REPLACE INTO signers (tx_sig, scope_address, address, role, ingested_at) VALUES (?, ?, ?, ?, ?)`,
-  (r) => [r.tx_sig, r.scope_address, r.address, r.role, r.ingested_at],
-  "signers");
+const db = openDb();
+try {
+  await syncTable(db, "signatures", ["signature", "scope_address", "slot", "block_time", "err", "summary_json", "ingested_at"]);
+  await syncTable(db, "events", ["signature", "scope_address", "slot", "block_time", "fee_payer", "event_type", "programs_json", "counterparties_json", "parse_note", "ingested_at"]);
+  await syncTable(db, "signers", ["tx_sig", "scope_address", "address", "role", "ingested_at"]);
+  await syncTable(db, "transfers", ["tx_sig", "scope_address", "idx", "from_address", "to_address", "mint", "amount", "slot", "ingested_at"]);
+  // edges: omit autoincrement id (local ids reset on ephemeral hosts and would clobber
+  // unrelated Turso rows); dedupe on the natural unique index via INSERT OR IGNORE.
+  await syncTable(db, "edges", ["scope_address", "from_address", "to_address", "tx_sig", "slot", "edge_type", "mint", "ingested_at"], { orMode: "IGNORE" });
 
-await batchUpsert(transfers,
-  `INSERT OR REPLACE INTO transfers (tx_sig, scope_address, idx, from_address, to_address, mint, amount, slot, ingested_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-  (r) => [r.tx_sig, r.scope_address, r.idx, r.from_address, r.to_address, r.mint, r.amount, r.slot, r.ingested_at],
-  "transfers");
-
-await batchUpsert(edges,
-  `INSERT OR REPLACE INTO edges (id, scope_address, from_address, to_address, tx_sig, slot, edge_type, mint, ingested_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-  (r) => [r.id, r.scope_address, r.from_address, r.to_address, r.tx_sig, r.slot, r.edge_type, r.mint, r.ingested_at],
-  "edges");
-
-await batchUpsert(state,
-  `INSERT OR REPLACE INTO ingest_state (scope_key, last_before_signature, updated_at) VALUES (?, ?, ?)`,
-  (r) => [r.scope_key, r.last_before_signature, r.updated_at],
-  "ingest_state rows");
-
-console.log("Done. Refresh the Vercel dashboard DB + score panels.");
+  // ingest_state is tiny (one row per scope) — full upsert, no marker needed.
+  const stateRows = db.prepare("SELECT scope_key, last_before_signature, updated_at FROM ingest_state").all();
+  for (let i = 0; i < stateRows.length; i += BATCH) {
+    await tursoPipeline(
+      stateRows.slice(i, i + BATCH).map((r) => ({
+        sql: "INSERT OR REPLACE INTO ingest_state (scope_key, last_before_signature, updated_at) VALUES (?, ?, ?)",
+        args: [r.scope_key, r.last_before_signature, r.updated_at],
+      })),
+    );
+  }
+  console.log(`Synced ingest_state: ${stateRows.length} rows`);
+} finally {
+  db.close();
+}
+console.log("Done (incremental). Dashboard reads Turso.");
