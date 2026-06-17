@@ -527,7 +527,7 @@ function severityAccent(sev) {
  *   evidenceSnapshot: Record<string, unknown> | null,
  * }} props
  */
-function BriefBody({ analysis, error, loading, webhookMeta, entityContext, evidenceSnapshot }) {
+function BriefBody({ analysis, preliminary, error, loading, webhookMeta, entityContext, evidenceSnapshot }) {
   const enriched = useMemo(() => {
     if (!analysis) return null;
     if (!evidenceSnapshot) return /** @type {Record<string, unknown>} */ (analysis);
@@ -541,10 +541,13 @@ function BriefBody({ analysis, error, loading, webhookMeta, entityContext, evide
     }
   }, [analysis, evidenceSnapshot]);
 
-  if (loading) {
+  // Only show the full-panel spinner when there's nothing to display yet. If we have
+  // a verdict (detector-derived or prior LLM), keep it on screen while the analyst
+  // refines — that's the whole point: the verdict is instant, the narrative catches up.
+  if (loading && !enriched) {
     return <p className="py-8 text-center text-sm text-cm-faint">Running ChainMind analyst…</p>;
   }
-  if (error) {
+  if (error && !enriched) {
     return <GroqErrorCallout message={error} />;
   }
   if (!enriched) {
@@ -619,6 +622,14 @@ function BriefBody({ analysis, error, loading, webhookMeta, entityContext, evide
 
   return (
     <div className="overflow-hidden rounded-lg border border-cm-border bg-cm-card/95 shadow-cm">
+      {preliminary ? (
+        <div className="flex items-center gap-2 border-b border-cm-border-subtle bg-cm-accent/10 px-4 py-2 sm:px-5">
+          <span className="h-2 w-2 animate-pulse rounded-full bg-cm-accent" aria-hidden />
+          <p className="font-mono text-[10px] uppercase tracking-wider text-cm-accent-bright">
+            {error ? "Detector verdict — analyst narrative unavailable" : "Detector verdict — analyst narrative refining…"}
+          </p>
+        </div>
+      ) : null}
       <div className="flex flex-col gap-2 border-b border-cm-border-subtle bg-cm-row/35 px-4 py-5 sm:px-5">
         <div className="flex w-full flex-wrap items-end gap-4">
           <h3 className={`text-2xl font-black uppercase tracking-tight sm:text-3xl ${vTone}`}>{verdictLabel(verdict)}</h3>
@@ -1200,6 +1211,26 @@ export function Dashboard({ initialAddress } = {}) {
   const intelAlerts = useMemo(() => buildAlerts({ inspect, score, ping }), [inspect, score, ping]);
   const risk = useMemo(() => deriveRiskProfile(score), [score]);
 
+  // Detector-only verdict, available the instant the score loads (sub-second) — no LLM.
+  // Lets the Synthesis panel show a real verdict immediately while the slower Groq
+  // narrative refines it. enrichAnalysisWithVerdictStructure fills signals/evidence.
+  const detectorVerdict = useMemo(() => {
+    if (!score || score.empty || score.ok === false) return null;
+    const n = Number(risk?.score0_100);
+    if (!Number.isFinite(n)) return null;
+    const verdict = n >= 58 ? "escalate" : n >= 38 ? "monitor" : "dismiss";
+    const det = score.aiDetection?.detectors ?? {};
+    const fired = Object.entries(det)
+      .filter(([, v]) => v?.triggered)
+      .map(([k]) => k.replace(/^detect_/, "").replace(/_/g, "-"));
+    return {
+      verdict,
+      confidence: Math.min(1, Math.max(0, n / 100)),
+      pattern: fired[0] ?? (n >= 38 ? "coordination-signal" : "none"),
+      confidence_reasoning: `Detector composite ${Math.round(n)}/100${fired.length ? ` — triggered: ${fired.join(", ")}` : ""}. Analyst narrative pending.`,
+    };
+  }, [score, risk]);
+
   const groqEvidence = useMemo(() => {
     const addr = focusAddress.trim();
     if (!addr) return null;
@@ -1558,7 +1589,8 @@ export function Dashboard({ initialAddress } = {}) {
               />
             </div>
             <BriefBody
-              analysis={groqAnalysis}
+              analysis={groqAnalysis ?? detectorVerdict}
+              preliminary={!groqAnalysis && !!detectorVerdict}
               error={groqErr}
               loading={loadingGroq}
               webhookMeta={groqWebhookMeta}
