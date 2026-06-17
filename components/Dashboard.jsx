@@ -34,8 +34,21 @@ const LIVE_POLL_MS = 42_000;
 const QUEUED_POLL_MS = 25_000;
 /** Stop auto-polling a queued scope after this many tries (~QUEUED_POLL_MS each) to bound RPC/load. */
 const QUEUED_POLL_MAX = 12;
-/** Minimum time between successful Groq reasoning calls (limits API usage during live polling). */
-const GROQ_REASONING_MIN_INTERVAL_MS = 90_000;
+/** Minimum time between auto reasoning *attempts* (success OR failure), so failed calls
+ *  don't retry every data poll and hammer Groq's rate limit during live polling. */
+const GROQ_REASONING_MIN_INTERVAL_MS = 120_000;
+/** Default backoff after a Groq 429 when no retry hint is parseable from the message. */
+const GROQ_RATE_LIMIT_BACKOFF_MS = 120_000;
+
+/** Parse Groq's "try again in 12.3s" / "in 2m30s" rate-limit hint → ms (capped 10 min). */
+function parseGroqRetryMs(message) {
+  const s = String(message ?? "");
+  const ms = s.match(/(\d+)\s*m(?:in)?(?:\s*(\d+(?:\.\d+)?)\s*s)?/i);
+  if (ms) return Math.min(600_000, (Number(ms[1]) * 60 + Number(ms[2] || 0)) * 1000);
+  const sec = s.match(/(\d+(?:\.\d+)?)\s*s(?:ec)?/i);
+  if (sec) return Math.min(600_000, Math.ceil(Number(sec[1]) * 1000));
+  return null;
+}
 /** Cap on wallet rows sent in the Groq POST — keeps the request body under the platform's size limit (avoids 413). */
 const WALLET_EVIDENCE_MAX = 60;
 
@@ -909,6 +922,8 @@ export function Dashboard({ initialAddress } = {}) {
   const [groqLastCompletedAt, setGroqLastCompletedAt] = useState(null);
 
   const groqLastReasoningAtRef = useRef(0);
+  const groqLastAttemptAtRef = useRef(0);
+  const groqCooldownUntilRef = useRef(0);
   const groqAutoInFlightRef = useRef(false);
   const walletTableRef = useRef(/** @type {{ getRawEvidence?: () => unknown } | null} */ (null));
   const queuedPollCountRef = useRef(0);
@@ -1248,7 +1263,9 @@ export function Dashboard({ initialAddress } = {}) {
       const j = await r.json().catch(() => ({}));
       if (!r.ok) {
         const msg = typeof j?.error === "string" ? j.error : [r.status, r.statusText].filter(Boolean).join(" ").trim();
-        throw new Error(msg || "Brief request failed");
+        const err = new Error(msg || "Brief request failed");
+        err.status = r.status;
+        throw err;
       }
       return j;
     },
@@ -1260,13 +1277,18 @@ export function Dashboard({ initialAddress } = {}) {
     // Prefer to wait for signatures but don't block forever
     if (loading.inspect && !inspect?.signatures?.length) return;
     const now = Date.now();
+    // Honor a rate-limit backoff window (set on a prior 429).
+    if (now < groqCooldownUntilRef.current) return;
+    // Throttle on last ATTEMPT (not last success) so failed calls don't retry every
+    // data poll and pile onto Groq's rate limit.
     if (
-      groqLastReasoningAtRef.current !== 0 &&
-      now - groqLastReasoningAtRef.current < GROQ_REASONING_MIN_INTERVAL_MS
+      groqLastAttemptAtRef.current !== 0 &&
+      now - groqLastAttemptAtRef.current < GROQ_REASONING_MIN_INTERVAL_MS
     ) {
       return;
     }
     groqAutoInFlightRef.current = true;
+    groqLastAttemptAtRef.current = now;
     setLoadingGroq(true);
     setGroqErr(null);
     try {
@@ -1283,7 +1305,13 @@ export function Dashboard({ initialAddress } = {}) {
       }
     } catch (e) {
       console.warn("[dashboard] groq auto", e);
-      setGroqErr(`Reasoning failed: ${String(e.message)}`);
+      if (e?.status === 429) {
+        const backoff = parseGroqRetryMs(e.message) ?? GROQ_RATE_LIMIT_BACKOFF_MS;
+        groqCooldownUntilRef.current = Date.now() + backoff;
+        setGroqErr(`Rate-limited by Groq — pausing auto-reasoning for ~${Math.round(backoff / 1000)}s`);
+      } else {
+        setGroqErr(`Reasoning failed: ${String(e.message)}`);
+      }
     } finally {
       setLoadingGroq(false);
       groqAutoInFlightRef.current = false;
@@ -1297,6 +1325,8 @@ export function Dashboard({ initialAddress } = {}) {
 
   useEffect(() => {
     groqLastReasoningAtRef.current = 0;
+    groqLastAttemptAtRef.current = 0;
+    groqCooldownUntilRef.current = 0;
     setGroqLastCompletedAt(null);
   }, [focusAddress]);
 
