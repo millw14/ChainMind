@@ -36,6 +36,33 @@ const QUEUED_POLL_MS = 25_000;
 const QUEUED_POLL_MAX = 12;
 /** Minimum time between successful Groq reasoning calls (limits API usage during live polling). */
 const GROQ_REASONING_MIN_INTERVAL_MS = 90_000;
+/** Cap on wallet rows sent in the Groq POST — keeps the request body under the platform's size limit (avoids 413). */
+const WALLET_EVIDENCE_MAX = 60;
+
+/**
+ * Trim the wallet-table payload before POSTing to /api/groq-brief. getRawEvidence()
+ * returns the whole /api/evidence response, whose `timeline` and `edges` arrays
+ * dominate the body (100KB+ each) and scale with activity — on a hot scope they push
+ * the request past the serverless body limit (413). The Groq prompt only consumes the
+ * wallet count + shared_funders + a sample of wallet rows, so whitelist those: keep the
+ * most relevant wallets (coordinated / funded first), preserve the true total, and drop
+ * the heavy unused fields. groqEvidence already carries its own capped timeline/edges.
+ */
+function trimWalletEvidence(we) {
+  if (!we || typeof we !== "object") return we ?? null;
+  const wallets = Array.isArray(we.wallets) ? we.wallets : [];
+  const ranked = [...wallets].sort(
+    (a, b) => (b?.coordinated_txs ?? 0) - (a?.coordinated_txs ?? 0) || (b?.funded_by ? 1 : 0) - (a?.funded_by ? 1 : 0),
+  );
+  return {
+    summary: we.summary ?? null,
+    shared_funders: Array.isArray(we.shared_funders) ? we.shared_funders.slice(0, 12) : [],
+    wallets: ranked.slice(0, WALLET_EVIDENCE_MAX),
+    wallets_total: wallets.length,
+    wallets_truncated: wallets.length > WALLET_EVIDENCE_MAX,
+  };
+}
+
 function solscanTx(signature) {
   return `https://solscan.io/tx/${signature}`;
 }
@@ -1207,7 +1234,7 @@ export function Dashboard({ initialAddress } = {}) {
     async (source) => {
       if (!groqEvidence?.address) return null;
       // Merge wallet table payload into Groq POST (see lib/integration-notes.js)
-      const walletEvidence = walletTableRef.current?.getRawEvidence?.() ?? null;
+      const walletEvidence = trimWalletEvidence(walletTableRef.current?.getRawEvidence?.() ?? null);
       const groqData = { ...groqEvidence, walletEvidence: walletEvidence ?? null };
       const r = await fetch("/api/groq-brief", {
         method: "POST",
