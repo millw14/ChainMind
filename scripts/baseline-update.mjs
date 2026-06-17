@@ -9,7 +9,9 @@ import {
   persistBaseline,
 } from "../lib/baseline-manager.js";
 import { buildTimelineBucketsFromRows } from "../lib/score-math.js";
-import { fetchEventsForScope, getTursoClient } from "../lib/turso.js";
+// HTTP (pure-fetch) Turso client — importing lib/turso.js pulls in @libsql/client,
+// whose native `libsql` dep fails to load on Railway and crashed baseline:update.
+import { fetchEventsForScopeHttp, getTursoHttpClient } from "../lib/turso-http.js";
 import { loadWatchlist } from "../lib/watchlist.js";
 
 function parseFlags(argv) {
@@ -65,7 +67,7 @@ async function processScope(turso, scopeAddress, windowMinutes, lookbackHours) {
   const cutoffSec = Math.floor(Date.now() / 1000) - lookbackHours * 3600;
   let rows;
   try {
-    rows = await fetchEventsForScope(turso, scopeAddress, cutoffSec);
+    rows = await fetchEventsForScopeHttp(turso, scopeAddress, cutoffSec);
   } catch (e) {
     return { ok: false, reason: `turso fetch failed: ${String(e?.message ?? e)}` };
   }
@@ -100,7 +102,7 @@ async function main() {
   );
   console.log("");
 
-  const turso = getTursoClient();
+  const turso = getTursoHttpClient();
   if (!turso) {
     console.error("TURSO_* env vars not configured — baseline:update requires Turso.");
     process.exit(1);
