@@ -5,7 +5,7 @@ import { getTursoClient, tursoAddToScanQueue } from "@/lib/turso.js";
 import { openDb } from "@/lib/db.js";
 import { computeCoactivityScore } from "@/lib/score-core.js";
 
-export const maxDuration = 45;
+export const maxDuration = 60;
 export const runtime = "nodejs";
 
 export async function GET(request) {
