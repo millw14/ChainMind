@@ -93,6 +93,22 @@ export default async function InvestigationPage({ params }) {
   const fundingGraph = payload.fundingGraph ?? {};
   const fundingTree = payload.fundingTree ?? null;
   const evidenceRows = payload.evidenceRows ?? [];
+  // Rows that carry an on-chain amount (token transfers) first — funding-tree edges have
+  // no amount and were filling the visible top-40, making every amount render as 0.
+  const evidenceRowsSorted = [...evidenceRows].sort((a, b) => {
+    const av = a?.amount != null && a.amount !== "" ? 0 : 1;
+    const bv = b?.amount != null && b.amount !== "" ? 0 : 1;
+    return av - bv;
+  });
+  const fmtAmount = (v) => {
+    if (v == null || v === "") return "—";
+    try {
+      return BigInt(v).toLocaleString();
+    } catch {
+      const n = Number(v);
+      return Number.isFinite(n) ? n.toLocaleString() : "—";
+    }
+  };
   const createdAt = new Date((row.created_at ?? 0) * 1000).toISOString();
 
   const verdict = groq?.verdict ?? "dismiss";
@@ -394,11 +410,11 @@ export default async function InvestigationPage({ params }) {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-zinc-800/40">
-                  {evidenceRows.slice(0, 40).map((r, i) => (
+                  {evidenceRowsSorted.slice(0, 40).map((r, i) => (
                     <tr key={i} className="bg-zinc-900/20 hover:bg-zinc-900/50">
                       <td className="px-3 py-1.5"><WalletAddress address={r.from?.slice(0, 44) ?? ""} /></td>
                       <td className="px-3 py-1.5"><WalletAddress address={r.to?.slice(0, 44) ?? ""} /></td>
-                      <td className="px-3 py-1.5 text-right text-zinc-500 font-mono">{Number(r.amt ?? r.amount ?? 0).toLocaleString()}</td>
+                      <td className="px-3 py-1.5 text-right text-zinc-500 font-mono">{fmtAmount(r.amt ?? r.amount)}</td>
                     </tr>
                   ))}
                 </tbody>
