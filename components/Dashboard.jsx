@@ -938,6 +938,7 @@ export function Dashboard({ initialAddress } = {}) {
   const groqAutoInFlightRef = useRef(false);
   const walletTableRef = useRef(/** @type {{ getRawEvidence?: () => unknown } | null} */ (null));
   const queuedPollCountRef = useRef(0);
+  const caseAutoCreatedRef = useRef(/** @type {Set<string>} */ (new Set()));
 
   const [loading, setLoading] = useState({});
   const [loadingGroq, setLoadingGroq] = useState(false);
@@ -1041,6 +1042,10 @@ export function Dashboard({ initialAddress } = {}) {
     if (!scoreData || scoreData.empty || scoreData.ok === false) return;
     const s = focusAddress.trim();
     if (!s) return;
+    // Auto-create at most once per scope per session — the per-poll firing was minting
+    // ~100 duplicate cases/hour. (Server also dedups; this avoids the wasted POSTs.)
+    if (caseAutoCreatedRef.current.has(s)) return;
+    caseAutoCreatedRef.current.add(s);
     try {
       const res = await fetch("/api/cases", {
         method: "POST",
