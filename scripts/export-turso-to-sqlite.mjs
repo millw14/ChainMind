@@ -45,7 +45,9 @@ for (const raw of schemaSql.split(/;\s*(?:\r?\n|$)/)) {
 const tablesRes = await turso.execute(
   "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' AND name NOT LIKE '\\_%' ESCAPE '\\'",
 );
-const tables = tablesRes.rows.map((r) => String(r.name)).filter(Boolean);
+const skip = new Set((process.env.SKIP_TABLES ?? "").split(",").map((s) => s.trim()).filter(Boolean));
+const tables = tablesRes.rows.map((r) => String(r.name)).filter(Boolean).filter((t) => !skip.has(t));
+if (skip.size) console.log("Skipping tables:", [...skip].join(", "));
 console.log("Tables to export:", tables.join(", "));
 
 const PAGE = Math.max(25, Number(process.env.EXPORT_PAGE_SIZE) || 1000);
