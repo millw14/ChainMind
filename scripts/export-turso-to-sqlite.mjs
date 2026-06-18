@@ -23,11 +23,17 @@ mkdirSync(dirname(outPath), { recursive: true });
 const local = new Database(outPath);
 local.pragma("journal_mode = WAL");
 
-// Apply the full schema so every table exists in the export.
+// Apply the full schema so every table exists in the export. Strip leading
+// full-line comments per statement so "-- note\nCREATE TABLE ..." isn't skipped.
 const schemaSql = readFileSync(resolve(root, "schema/turso.sql"), "utf8");
-for (const stmt of schemaSql.split(/;\s*(?:\r?\n|$)/)) {
-  const s = stmt.trim();
-  if (!s || s.startsWith("--")) continue;
+function stripLeadingComments(s) {
+  const lines = s.split(/\r?\n/);
+  while (lines.length && (lines[0].trim() === "" || lines[0].trim().startsWith("--"))) lines.shift();
+  return lines.join("\n").trim();
+}
+for (const raw of schemaSql.split(/;\s*(?:\r?\n|$)/)) {
+  const s = stripLeadingComments(raw.trim());
+  if (!s) continue;
   try {
     local.exec(s + ";");
   } catch (e) {
@@ -42,7 +48,7 @@ const tablesRes = await turso.execute(
 const tables = tablesRes.rows.map((r) => String(r.name)).filter(Boolean);
 console.log("Tables to export:", tables.join(", "));
 
-const PAGE = 1000;
+const PAGE = Math.max(25, Number(process.env.EXPORT_PAGE_SIZE) || 1000);
 for (const table of tables) {
   // Skip if the export DB doesn't have this table (schema mismatch) — report it.
   const cols = local.prepare(`PRAGMA table_info(${table})`).all().map((c) => c.name);
