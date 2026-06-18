@@ -8,7 +8,9 @@ import { openDb } from "../lib/db.js";
 import { getSolanaConnection } from "../lib/solana.js";
 import { loadWatchlist } from "../lib/watchlist.js";
 import { ingestPendingEventsForScope, syncHeadSignaturesForScope } from "../lib/pipeline-sync.js";
-import { tursoHttpFetchPendingScanQueue, tursoHttpMarkScanQueuePicked } from "../lib/turso-http.js";
+import { tursoHttpAddToScanQueue, tursoHttpFetchPendingScanQueue, tursoHttpMarkScanQueuePicked } from "../lib/turso-http.js";
+import { discoverTrendingSolanaMints } from "../lib/token-discovery.js";
+import { isKnownEntity } from "../lib/known-entities.js";
 
 function parseFlags(argv) {
   /** @type {Record<string, string | boolean>} */
@@ -39,6 +41,14 @@ const ingestLimit = Math.min(
   Math.max(1, Number(flags["ingest-limit"] ?? process.env.INGEST_PARSE_LIMIT ?? "35") || 35),
 );
 const ingestThrottleMs = Math.max(0, Number(flags["ingest-throttle"] ?? process.env.INGEST_THROTTLE_MS ?? "900") || 900);
+
+// Token discovery: auto-feed trending Solana mints into the scan queue so detection
+// isn't limited to the static watchlist. Capped hard so the worker isn't overloaded —
+// it processes EVERY active scope each round, so total scopes must stay bounded.
+const discoveryEnabled = String(flags["discovery"] ?? process.env.DISCOVERY_ENABLED ?? "1").trim() !== "0";
+const maxActiveScopes = Math.min(40, Math.max(2, Number(process.env.MAX_ACTIVE_SCOPES ?? 10) || 10));
+const discoveryPerCycle = Math.min(10, Math.max(1, Number(process.env.DISCOVERY_PER_CYCLE ?? 3) || 3));
+const discoveryEveryRounds = Math.max(1, Number(process.env.DISCOVERY_EVERY_ROUNDS ?? 4) || 4);
 
 const BASELINE_INTERVAL_MS = 86_400_000;
 const baselineStampPath = resolve(process.cwd(), "data/.pipeline-baseline-last");
@@ -106,10 +116,33 @@ See docs/strategic-plan-data-pipeline.md (Phase 1).
     round++;
     console.log(`=== Round ${round} @ ${new Date().toISOString()} ===`);
 
-    // Merge any new addresses from scan queue
+    // Discover trending mints periodically and enqueue them — only while there's room
+    // under the active-scope cap, so we never flood the worker.
+    if (discoveryEnabled && scopes.length < maxActiveScopes && (round === 1 || round % discoveryEveryRounds === 0)) {
+      try {
+        const found = await discoverTrendingSolanaMints(discoveryPerCycle);
+        let added = 0;
+        for (const mint of found) {
+          if (scopes.find((s) => s.address === mint)) continue;
+          await tursoHttpAddToScanQueue(mint, "discovered:dexscreener");
+          added++;
+        }
+        if (added) console.log(`~ discovery: enqueued ${added} trending mints`);
+      } catch (e) {
+        console.error("[discovery] failed:", e.message);
+      }
+    }
+
+    // Merge new addresses from scan queue, capped at maxActiveScopes (the worker
+    // processes every scope each round, so total must stay bounded).
     try {
       const queued = await tursoHttpFetchPendingScanQueue(20);
       for (const q of queued) {
+        if (scopes.length >= maxActiveScopes) break;
+        if (isKnownEntity(q.address)) {
+          await tursoHttpMarkScanQueuePicked(q.address); // retire stablecoins/infra from the queue
+          continue;
+        }
         if (!scopes.find((s) => s.address === q.address)) {
           scopes.push({ address: q.address, note: q.note ?? "from scan queue" });
           await tursoHttpMarkScanQueuePicked(q.address);
