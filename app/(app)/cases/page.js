@@ -35,6 +35,9 @@ function riskDot(risk) {
 }
 
 export const runtime = "nodejs";
+// Always render from the live DB — without this Next statically caches the page and
+// serves a stale snapshot (showed 20 frozen cases while the DB had 11).
+export const dynamic = "force-dynamic";
 export const metadata = { title: "Investigations · ChainMind" };
 
 export default async function CasesPage() {
