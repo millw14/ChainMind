@@ -7,6 +7,15 @@ import { expandFundingTreeInbound } from "@/lib/funding-tree-turso.js";
 import { runGroqBriefForInvestigationCase } from "@/lib/groq-auto-for-case.js";
 import { buildTursoScoreBundle } from "@/lib/score-bundle.js";
 import { getTursoClient, tursoInsertInvestigationCase, tursoFetchRecentCases } from "@/lib/turso.js";
+import { isKnownEntity } from "@/lib/known-entities.js";
+
+/** Hours within which a scope's existing case suppresses auto-creating a duplicate. */
+function caseMinIntervalHours() {
+  const raw = process.env.CHAINMIND_CASE_MIN_INTERVAL_HOURS?.trim();
+  if (raw === undefined || raw === "") return 6;
+  const n = Number(raw);
+  return Number.isFinite(n) && n >= 0 ? n : 6;
+}
 
 /** Groq auto-run adds an LLM round-trip (self-fetch to /api/groq-brief). */
 export const maxDuration = 120;
@@ -75,6 +84,43 @@ export async function POST(request) {
       { ok: false, error: "Turso not configured (TURSO_DATABASE_URL + TURSO_AUTH_TOKEN)" },
       { status: 503 },
     );
+  }
+
+  const force = Boolean(body.force);
+
+  // Skip case creation for known entities (stablecoins/infra/CEX) — they're not
+  // investigation targets and were flooding the case list (e.g. USDC). Cheap guard
+  // before any bundle/Groq work.
+  if (!force && isKnownEntity(scope)) {
+    return NextResponse.json({ ok: true, skipped: true, reason: "known_entity", scope });
+  }
+
+  // Dedup: don't auto-create a duplicate case when a recent one for this scope exists.
+  // The dashboard's per-poll auto-create + the cron sweep were minting ~100 cases/hour.
+  // `force: true` (explicit manual freeze) bypasses this.
+  const minHours = caseMinIntervalHours();
+  if (!force && minHours > 0) {
+    try {
+      const recent = await client.execute({
+        sql: "SELECT id, created_at FROM investigation_cases WHERE scope_address = ? ORDER BY created_at DESC LIMIT 1",
+        args: [scope],
+      });
+      const row = recent.rows[0];
+      if (row) {
+        const ageH = (Date.now() / 1000 - Number(row.created_at)) / 3600;
+        if (ageH < minHours) {
+          return NextResponse.json({
+            ok: true,
+            skipped: true,
+            reason: "recent_case_exists",
+            caseId: String(row.id),
+            ageHours: Math.round(ageH * 100) / 100,
+          });
+        }
+      }
+    } catch (e) {
+      console.error("[cases] dedup check", e);
+    }
   }
 
   try {
