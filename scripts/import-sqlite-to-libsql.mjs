@@ -18,10 +18,24 @@ const dst = createClient({ url, authToken });
 const src = new Database(resolve(root, "data/chainmind-export.db"), { readonly: true });
 
 const BATCH = Math.max(1, Number(process.env.IMPORT_BATCH) || 200);
+const skip = new Set((process.env.SKIP_TABLES ?? "").split(",").map((s) => s.trim()).filter(Boolean));
 const tables = src
   .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'")
   .all()
-  .map((r) => r.name);
+  .map((r) => r.name)
+  .filter((t) => !skip.has(t));
+
+// Retry batches on transient network errors (ECONNRESET etc.) — the raw client has no retry.
+async function batchWithRetry(stmts) {
+  for (let attempt = 0; attempt < 8; attempt++) {
+    try {
+      return await dst.batch(stmts, "write");
+    } catch (e) {
+      if (attempt === 7 || !/ECONNRESET|fetch failed|socket|timeout|terminated|5\d\d|EPIPE/i.test(String(e?.message ?? e))) throw e;
+      await new Promise((r) => setTimeout(r, 400 * (attempt + 1)));
+    }
+  }
+}
 
 for (const table of tables) {
   const cols = src.prepare(`PRAGMA table_info(${table})`).all().map((c) => c.name);
@@ -41,7 +55,7 @@ for (const table of tables) {
         return typeof v === "bigint" ? Number(v) : v ?? null;
       }),
     }));
-    await dst.batch(batch, "write");
+    await batchWithRetry(batch);
     done += batch.length;
     process.stdout.write(`  ${table}: ${done}/${rows.length}\r`);
   }
