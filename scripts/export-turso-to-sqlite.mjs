@@ -8,17 +8,23 @@ import { fileURLToPath } from "node:url";
 import Database from "better-sqlite3";
 import { loadEnv } from "../lib/load-env.js";
 loadEnv();
-import { getTursoClient } from "../lib/turso.js";
+import { getTursoClient, makeRetryingClient } from "../lib/turso.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const root = resolve(__dirname, "..");
-const turso = getTursoClient();
+// Target override: LIBSQL_URL/LIBSQL_TOKEN back up an explicit instance (e.g. the
+// self-hosted libSQL); otherwise default to the env Turso (TURSO_*). Doubles as the
+// backup tool for the production DB. Retrying client so a flaky link doesn't abort a dump.
+const turso =
+  process.env.LIBSQL_URL && process.env.LIBSQL_TOKEN
+    ? makeRetryingClient(process.env.LIBSQL_URL, process.env.LIBSQL_TOKEN)
+    : getTursoClient();
 if (!turso) {
-  console.error("Set TURSO_DATABASE_URL + TURSO_AUTH_TOKEN.");
+  console.error("Set TURSO_DATABASE_URL + TURSO_AUTH_TOKEN (or LIBSQL_URL + LIBSQL_TOKEN).");
   process.exit(1);
 }
 
-const outPath = resolve(root, "data/chainmind-export.db");
+const outPath = resolve(root, process.env.EXPORT_OUT_PATH || "data/chainmind-export.db");
 mkdirSync(dirname(outPath), { recursive: true });
 const local = new Database(outPath);
 local.pragma("journal_mode = WAL");
