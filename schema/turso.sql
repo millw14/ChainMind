@@ -169,6 +169,14 @@ CREATE INDEX IF NOT EXISTS idx_investigation_cases_scope
 CREATE INDEX IF NOT EXISTS idx_investigation_cases_created
   ON investigation_cases (created_at DESC);
 
+-- Per-mint decimals cache (constant per mint) so raw on-chain amounts can be shown in
+-- human units. Populated lazily from RPC; native SOL / lamports use 9.
+CREATE TABLE IF NOT EXISTS mint_decimals (
+  mint TEXT PRIMARY KEY,
+  decimals INTEGER NOT NULL,
+  updated_at TEXT NOT NULL
+);
+
 -- Groq verdict cache: lets /api/groq-brief skip a redundant model call when a recent
 -- analysis for the same scope + unchanged evidence already exists (see lib/evidence-hash.js).
 CREATE TABLE IF NOT EXISTS groq_analysis_log (

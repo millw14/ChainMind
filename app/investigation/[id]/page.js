@@ -1,6 +1,8 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getTursoClient, tursoFetchInvestigationCase } from "@/lib/turso.js";
+import { getMintDecimalsMany, formatUiAmount } from "@/lib/mint-decimals.js";
+import { getSolanaConnection } from "@/lib/solana.js";
 
 export const runtime = "nodejs";
 
@@ -100,15 +102,19 @@ export default async function InvestigationPage({ params }) {
     const bv = b?.amount != null && b.amount !== "" ? 0 : 1;
     return av - bv;
   });
-  const fmtAmount = (v) => {
-    if (v == null || v === "") return "—";
-    try {
-      return BigInt(v).toLocaleString();
-    } catch {
-      const n = Number(v);
-      return Number.isFinite(n) ? n.toLocaleString() : "—";
-    }
-  };
+  // Resolve per-mint decimals (cache-first, RPC fallback) so amounts show in human units.
+  // Best-effort: if RPC/cache is unavailable, formatUiAmount falls back to raw.
+  let decimalsByMint = new Map();
+  try {
+    const mints = [...new Set(evidenceRowsSorted.map((r) => r.mint).filter((m) => m != null))];
+    let conn = null;
+    try { conn = getSolanaConnection(); } catch { conn = null; }
+    decimalsByMint = await getMintDecimalsMany(conn, client, mints);
+  } catch {
+    decimalsByMint = new Map();
+  }
+  const decimalsFor = (mint) => decimalsByMint.get(mint == null ? "native_sol" : String(mint).trim());
+  const fmtAmount = (v, mint) => formatUiAmount(v, decimalsFor(mint));
   const createdAt = new Date((row.created_at ?? 0) * 1000).toISOString();
 
   const verdict = groq?.verdict ?? "dismiss";
@@ -414,7 +420,7 @@ export default async function InvestigationPage({ params }) {
                     <tr key={i} className="bg-zinc-900/20 hover:bg-zinc-900/50">
                       <td className="px-3 py-1.5"><WalletAddress address={r.from?.slice(0, 44) ?? ""} /></td>
                       <td className="px-3 py-1.5"><WalletAddress address={r.to?.slice(0, 44) ?? ""} /></td>
-                      <td className="px-3 py-1.5 text-right text-zinc-500 font-mono">{fmtAmount(r.amt ?? r.amount)}</td>
+                      <td className="px-3 py-1.5 text-right text-zinc-500 font-mono">{fmtAmount(r.amt ?? r.amount, r.mint)}</td>
                     </tr>
                   ))}
                 </tbody>
