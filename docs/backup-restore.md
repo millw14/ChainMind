@@ -47,3 +47,15 @@ keep the last few files off-Railway.
 ## Interim safety net
 The original **Turso** instance still holds the migration snapshot (everything up to cutover) as a
 warm fallback. Don't decommission it until off-site backups are in place.
+
+## Off-site backup is configured (Cloudflare R2)
+R2 creds live in `.env.local` (`R2_ENDPOINT`, `R2_BUCKET`, `R2_ACCESS_KEY_ID`,
+`R2_SECRET_ACCESS_KEY`). One command dumps the critical tables and uploads them:
+
+```bash
+npm run backup        # critical tables only (small, fast) → R2 bucket/backups/critical-<ts>.db
+npm run backup:full   # entire DB (large, slow over a flaky link)
+```
+
+Backups land in the `chainmindbackups` bucket under `backups/`. Schedule `npm run backup`
+(e.g. daily via Task Scheduler / cron) for hands-off off-site durability.
