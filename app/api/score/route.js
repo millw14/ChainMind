@@ -4,6 +4,8 @@ import { buildTursoScoreBundle } from "@/lib/score-bundle.js";
 import { getTursoClient, tursoAddToScanQueue } from "@/lib/turso.js";
 import { openDb } from "@/lib/db.js";
 import { computeCoactivityScore } from "@/lib/score-core.js";
+import { scoreFromRpc } from "@/lib/score-from-rpc.js";
+import { getSolanaConnection } from "@/lib/solana.js";
 
 export const maxDuration = 60;
 export const runtime = "nodejs";
@@ -109,16 +111,26 @@ export async function GET(request) {
       "score:",
       body.score,
     );
-    // On-demand ingestion: no events yet for this scope → enqueue it so the
-    // pipeline worker pulls + ingests it. INSERT OR IGNORE makes this idempotent,
-    // so repeated searches for the same address don't pile up. The client uses
-    // `queued` to show a "pulling this address in" state instead of the raw message.
+    // Cold search: no rows in the DB yet. Instead of making the user wait for the
+    // worker, score the address LIVE from RPC right now (real answer in seconds), and
+    // enqueue it so the worker persists + keeps it fresh for next time.
     if (body && body.empty) {
       try {
         await tursoAddToScanQueue(client, scope, "on-demand search");
-        body.queued = true;
       } catch (e) {
         console.error("[score] scan-queue enqueue", e);
+      }
+      try {
+        const connection = getSolanaConnection();
+        const live = await scoreFromRpc(connection, scope, { windowMinutes, lastHours });
+        if (live && !live.empty) {
+          return NextResponse.json({ ...live, queued: true });
+        }
+        // genuinely no recent activity — return the live "empty" (clearer than the DB one)
+        return NextResponse.json({ ...live, queued: true });
+      } catch (e) {
+        console.error("[score] rpc-live", e);
+        body.queued = true; // fall back to the DB empty + "pulling in" UX
       }
     }
     return NextResponse.json(body);
