@@ -89,5 +89,7 @@ for (const table of tables) {
   console.log(`  ✓ ${table}: ${total} rows`);
 }
 
+// Merge WAL into the main .db so the file is self-contained for copying/uploading.
+try { local.pragma("wal_checkpoint(TRUNCATE)"); } catch {}
 local.close();
 console.log(`\nDone → ${outPath}`);
