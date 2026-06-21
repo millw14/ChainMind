@@ -339,7 +339,7 @@ const SORT_OPTIONS = [
 const EVIDENCE_TIMEOUT_MS = 70_000;
 
 const WalletTable = forwardRef(function WalletTable(
-  { scope, lookback = 24, className = "" },
+  { scope, lookback = 24, className = "", onStatus },
   ref
 ) {
   const [data, setData] = useState(null);
@@ -374,10 +374,17 @@ const WalletTable = forwardRef(function WalletTable(
 
   useEffect(() => { load(); }, [load]);
 
-  // Expose raw evidence payload for groq-brief merging
+  // Report load state up so the dashboard can drive the staged progress indicator.
+  useEffect(() => {
+    onStatus?.({ loading, hasData: Boolean(data), error, summary: data?.summary ?? null });
+  }, [loading, data, error, onStatus]);
+
+  // Expose raw evidence payload for groq-brief merging + a reload() the dashboard's
+  // Re-Analyze button can call to force-refresh evidence.
   useImperativeHandle(ref, () => ({
     getRawEvidence: () => data,
-  }), [data]);
+    reload: load,
+  }), [data, load]);
 
   // Sort + filter
   const wallets = data?.wallets ?? [];

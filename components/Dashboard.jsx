@@ -174,7 +174,7 @@ function InfoCallout({ children }) {
   );
 }
 
-function ReasoningPanelStatus({ loadingGroq, lastGroqAt, nextSweepAt, sweepSec }) {
+function ReasoningPanelStatus({ loadingGroq, pending, lastGroqAt, nextSweepAt, sweepSec }) {
   const [, setTick] = useState(0);
   useEffect(() => {
     const id = setInterval(() => setTick((n) => n + 1), 1000);
@@ -190,6 +190,8 @@ function ReasoningPanelStatus({ loadingGroq, lastGroqAt, nextSweepAt, sweepSec }
     <div className="flex flex-col gap-0.5 font-mono text-left">
       {loadingGroq ? (
         <span className="text-[10px] font-bold uppercase tracking-wide text-cm-warn">Reasoning…</span>
+      ) : pending ? (
+        <span className="text-[10px] font-bold uppercase tracking-wide text-cm-accent-bright">Queued…</span>
       ) : (
         <span className="text-[10px] font-bold uppercase tracking-wide text-cm-terminal">Idle</span>
       )}
@@ -525,6 +527,106 @@ function CollectedSignalStrip({ stats, loadingScore }) {
           Data is in — computing the coordination score now. Counts are live from the synced datastore.
         </p>
       ) : null}
+    </div>
+  );
+}
+
+const ANALYSIS_ETA_LO = 30;
+const ANALYSIS_ETA_HI = 90;
+
+function StepDot({ state }) {
+  if (state === "done") return <span className="text-cm-terminal" aria-hidden>●</span>;
+  if (state === "error") return <span className="text-cm-bad" aria-hidden>✕</span>;
+  if (state === "active")
+    return <span className="inline-block h-2.5 w-2.5 animate-pulse rounded-full bg-cm-accent" aria-hidden />;
+  return <span className="text-cm-faint" aria-hidden>○</span>;
+}
+
+/**
+ * Staged analysis progress — replaces the opaque spinner with named phases so the user can
+ * tell whether the run is collecting, building the graph, checking funding, or writing the
+ * report, plus elapsed time against a typical 30–90s envelope.
+ */
+function AnalysisProgress({ loadingScore, score, evidenceStatus, loadingGroq, hasReport, startedAt }) {
+  const [, setTick] = useState(0);
+  const elapsed = startedAt ? Math.max(0, Math.floor((Date.now() - startedAt) / 1000)) : null;
+
+  const scoreErr = score?.ok === false;
+  const scoreDone = Boolean(score) && !loadingScore && !scoreErr;
+  const evLoading = Boolean(evidenceStatus?.loading);
+  const evDone = Boolean(evidenceStatus?.hasData);
+  const evErr = Boolean(evidenceStatus?.error);
+
+  const steps = [
+    { label: "Collecting transactions", state: scoreErr ? "error" : scoreDone ? "done" : loadingScore ? "active" : "pending" },
+    { label: "Building wallet graph", state: evErr ? "error" : evDone ? "done" : evLoading || scoreDone ? "active" : "pending" },
+    { label: "Checking funding links", state: evErr ? "error" : evidenceStatus?.summary ? "done" : evLoading ? "active" : "pending" },
+    { label: "Generating report", state: hasReport ? "done" : loadingGroq ? "active" : "pending" },
+  ];
+
+  const allDone = steps.every((s) => s.state === "done");
+  const anyError = steps.some((s) => s.state === "error");
+  const running = loadingScore || evLoading || loadingGroq;
+
+  useEffect(() => {
+    if (!running) return;
+    const id = setInterval(() => setTick((n) => n + 1), 1000);
+    return () => clearInterval(id);
+  }, [running]);
+
+  const stepTone = (state) =>
+    state === "done" ? "text-cm-subtle" : state === "active" ? "text-cm-text" : state === "error" ? "text-cm-bad" : "text-cm-faint";
+
+  return (
+    <div className="rounded-md border border-cm-border bg-cm-row/40 px-3 py-3">
+      <div className="flex items-center justify-between gap-2">
+        <p className="font-mono text-[10px] font-semibold uppercase tracking-wider text-cm-faint">
+          {anyError ? "Analysis — attention" : allDone ? "Analysis complete" : "Analysis in progress"}
+        </p>
+        <p className="font-mono text-[9px] text-cm-faint">
+          {elapsed != null ? <span className="tabular-nums text-cm-muted">{elapsed}s</span> : "—"}
+          <span> · typically {ANALYSIS_ETA_LO}–{ANALYSIS_ETA_HI}s</span>
+        </p>
+      </div>
+      <ol className="mt-2 space-y-1.5">
+        {steps.map((s) => (
+          <li key={s.label} className="flex items-center gap-2 font-mono text-[11px]">
+            <span className="inline-flex w-3 justify-center"><StepDot state={s.state} /></span>
+            <span className={stepTone(s.state)}>{s.label}</span>
+          </li>
+        ))}
+      </ol>
+    </div>
+  );
+}
+
+function AnalysisControls({ disabled, running, onRun, onReanalyze }) {
+  return (
+    <div className="flex flex-wrap items-center gap-2">
+      <button
+        type="button"
+        onClick={onRun}
+        disabled={disabled || running}
+        className="inline-flex items-center gap-2 rounded-md border border-cm-accent/40 bg-cm-accent/15 px-3.5 py-2 text-xs font-semibold text-cm-accent-bright transition hover:bg-cm-accent/25 disabled:opacity-45"
+      >
+        {running ? (
+          <>
+            <span className="inline-block h-3 w-3 animate-spin rounded-full border-2 border-cm-accent/40 border-t-cm-accent-bright" />
+            Analyzing…
+          </>
+        ) : (
+          <>Run full analysis</>
+        )}
+      </button>
+      <button
+        type="button"
+        onClick={onReanalyze}
+        disabled={disabled}
+        title="Recompute from scratch — bypasses the cache and restarts a stalled run"
+        className="inline-flex items-center gap-2 rounded-md border border-cm-border bg-cm-elevated px-3 py-2 text-xs font-medium text-cm-muted transition hover:border-cm-accent/40 hover:text-cm-text disabled:opacity-45"
+      >
+        ↻ Re-analyze (fresh)
+      </button>
     </div>
   );
 }
@@ -996,6 +1098,12 @@ export function Dashboard({ initialAddress } = {}) {
   const [loading, setLoading] = useState({});
   const [loadingGroq, setLoadingGroq] = useState(false);
 
+  // Evidence (wallet table) load state, reported up via WalletTable's onStatus, and the
+  // timestamp the current analysis run began — both drive the staged progress indicator.
+  const [evidenceStatus, setEvidenceStatus] = useState(/** @type {{ loading: boolean, hasData: boolean, error: string | null, summary: any } | null} */ (null));
+  const [analysisStartedAt, setAnalysisStartedAt] = useState(/** @type {number | null} */ (null));
+  const handleEvidenceStatus = useCallback((s) => setEvidenceStatus(s), []);
+
   const setLoad = (key, v) => setLoading((s) => ({ ...s, [key]: v }));
 
   const fetchJson = useCallback(async (url, key, { timeoutMs } = {}) => {
@@ -1120,11 +1228,12 @@ export function Dashboard({ initialAddress } = {}) {
     }
   }, [focusAddress, scoreWindow, scoreHours]);
 
-  const runScore = useCallback(async () => {
+  const runScore = useCallback(async (opts = {}) => {
     const s = focusAddress.trim();
     if (!s) return;
     const hours = encodeURIComponent(scoreHours || "24");
-    const buildUrl = (w) => `/api/score?scope=${encodeURIComponent(s)}&window=${w}&hours=${hours}`;
+    const fresh = opts.force ? "&fresh=1" : "";
+    const buildUrl = (w) => `/api/score?scope=${encodeURIComponent(s)}&window=${w}&hours=${hours}${fresh}`;
     try {
       // Try requested window first
       let result = await fetchJson(buildUrl(scoreWindow || "5"), "score", { timeoutMs: SCORE_TIMEOUT_MS });
@@ -1233,8 +1342,12 @@ export function Dashboard({ initialAddress } = {}) {
     const a = focusAddress.trim();
     if (!a) {
       setScore(null);
+      setAnalysisStartedAt(null);
       return;
     }
+    // Auto-start: a new target / changed params begins a fresh analysis run — stamp it so
+    // the staged progress + ETA reflect this run from the moment it kicks off.
+    setAnalysisStartedAt(Date.now());
     const id = setTimeout(() => {
       void runScore();
     }, INSPECT_DEBOUNCE_MS + 120);
@@ -1375,16 +1488,18 @@ export function Dashboard({ initialAddress } = {}) {
     [groqEvidence],
   );
 
-  const runGroqAuto = useCallback(async () => {
+  const runGroqAuto = useCallback(async (opts = {}) => {
+    const force = opts.force === true; // manual "Run analysis" — bypass throttle/cooldown
     if (groqAutoInFlightRef.current || !groqEvidence?.address) return;
     // Prefer to wait for signatures but don't block forever
-    if (loading.inspect && !inspect?.signatures?.length) return;
+    if (!force && loading.inspect && !inspect?.signatures?.length) return;
     const now = Date.now();
     // Honor a rate-limit backoff window (set on a prior 429).
-    if (now < groqCooldownUntilRef.current) return;
+    if (!force && now < groqCooldownUntilRef.current) return;
     // Throttle on last ATTEMPT (not last success) so failed calls don't retry every
     // data poll and pile onto Groq's rate limit.
     if (
+      !force &&
       groqLastAttemptAtRef.current !== 0 &&
       now - groqLastAttemptAtRef.current < GROQ_REASONING_MIN_INTERVAL_MS
     ) {
@@ -1421,6 +1536,25 @@ export function Dashboard({ initialAddress } = {}) {
     }
   }, [runGroqAnalysis, groqEvidence?.address, loading.inspect, inspect?.signatures]);
 
+  // Manual full-investigation trigger. `force` busts the score cache and re-runs the
+  // analyst even if it was throttled — the "Re-Analyze / Force Refresh" path. Kicks the
+  // score, evidence (wallet table) and analyst together, and stamps the run for the ETA.
+  const runFullAnalysis = useCallback(
+    ({ force = false } = {}) => {
+      const s = focusAddress.trim();
+      if (!s) return;
+      setAnalysisStartedAt(Date.now());
+      queuedPollCountRef.current = 0;
+      void runScore({ force });
+      walletTableRef.current?.reload?.();
+      // Let score/evidence start populating the snapshot, then force the analyst.
+      window.setTimeout(() => {
+        void runGroqAuto({ force: true });
+      }, 1200);
+    },
+    [focusAddress, runScore, runGroqAuto],
+  );
+
   const walletGraphVisual = useMemo(() => {
     if (score?.walletGraph?.nodes?.length > 1) return score.walletGraph;
     return inspectFallbackGraph(focusAddress.trim(), inspect?.ok ? inspect.signatures : null);
@@ -1442,6 +1576,7 @@ export function Dashboard({ initialAddress } = {}) {
   }, [groqEvidence, loading.inspect, loading.score, runGroqAuto]);
 
   const syncing = Boolean(loading.ping || loading.db || loading.inspect || loading.score);
+  const isAnalyzing = Boolean(loading.score || evidenceStatus?.loading || loadingGroq);
   const reduceMotion = useReducedMotion() ?? false;
   const mainStagger = staggerContainer(reduceMotion, { stagger: 0.06, delayChildren: 0.03 });
   const panelV = fadeUp(reduceMotion);
@@ -1598,6 +1733,30 @@ export function Dashboard({ initialAddress } = {}) {
               </div>
             </div>
           </div>
+          <div className="mt-4 grid gap-4 border-t border-cm-border-subtle pt-4 lg:grid-cols-12">
+            <div className="lg:col-span-5">
+              <AnalysisControls
+                disabled={!focusAddress.trim()}
+                running={isAnalyzing}
+                onRun={() => runFullAnalysis({ force: false })}
+                onReanalyze={() => runFullAnalysis({ force: true })}
+              />
+              <p className="mt-2 text-[11px] leading-relaxed text-cm-faint">
+                Analysis auto-runs on a new target. <span className="text-cm-muted">Re-analyze</span> forces a fresh
+                compute (bypasses cache) and restarts a stalled run.
+              </p>
+            </div>
+            <div className="lg:col-span-7">
+              <AnalysisProgress
+                loadingScore={loading.score}
+                score={score}
+                evidenceStatus={evidenceStatus}
+                loadingGroq={loadingGroq}
+                hasReport={Boolean(groqAnalysis)}
+                startedAt={analysisStartedAt}
+              />
+            </div>
+          </div>
         </Panel>
         </motion.div>
 
@@ -1656,6 +1815,7 @@ export function Dashboard({ initialAddress } = {}) {
             <div className="mb-4 border-b border-cm-border-subtle pb-4">
               <ReasoningPanelStatus
                 loadingGroq={loadingGroq}
+                pending={Boolean(score && !score.empty && score.ok !== false && !groqAnalysis)}
                 lastGroqAt={groqLastCompletedAt}
                 nextSweepAt={nextDataSweepAt}
                 sweepSec={LIVE_POLL_MS / 1000}
@@ -1689,6 +1849,7 @@ export function Dashboard({ initialAddress } = {}) {
                 ref={walletTableRef}
                 scope={focusAddress.trim()}
                 lookback={evidenceLookbackHours}
+                onStatus={handleEvidenceStatus}
               />
             </div>
           </details>
