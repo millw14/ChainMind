@@ -39,6 +39,10 @@ const QUEUED_POLL_MAX = 12;
 const GROQ_REASONING_MIN_INTERVAL_MS = 120_000;
 /** Default backoff after a Groq 429 when no retry hint is parseable from the message. */
 const GROQ_RATE_LIMIT_BACKOFF_MS = 120_000;
+/** Hard client-side ceiling for the score fetch. Server maxDuration is 60s; give a little
+ *  headroom, then abort so the panel resolves to a real error state instead of spinning
+ *  forever (the "is it running / failed / hung?" problem on large scopes). */
+const SCORE_TIMEOUT_MS = 70_000;
 
 /** Parse Groq's "try again in 12.3s" / "in 2m30s" rate-limit hint → ms (capped 10 min). */
 function parseGroqRetryMs(message) {
@@ -472,6 +476,55 @@ function ScoreBody({ data, loading, hideMainScore }) {
         </details>
       ) : null}
       <ExpandableRaw data={data} />
+    </div>
+  );
+}
+
+function CollectedStat({ label, value, accent }) {
+  return (
+    <div className="rounded border border-cm-border-subtle bg-cm-surface/50 px-2 py-1.5">
+      <p className="text-[9px] uppercase tracking-wide text-cm-faint">{label}</p>
+      <p className={`mt-0.5 text-sm font-bold tabular-nums ${accent ? "text-cm-accent-bright" : "text-cm-text"}`}>
+        {typeof value === "number" ? value.toLocaleString() : "—"}
+      </p>
+    </div>
+  );
+}
+
+/**
+ * Collected-signal strip — shows what the pipeline has already gathered for the watched
+ * scope (from /api/db-stats, fetched on load) the instant it's known, BEFORE the slower
+ * coordination score / evidence build finish. Funding-like edges is the headline signal.
+ */
+function CollectedSignalStrip({ stats, loadingScore }) {
+  if (!stats) return null;
+  const sigs = typeof stats.signatures === "number" ? stats.signatures : null;
+  const events = typeof stats.events === "number" ? stats.events : null;
+  const edges = typeof stats.edges === "number" ? stats.edges : null;
+  const funding = typeof stats.fundingLikeEdges === "number" ? stats.fundingLikeEdges : null;
+  if (sigs == null && events == null && edges == null && funding == null) return null;
+  return (
+    <div className="mb-4 rounded-md border border-cm-border bg-cm-row/50 px-3 py-3">
+      <div className="flex items-center justify-between gap-2">
+        <p className="font-mono text-[10px] font-semibold uppercase tracking-wider text-cm-faint">Collected signal</p>
+        {loadingScore ? (
+          <span className="inline-flex items-center gap-1.5 font-mono text-[9px] uppercase tracking-wide text-cm-accent-bright">
+            <span className="inline-block h-2 w-2 animate-pulse rounded-full bg-cm-accent" aria-hidden />
+            scoring…
+          </span>
+        ) : null}
+      </div>
+      <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-4">
+        <CollectedStat label="Signatures" value={sigs} />
+        <CollectedStat label="Events" value={events} />
+        <CollectedStat label="Edges" value={edges} />
+        <CollectedStat label="Funding-like" value={funding} accent />
+      </div>
+      {loadingScore ? (
+        <p className="mt-2 text-[10px] leading-snug text-cm-faint">
+          Data is in — computing the coordination score now. Counts are live from the synced datastore.
+        </p>
+      ) : null}
     </div>
   );
 }
@@ -945,10 +998,10 @@ export function Dashboard({ initialAddress } = {}) {
 
   const setLoad = (key, v) => setLoading((s) => ({ ...s, [key]: v }));
 
-  const fetchJson = useCallback(async (url, key) => {
+  const fetchJson = useCallback(async (url, key, { timeoutMs } = {}) => {
     setLoad(key, true);
     try {
-      const r = await fetch(url);
+      const r = await fetch(url, timeoutMs ? { signal: AbortSignal.timeout(timeoutMs) } : undefined);
       const j = await r.json().catch(() => ({}));
       if (!r.ok) {
         const fromBody = typeof j?.error === "string" ? j.error : null;
@@ -1074,13 +1127,13 @@ export function Dashboard({ initialAddress } = {}) {
     const buildUrl = (w) => `/api/score?scope=${encodeURIComponent(s)}&window=${w}&hours=${hours}`;
     try {
       // Try requested window first
-      let result = await fetchJson(buildUrl(scoreWindow || "5"), "score");
+      let result = await fetchJson(buildUrl(scoreWindow || "5"), "score", { timeoutMs: SCORE_TIMEOUT_MS });
       // Auto-widen if only 1 bucket — not enough to draw a chart
       if (result?.ok && !result?.empty && (result?.timelineBuckets?.length ?? 0) < 3) {
         const wider = [60, 360, 1440];
         for (const w of wider) {
           if (w <= Number(scoreWindow || "5")) continue;
-          const retry = await fetchJson(buildUrl(w), "score");
+          const retry = await fetchJson(buildUrl(w), "score", { timeoutMs: SCORE_TIMEOUT_MS });
           if ((retry?.timelineBuckets?.length ?? 0) > 1) {
             result = retry;
             break;
@@ -1090,7 +1143,13 @@ export function Dashboard({ initialAddress } = {}) {
       setScore(result);
       runCreateCase(result);
     } catch (e) {
-      setScore({ ok: false, error: String(e.message) });
+      const timedOut = e?.name === "TimeoutError" || e?.name === "AbortError";
+      setScore({
+        ok: false,
+        error: timedOut
+          ? `Coordination score timed out after ${Math.round(SCORE_TIMEOUT_MS / 1000)}s — this scope is very large. Try a shorter lookback, or Full resync to retry.`
+          : String(e.message),
+      });
     }
   }, [focusAddress, scoreWindow, scoreHours, fetchJson, runCreateCase]);
 
@@ -1215,6 +1274,14 @@ export function Dashboard({ initialAddress } = {}) {
 
   const intelAlerts = useMemo(() => buildAlerts({ inspect, score, ping }), [inspect, score, ping]);
   const risk = useMemo(() => deriveRiskProfile(score), [score]);
+
+  // Counts the pipeline already has for the watched scope (from /api/db-stats). Surfaced
+  // immediately so the funding-edge signal is visible while the score/evidence still compute.
+  const watchedScopeStats = useMemo(() => {
+    const w = focusAddress.trim();
+    const rows = Array.isArray(dbStats?.byScope) ? dbStats.byScope : [];
+    return rows.find((s) => s?.scope === w) ?? null;
+  }, [dbStats, focusAddress]);
 
   // Detector-only verdict, available the instant the score loads (sub-second) — no LLM.
   // Lets the Synthesis panel show a real verdict immediately while the slower Groq
@@ -1567,6 +1634,7 @@ export function Dashboard({ initialAddress } = {}) {
             </Panel>
 
             <Panel kicker="Signals" title="Coordination decomposition" subtitle="Driver lines from scored windows">
+              <CollectedSignalStrip stats={watchedScopeStats} loadingScore={loading.score} />
               <ScoreBody data={score} loading={loading.score} hideMainScore />
             </Panel>
           </div>
