@@ -1,7 +1,13 @@
 import { NextResponse } from "next/server";
 import { PublicKey } from "@solana/web3.js";
 import { buildTursoScoreBundle } from "@/lib/score-bundle.js";
-import { getTursoClient, tursoAddToScanQueue } from "@/lib/turso.js";
+import {
+  getTursoClient,
+  tursoAddToScanQueue,
+  tursoFetchScoreCache,
+  tursoUpsertScoreCache,
+  tursoRateLimit,
+} from "@/lib/turso.js";
 import { openDb } from "@/lib/db.js";
 import { computeCoactivityScore } from "@/lib/score-core.js";
 import { scoreFromRpc } from "@/lib/score-from-rpc.js";
@@ -9,6 +15,17 @@ import { getSolanaConnection } from "@/lib/solana.js";
 
 export const maxDuration = 60;
 export const runtime = "nodejs";
+
+/** Cache TTL (s) for score results; 0 disables. */
+function scoreCacheTtlSec() {
+  const n = Number(process.env.CHAINMIND_SCORE_CACHE_TTL_SEC);
+  return Number.isFinite(n) && n >= 0 ? n : 180;
+}
+/** Per-IP requests/min for the public score endpoint. */
+function rateLimitPerMin() {
+  const n = Number(process.env.CHAINMIND_RATE_LIMIT_PER_MIN);
+  return Number.isFinite(n) && n > 0 ? n : 40;
+}
 
 export async function GET(request) {
   const { searchParams } = new URL(request.url);
@@ -101,6 +118,23 @@ export async function GET(request) {
     });
   }
 
+  // Abuse/cost control: per-IP rate limit (public endpoint hits RPC/Groq/compute).
+  const ip = (request.headers.get("x-forwarded-for") || "").split(",")[0].trim() || "unknown";
+  const rl = await tursoRateLimit(client, `score:${ip}`, rateLimitPerMin());
+  if (!rl.allowed) {
+    return NextResponse.json({ ok: false, error: "Too many requests — slow down a moment." }, { status: 429 });
+  }
+  // Serve repeat/popular searches + dashboard polls from cache (no RPC/compute).
+  // `?fresh=1` (Re-Analyze in the dashboard) bypasses the read to force a recompute.
+  const ttl = scoreCacheTtlSec();
+  const bypassCache = ["1", "true", "yes"].includes(
+    String(searchParams.get("fresh") ?? searchParams.get("noCache") ?? "").toLowerCase(),
+  );
+  if (ttl > 0 && !bypassCache) {
+    const cached = await tursoFetchScoreCache(client, scope, windowMinutes, lastHours, ttl);
+    if (cached) return NextResponse.json({ ...cached, cached: true });
+  }
+
   try {
     const body = await buildTursoScoreBundle(client, { scope, windowMinutes, lastHours });
     console.log(
@@ -123,15 +157,15 @@ export async function GET(request) {
       try {
         const connection = getSolanaConnection();
         const live = await scoreFromRpc(connection, scope, { windowMinutes, lastHours });
-        if (live && !live.empty) {
-          return NextResponse.json({ ...live, queued: true });
-        }
-        // genuinely no recent activity — return the live "empty" (clearer than the DB one)
-        return NextResponse.json({ ...live, queued: true });
+        const out = { ...live, queued: true };
+        await tursoUpsertScoreCache(client, scope, windowMinutes, lastHours, out);
+        return NextResponse.json(out);
       } catch (e) {
         console.error("[score] rpc-live", e);
         body.queued = true; // fall back to the DB empty + "pulling in" UX
       }
+    } else {
+      await tursoUpsertScoreCache(client, scope, windowMinutes, lastHours, body);
     }
     return NextResponse.json(body);
   } catch (e) {

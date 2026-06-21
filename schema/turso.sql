@@ -169,6 +169,24 @@ CREATE INDEX IF NOT EXISTS idx_investigation_cases_scope
 CREATE INDEX IF NOT EXISTS idx_investigation_cases_created
   ON investigation_cases (created_at DESC);
 
+-- Score result cache: serve repeat/popular searches + dashboard polls from cache
+-- instead of re-hitting RPC/compute (cost + abuse control). TTL enforced in code.
+CREATE TABLE IF NOT EXISTS score_cache (
+  scope_address TEXT NOT NULL,
+  window_minutes INTEGER NOT NULL,
+  last_hours INTEGER NOT NULL,
+  payload_json TEXT NOT NULL,
+  created_at INTEGER NOT NULL,
+  PRIMARY KEY (scope_address, window_minutes, last_hours)
+);
+
+-- Fixed-window per-client request counter for rate limiting public endpoints.
+CREATE TABLE IF NOT EXISTS rate_limit (
+  bucket TEXT PRIMARY KEY,   -- "<key>:<unix_minute>"
+  n INTEGER NOT NULL,
+  created_at INTEGER NOT NULL
+);
+
 -- Per-mint decimals cache (constant per mint) so raw on-chain amounts can be shown in
 -- human units. Populated lazily from RPC; native SOL / lamports use 9.
 CREATE TABLE IF NOT EXISTS mint_decimals (
