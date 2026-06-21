@@ -334,6 +334,10 @@ const SORT_OPTIONS = [
   { key: "first_seen",      label: "First seen"   },
 ];
 
+/** Client-side ceiling for the evidence build. Server maxDuration is 60s; abort a little
+ *  past that so the panel shows a real timeout state instead of an endless "Building evidence…". */
+const EVIDENCE_TIMEOUT_MS = 70_000;
+
 const WalletTable = forwardRef(function WalletTable(
   { scope, lookback = 24, className = "" },
   ref
@@ -350,13 +354,19 @@ const WalletTable = forwardRef(function WalletTable(
     setError(null);
     try {
       const res = await fetch(
-        `/api/evidence?scope=${encodeURIComponent(scope)}&lookback=${lookback}`
+        `/api/evidence?scope=${encodeURIComponent(scope)}&lookback=${lookback}`,
+        { signal: AbortSignal.timeout(EVIDENCE_TIMEOUT_MS) }
       );
-      const json = await res.json();
-      if (!res.ok) throw new Error(json.error ?? "Request failed");
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(json.error ?? `Request failed (HTTP ${res.status})`);
       setData(json);
     } catch (err) {
-      setError(err.message);
+      const timedOut = err?.name === "TimeoutError" || err?.name === "AbortError";
+      setError(
+        timedOut
+          ? `Evidence build timed out after ${Math.round(EVIDENCE_TIMEOUT_MS / 1000)}s — this scope is very large. Try a shorter lookback, or Refresh to retry.`
+          : err.message
+      );
     } finally {
       setLoading(false);
     }
