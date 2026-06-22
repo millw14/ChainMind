@@ -1279,10 +1279,17 @@ export function Dashboard({ initialAddress } = {}) {
   }, [focusAddress, scoreWindow, scoreHours, fetchJson, runCreateCase]);
 
   const runAllSync = useCallback(async () => {
+    // Each live sweep is a fresh analysis pass — reset the elapsed clock so the ETA
+    // reflects THIS pass, not the time since the tab was first opened (was showing hours).
+    setAnalysisStartedAt(Date.now());
     await runPing();
     await runDb();
     await runInspect();
     await runScore();
+    // Retry the wallet-evidence build each sweep too, so a transient failure (the ✕ on
+    // "Building wallet graph" / "Checking funding links") self-heals on the next sweep
+    // instead of sticking until a manual reload.
+    walletTableRef.current?.reload?.();
     // Background ingestion is enqueued server-side by /api/score on a miss (empty
     // result → scan_queue), so no blanket client-side enqueue is needed here.
     const t = Date.now();
