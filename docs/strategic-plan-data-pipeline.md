@@ -40,12 +40,27 @@ This document aligns engineering work with the coordination-intelligence vision.
 
 **Goal:** types that match how analysts think (swap, transfer, LP add/remove, etc.), with testable parsers.
 
-**Work:**
+**Deliverable 1 — shipped (in-place classifier v2):**
 
-- Define a versioned event schema (columns + JSON for extras).
-- Program-specific decoders for the DEX/LP stacks you commit to supporting—or ingest from an external decoder/indexer.
-- Golden tests from real signatures per program.
-- Backfill re-parse strategy (`events_v2` or migration + replay).
+- `lib/parse-tx.js` now reads parsed instruction *types* across top-level + inner
+  instructions to emit `swap / transfer / mint / burn / sol_transfer / spl_other / other`
+  (was coarse `swap_eligible / spl / other`). pump.fun + PumpSwap added to swap hints.
+- Versioning is in-place: the v2 labels are the marker — un-upgraded rows are
+  `event_type IN ('swap_eligible','spl')`; upgrade them with `npm run reparse` (the
+  cloud-direct re-parse tool doubles as the backfill-replay mechanism).
+- Golden tests: `test/parse-tx.test.mjs` (`npm test`).
+- Detector trade-set (`ai-detectors.js`) expanded to accept v1 + v2 labels so detection
+  works on mixed data during rollout.
+
+**Deliverable 2 — still open (program-specific decoders):**
+
+- Distinguish LP add/remove vs swap, and swap direction (buy/sell) + named venue — needs
+  per-venue instruction decoding (discriminators). Today a DEX tx is `swap` and a pure
+  mint is `mint`, so a bonding-curve launch lands as `mint` and a raw-AMM LP add as `swap`.
+- Golden fixtures captured from *real* signatures per program (current tests use
+  shape-accurate synthetic fixtures).
+- If the taxonomy needs structured extras (venue, direction, amounts), add an
+  `event_version` column + JSON detail rather than overloading `event_type`.
 
 ## Phase 3 — Graph / adjacency model
 
