@@ -11,6 +11,7 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
+    "test": "node --test",
     "ping-solana": "node scripts/ping-solana.mjs",
     "inspect": "node scripts/inspect-address.mjs",
     "backfill": "node scripts/backfill-address.mjs",
