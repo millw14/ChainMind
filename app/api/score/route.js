@@ -7,6 +7,7 @@ import {
   tursoFetchScoreCache,
   tursoUpsertScoreCache,
   tursoRateLimit,
+  tursoScopeHasAnyEvents,
 } from "@/lib/turso.js";
 import { openDb } from "@/lib/db.js";
 import { computeCoactivityScore } from "@/lib/score-core.js";
@@ -145,10 +146,23 @@ export async function GET(request) {
       "score:",
       body.score,
     );
-    // Cold search: no rows in the DB yet. Instead of making the user wait for the
-    // worker, score the address LIVE from RPC right now (real answer in seconds), and
-    // enqueue it so the worker persists + keeps it fresh for next time.
+    // Empty in this window. Two very different cases:
+    //  - indexed but stale: the scope HAS data in the DB, just outside the lookback.
+    //    Live-RPC scoring here is a wasted ~30–60s — return fast and tell the user to
+    //    widen the lookback (the data is already one query away at a wider window).
+    //  - genuinely cold: no rows at all. Score LIVE from RPC for an instant answer and
+    //    enqueue so the worker persists + keeps it fresh for next time.
     if (body && body.empty) {
+      const indexed = await tursoScopeHasAnyEvents(client, scope).catch(() => false);
+      if (indexed) {
+        const out = {
+          ...body,
+          indexed: true,
+          message: `No activity in the last ${lastHours}h. This scope is indexed — widen the lookback to see its history.`,
+        };
+        await tursoUpsertScoreCache(client, scope, windowMinutes, lastHours, out);
+        return NextResponse.json(out);
+      }
       try {
         await tursoAddToScanQueue(client, scope, "on-demand search");
       } catch (e) {

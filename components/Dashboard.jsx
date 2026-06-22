@@ -1237,6 +1237,22 @@ export function Dashboard({ initialAddress } = {}) {
     try {
       // Try requested window first
       let result = await fetchJson(buildUrl(scoreWindow || "5"), "score", { timeoutMs: SCORE_TIMEOUT_MS });
+      // Indexed but empty in the selected lookback → widen the lookback (fast DB query)
+      // so a recently-active scope shows its history instead of a blank panel. The server
+      // only sets `indexed` when the scope has data just outside the window.
+      if (result?.empty && result?.indexed) {
+        const curH = Number(scoreHours || "24");
+        for (const h of [168, 720]) {
+          if (h <= curH) continue;
+          const wider = await fetchJson(
+            `/api/score?scope=${encodeURIComponent(s)}&window=${scoreWindow || "5"}&hours=${h}${fresh}`,
+            "score",
+            { timeoutMs: SCORE_TIMEOUT_MS },
+          );
+          result = wider ?? result;
+          if (wider?.ok && !wider?.empty) break;
+        }
+      }
       // Auto-widen if only 1 bucket — not enough to draw a chart
       if (result?.ok && !result?.empty && (result?.timelineBuckets?.length ?? 0) < 3) {
         const wider = [60, 360, 1440];
