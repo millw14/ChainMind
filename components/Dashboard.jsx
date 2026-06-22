@@ -1189,6 +1189,7 @@ export function Dashboard({ initialAddress } = {}) {
       setGlobalIntelFeedMeta({
         generatedAt: typeof j?.generatedAt === "string" ? j.generatedAt : null,
         lookbackHoursUsed: j?.lookbackHoursUsed ?? null,
+        pairWindowHours: j?.pairWindowHours ?? null,
       });
       setGlobalIntelFeed(Array.isArray(j.entries) ? j.entries : []);
     } catch (e) {
