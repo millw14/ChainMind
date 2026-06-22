@@ -24,6 +24,7 @@ import { enrichAnalysisWithVerdictStructure, shortenIdCompact } from "@/lib/groq
 import { buildGroqUserEvidence } from "@/lib/groq-user-evidence.js";
 import { MultiScopeComparePanel } from "@/components/dashboard/multi-scope-compare";
 import WalletTable from "@/components/dashboard/WalletTable";
+import { WalletNeighborhood } from "@/components/dashboard/WalletNeighborhood";
 import { staggerContainer, fadeUp, springGentle } from "@/components/motion/presets";
 
 const USDC_MAINNET = "Xqfwj8PrgpjksqgnopR9DwDuNZAXrqVHDbdcQ34pump";
@@ -1876,6 +1877,16 @@ export function Dashboard({ initialAddress } = {}) {
               />
             </div>
           </details>
+        </motion.div>
+
+        <motion.div variants={panelV}>
+          <Panel
+            kicker="Graph"
+            title="Wallet connections"
+            subtitle="Counterparties in the edge graph · click a wallet to explore · balanced two-way flow flagged as round-trip"
+          >
+            <WalletNeighborhood address={focusAddress.trim()} onPickAddress={(addr) => setFocusAddress(addr)} />
+          </Panel>
         </motion.div>
       </motion.main>
     </div>
