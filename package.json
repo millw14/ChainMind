@@ -31,6 +31,7 @@
     "backup": "node scripts/backup-and-upload.mjs",
     "backup:full": "node scripts/backup-and-upload.mjs --full",
     "evidence": "node scripts/run-evidence.mjs",
+    "reparse": "node scripts/reparse-libsql.mjs",
     "postinstall": "node -e \"const fs=require('fs');const p='node_modules/@libsql/client/node_modules/libsql';try{fs.rmSync(p,{recursive:true})}catch(e){}fs.mkdirSync(p+'/lib-esm',{recursive:true});fs.writeFileSync(p+'/lib-esm/sqlite3.js','export default class Database{constructor(){}close(){}}');fs.writeFileSync(p+'/package.json',JSON.stringify({name:'libsql',version:'0.0.1',type:'module',exports:{'.':{'import':'./lib-esm/sqlite3.js'}}}));\""
   },
   "dependencies": {
