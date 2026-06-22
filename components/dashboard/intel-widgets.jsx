@@ -710,9 +710,14 @@ export function GlobalIntelFeedStrip({ entries, loading, hint, meta, onPickScope
           ) : null}
         </div>
       </div>
-      {meta?.lookbackHoursUsed != null ? (
+      {(meta?.pairWindowHours ?? meta?.lookbackHoursUsed) != null ? (
         <p className="mb-2 font-mono text-[9px] text-cm-faint">
-          Pair window filter: <span className="text-cm-muted">{meta.lookbackHoursUsed}h</span>
+          Pair window: <span className="text-cm-muted">{meta.pairWindowHours ?? meta.lookbackHoursUsed}h</span>
+          {meta?.pairWindowHours != null &&
+          meta?.lookbackHoursUsed != null &&
+          meta.pairWindowHours !== meta.lookbackHoursUsed ? (
+            <span className="text-cm-faint"> · none at {meta.lookbackHoursUsed}h, showing latest computed</span>
+          ) : null}
         </p>
       ) : null}
       {hint ? <p className="mb-3 text-[11px] text-cm-warn/90">{hint}</p> : null}
