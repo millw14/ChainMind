@@ -79,6 +79,8 @@ export function WalletNeighborhood({ address, onPickAddress }) {
   }, [subject, load]);
 
   const neighbors = data?.neighbors ?? [];
+  const mode = data?.mode ?? "wallet";
+  const isScope = mode === "scope";
   const roundTrips = useMemo(() => neighbors.filter(isRoundTrip).length, [neighbors]);
 
   return (
@@ -119,15 +121,14 @@ export function WalletNeighborhood({ address, onPickAddress }) {
         <p className="py-6 text-center text-sm text-cm-faint">Enter a wallet, or click one in the graph / table.</p>
       ) : neighbors.length === 0 ? (
         <p className="py-6 text-center text-sm text-cm-faint">
-          No graph edges for this address. The neighborhood view is for <span className="text-cm-muted">wallets</span> —
-          a mint usually has none; click a wallet in the scope graph or evidence table.
+          No graph edges found for this address yet — it has no ingested funding/transfer activity in the database.
         </p>
       ) : (
         <>
           <div className="flex flex-wrap items-center gap-3 text-xs text-cm-muted">
             <span>
               <strong className="text-cm-text">{data.neighborCount}</strong>
-              {data.neighborsTruncated ? ` of ${data.totalNeighbors}` : ""} connections
+              {data.neighborsTruncated ? ` of ${data.totalNeighbors}` : ""} {isScope ? "active wallets" : "connections"}
             </span>
             {roundTrips > 0 ? (
               <span className="rounded border border-cm-bad/40 bg-cm-bad/10 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-cm-bad">
@@ -139,11 +140,17 @@ export function WalletNeighborhood({ address, onPickAddress }) {
             ) : null}
           </div>
 
+          {isScope ? (
+            <p className="text-[11px] text-cm-muted">
+              Most active wallets in this token — click one to see who it’s connected to.
+            </p>
+          ) : null}
+
           <div className="overflow-hidden rounded-md border border-cm-border">
             <table className="w-full text-left text-xs">
               <thead className="border-b border-cm-border bg-cm-row/80 font-mono text-[10px] uppercase tracking-wide text-cm-faint">
                 <tr>
-                  <th className="px-3 py-2">Counterparty</th>
+                  <th className="px-3 py-2">{isScope ? "Wallet" : "Counterparty"}</th>
                   <th className="px-3 py-2 text-right">Edges</th>
                   <th className="px-3 py-2">Direction</th>
                   <th className="px-3 py-2">Types</th>
@@ -194,8 +201,8 @@ export function WalletNeighborhood({ address, onPickAddress }) {
             </table>
           </div>
           <p className="text-[10px] text-cm-faint">
-            Click a counterparty to explore its connections · <span className="text-cm-bad">round-trip</span> = balanced
-            two-way flow (wash-like) · probabilistic signal, not proof.
+            Click a wallet to explore its connections · <span className="text-cm-bad">round-trip</span> = balanced two-way
+            flow (wash-like) · probabilistic signal, not proof.
           </p>
         </>
       )}
