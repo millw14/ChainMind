@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { PublicKey } from "@solana/web3.js";
 import { getTursoClient } from "@/lib/turso.js";
-import { buildWalletNeighborhood } from "@/lib/graph-neighborhood.js";
+import { buildScopeParticipants, buildWalletNeighborhood } from "@/lib/graph-neighborhood.js";
 
 export const maxDuration = 30;
 export const runtime = "nodejs";
@@ -35,12 +35,16 @@ export async function GET(request) {
     );
   }
 
+  const neighborLimit = Number(searchParams.get("limit")) || undefined;
+  const edgeCap = Number(searchParams.get("edgeCap")) || undefined;
   try {
-    const result = await buildWalletNeighborhood(client, address, {
-      scope,
-      neighborLimit: Number(searchParams.get("limit")) || undefined,
-      edgeCap: Number(searchParams.get("edgeCap")) || undefined,
-    });
+    let result = await buildWalletNeighborhood(client, address, { scope, neighborLimit, edgeCap });
+    // No edges as a wallet endpoint → it's likely a mint/scope. Show its participant
+    // wallets instead of an empty neighborhood.
+    if (result.neighborCount === 0 && !scope) {
+      const asScope = await buildScopeParticipants(client, address, { neighborLimit, edgeCap });
+      if (asScope.neighborCount > 0) result = asScope;
+    }
     return NextResponse.json({ ok: true, ...result }, { headers: { "Cache-Control": "no-store" } });
   } catch (e) {
     return NextResponse.json({ ok: false, error: String(e?.message ?? e) }, { status: 500 });
