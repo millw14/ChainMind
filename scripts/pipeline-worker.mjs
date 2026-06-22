@@ -7,7 +7,7 @@ loadEnv();
 import { openDb } from "../lib/db.js";
 import { getSolanaConnection } from "../lib/solana.js";
 import { loadWatchlist } from "../lib/watchlist.js";
-import { ingestPendingEventsForScope, syncHeadSignaturesForScope } from "../lib/pipeline-sync.js";
+import { countPendingForScope, ingestPendingEventsForScope, syncHeadSignaturesForScope } from "../lib/pipeline-sync.js";
 import { tursoHttpAddToScanQueue, tursoHttpFetchPendingScanQueue, tursoHttpMarkScanQueuePicked } from "../lib/turso-http.js";
 import { discoverTrendingSolanaMints } from "../lib/token-discovery.js";
 import { isKnownEntity } from "../lib/known-entities.js";
@@ -34,13 +34,19 @@ const roundIntervalMs = Math.max(
   Number(flags["round-interval-ms"] ?? process.env.PIPELINE_ROUND_MS ?? "90000") || 90_000,
 );
 const scopeDelayMs = Math.max(0, Number(flags["scope-delay-ms"] ?? "1500") || 1500);
-const headMax = Math.min(5000, Math.max(5, Number(flags["head-max"] ?? "400") || 400));
+// Head-poll discovery was outrunning parsing ~11:1 (400 discovered vs 35 parsed / scope /
+// round), so the unparsed backlog grew without bound. Lower the discovery ceiling and
+// raise the parse budget so parsing can keep pace; the parse-first guard below caps it.
+const headMax = Math.min(5000, Math.max(5, Number(flags["head-max"] ?? "150") || 150));
 const headPage = Math.min(150, Math.max(10, Number(flags["head-page"] ?? "80") || 80));
 const ingestLimit = Math.min(
   500,
-  Math.max(1, Number(flags["ingest-limit"] ?? process.env.INGEST_PARSE_LIMIT ?? "35") || 35),
+  Math.max(1, Number(flags["ingest-limit"] ?? process.env.INGEST_PARSE_LIMIT ?? "60") || 60),
 );
 const ingestThrottleMs = Math.max(0, Number(flags["ingest-throttle"] ?? process.env.INGEST_THROTTLE_MS ?? "900") || 900);
+// When a scope's parse backlog exceeds this, pause head-polling for it and spend the
+// round parsing instead — bounds the backlog instead of letting discovery grow it.
+const backlogPauseAt = Math.max(0, Number(flags["backlog-pause-at"] ?? process.env.PIPELINE_BACKLOG_PAUSE ?? "500") || 500);
 
 // Token discovery: auto-feed trending Solana mints into the scan queue so detection
 // isn't limited to the static watchlist. Capped hard so the worker isn't overloaded —
@@ -102,6 +108,7 @@ See docs/strategic-plan-data-pipeline.md (Phase 1).
   console.log("Mode          :", once ? "single round (--once)" : `repeat every ${roundIntervalMs}ms`);
   console.log("Head catch-up : max", headMax, "new sigs / scope / round, page", headPage);
   console.log("Parse         : up to", ingestLimit, "txs / scope / round, throttle", ingestThrottleMs, "ms");
+  console.log("Backlog guard :", backlogPauseAt > 0 ? `pause head-poll at ${backlogPauseAt} unparsed (parse-first)` : "off");
   console.log("Turso sync    :", tursoSync ? "yes (end of each round)" : "no (pass --turso-sync)");
   console.log(
     "Daily baseline:",
@@ -155,20 +162,34 @@ See docs/strategic-plan-data-pipeline.md (Phase 1).
 
     for (const s of scopes) {
       const label = s.note ? `${s.address} — ${s.note}` : s.address;
-      console.log(`— ${label}`);
+
+      // Never spend RPC budget on allowlisted infra/stablecoins (SOL/USDC/…) — they're
+      // excluded from detection anyway, and they're what bloated the backlog historically.
+      if (isKnownEntity(s.address)) {
+        console.log(`— ${label} (known entity — skipped)`);
+        continue;
+      }
+
+      // Parse-first when behind: if the unparsed backlog is large, skip discovery this
+      // round and put the whole RPC budget into draining it.
+      const backlog = countPendingForScope(db, s.address);
+      const behind = backlogPauseAt > 0 && backlog >= backlogPauseAt;
+      console.log(`— ${label}  [backlog ${backlog}${behind ? " — parse-first, head-poll paused" : ""}]`);
 
       try {
-        const head = await syncHeadSignaturesForScope(connection, db, s.address, {
-          maxNew: headMax,
-          pageSize: headPage,
-        });
-        console.log(`    signatures +${head.inserted} (stop: ${head.stopReason}, pages: ${head.pages})`);
+        if (!behind) {
+          const head = await syncHeadSignaturesForScope(connection, db, s.address, {
+            maxNew: headMax,
+            pageSize: headPage,
+          });
+          console.log(`    signatures +${head.inserted} (stop: ${head.stopReason}, pages: ${head.pages})`);
+        }
 
         const ing = await ingestPendingEventsForScope(connection, db, s.address, {
           limit: ingestLimit,
           throttleMs: ingestThrottleMs,
         });
-        console.log(`    events parsed ${ing.parsed}`);
+        console.log(`    events parsed ${ing.parsed} (backlog ${Math.max(0, backlog - ing.parsed)} left)`);
       } catch (e) {
         console.error(`    error: ${String(e?.message ?? e)}`);
       }
