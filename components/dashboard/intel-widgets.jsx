@@ -811,6 +811,7 @@ export function GlobalIntelFeedStrip({ entries, loading, hint, meta, onPickScope
               const mc = Number(item.memberCount) || 0;
               const mintC = Number(item.mintCount) || 0;
               const sev = surfaceSeverityBar.low;
+              const fp = item.clusterFingerprint ? String(item.clusterFingerprint) : "";
               return (
                 <li
                   key={`cl-${fp || idx}`}
