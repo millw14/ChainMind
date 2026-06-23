@@ -1027,12 +1027,6 @@ function BriefBody({ analysis, preliminary, error, loading, webhookMeta, entityC
           Investigation webhook POST succeeded (high-confidence auto verdict).
         </p>
       ) : null}
-      {webhookMeta?.attempted && webhookMeta?.skipped ? (
-        <p className="border-t border-cm-border-subtle px-4 py-3 font-mono text-[10px] text-cm-faint sm:px-5">
-          High-confidence auto verdict — set{" "}
-          <code className="text-cm-muted">CHAINMIND_VERDICT_WEBHOOK_URL</code> to notify Slack or your SOAR stack.
-        </p>
-      ) : null}
       {webhookMeta?.error ? (
         <p className="border-t border-cm-border-subtle px-4 py-3 font-mono text-[10px] text-cm-bad sm:px-5">
           Webhook error: {String(webhookMeta.error)}
