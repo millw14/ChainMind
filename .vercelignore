@@ -1,0 +1,14 @@
+node_modules
+.git
+.vercel
+.next
+out
+dist
+data
+.env
+.env.*
+!.env.example
+config/watchlist.json
+*.db
+*.db-shm
+*.db-wal
