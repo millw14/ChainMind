@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { clientIp, hasOperatorAuth, isSameOriginBrowser } from "@/lib/api-auth.js";
 import { getGeoqApiKey, geoqFetch } from "@/lib/geoq.js";
 import { sendVerdictWebhook } from "@/lib/groq-webhook.js";
 import {
@@ -17,6 +18,7 @@ import {
   tursoFetchRecentCaseVerdictsForScope,
   tursoFetchLastGroqAnalysis,
   tursoInsertGroqAnalysisLog,
+  tursoRateLimit,
 } from "@/lib/turso.js";
 import { stableEvidenceHash } from "@/lib/evidence-hash.js";
 
@@ -205,6 +207,12 @@ function groqReanalyzeMinHours() {
 /** Sources eligible for the verdict cache — non-interactive paths only. */
 const CACHEABLE_SOURCES = new Set(["auto", "auto_investigation_case", "case"]);
 
+/** Per-IP requests/min for unauthenticated (same-origin browser) callers. */
+function briefRateLimitPerMin() {
+  const n = Number(process.env.CHAINMIND_GROQ_BRIEF_RATE_LIMIT_PER_MIN);
+  return Number.isFinite(n) && n > 0 ? n : 6;
+}
+
 /**
  * @param {unknown} data
  */
@@ -217,11 +225,21 @@ function pickEvidenceAddress(data) {
 }
 
 export async function POST(request) {
-  const briefSecret = process.env.GROQ_BRIEF_SECRET?.trim();
-  if (briefSecret) {
-    const auth = request.headers.get("authorization") ?? "";
-    if (auth !== `Bearer ${briefSecret}`) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  // Operator auth (CHAINMIND_OPERATOR_SECRET; GROQ_BRIEF_SECRET as legacy alias;
+  // CRON_SECRET so cron self-fetches stay authorized) unlocks cacheable sources,
+  // the verdict webhook, and cache writes. Everyone else must look like the
+  // same-origin dashboard and is rate limited fail-CLOSED — this route burns Groq quota.
+  const operator = hasOperatorAuth(request, ["GROQ_BRIEF_SECRET", "CRON_SECRET"]);
+  if (!operator && !isSameOriginBrowser(request)) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+  if (!operator) {
+    const limiter = getTursoClient();
+    if (limiter) {
+      const rl = await tursoRateLimit(limiter, `groq-brief:${clientIp(request)}`, briefRateLimitPerMin());
+      if (!rl.allowed || rl.error) {
+        return NextResponse.json({ error: "Too many requests — slow down a moment." }, { status: 429 });
+      }
     }
   }
 
@@ -232,7 +250,16 @@ export async function POST(request) {
     return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
   }
 
-  const { data, focus, source } = body ?? {};
+  let { data, focus, source } = body ?? {};
+  if (!operator) {
+    // Public interactive callers can't select cacheable/webhook sources or steer the
+    // prompt with an unbounded focus line (prompt-injection surface).
+    source = "interactive_public";
+    focus =
+      typeof focus === "string"
+        ? focus.replace(/[\u0000-\u001f\u007f]+/g, " ").slice(0, 280)
+        : undefined;
+  }
   if (data === undefined || data === null) {
     return NextResponse.json(
       { error: "Expected JSON body with a `data` field (object or string)" },
@@ -270,8 +297,8 @@ export async function POST(request) {
       : userEvidence;
 
   // Verdict cache: reuse a recent analysis for the same scope + unchanged evidence
-  // instead of calling Groq again. Covers dashboard auto-invoke, cron sweep, and case
-  // auto-Groq — the non-interactive paths that drive most consumption.
+  // instead of calling Groq again. Covers the cron sweep and case auto-Groq — the
+  // operator-authenticated non-interactive paths that drive most consumption.
   const minHours = groqReanalyzeMinHours();
   const evidenceHash = stableEvidenceHash(data);
   const cacheEligible =
