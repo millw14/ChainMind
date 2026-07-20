@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { requireCronAuth } from "@/lib/api-auth.js";
+import { internalAuthHeaders, requireCronAuth } from "@/lib/api-auth.js";
 import { appBaseUrl } from "@/lib/app-base-url.js";
 import { recomputeCrossMintIntel } from "@/lib/cross-mint-intel.js";
 import { evaluateSurfaceTriggers, externalRulesDocumentation } from "@/lib/surface-triggers.js";
@@ -10,7 +10,7 @@ export const maxDuration = 120;
 export const runtime = "nodejs";
 
 async function fetchJson(url) {
-  const r = await fetch(url, { cache: "no-store" });
+  const r = await fetch(url, { cache: "no-store", headers: internalAuthHeaders() });
   const j = await r.json().catch(() => ({}));
   return { r, j };
 }
