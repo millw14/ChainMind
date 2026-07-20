@@ -229,7 +229,7 @@ export async function POST(request) {
   // CRON_SECRET so cron self-fetches stay authorized) unlocks cacheable sources,
   // the verdict webhook, and cache writes. Everyone else must look like the
   // same-origin dashboard and is rate limited fail-CLOSED — this route burns Groq quota.
-  const operator = hasOperatorAuth(request, ["GROQ_BRIEF_SECRET", "CRON_SECRET"]);
+  const operator = hasOperatorAuth(request, ["GROQ_BRIEF_SECRET", "CRON_SECRET", "CASE_CREATE_SECRET"]);
   if (!operator && !isSameOriginBrowser(request)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
