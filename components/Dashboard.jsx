@@ -34,6 +34,10 @@ const LIVE_POLL_MS = 42_000;
 /** Slow /api/health poll driving the header data-live/stale badge — freshness only
  *  changes on worker cadence (~90s rounds), so once a minute is plenty. */
 const HEALTH_POLL_MS = 60_000;
+/** localStorage key for the optional operator Bearer token (CHAINMIND_OPERATOR_SECRET).
+ *  When present it rides the dashboard's POSTs; absent, the public same-origin
+ *  behavior is unchanged. Stored only in this browser — never rendered back out. */
+const OPERATOR_KEY_STORAGE = "cm_operator_key";
 /** When a searched scope is queued for first-time ingestion, re-check the score on this cadence.
  *  The always-on worker picks queued scopes up within a minute or two, so poll briskly. */
 const QUEUED_POLL_MS = 25_000;
@@ -1088,6 +1092,11 @@ export function Dashboard({ initialAddress } = {}) {
   const [watchlistScopes, setWatchlistScopes] = useState(/** @type {Array<{ address: string, note?: string | null }> | null} */ (null));
   const [compareScopes, setCompareScopes] = useState(/** @type {string[]} */ ([]));
 
+  const [operatorKey, setOperatorKey] = useState("");
+  const [watchStatus, setWatchStatus] = useState(/** @type {{ state: string, message?: string } | null} */ (null));
+  // Ref copy so long-lived callbacks read the current key without re-creating on each keystroke.
+  const operatorKeyRef = useRef("");
+
   const [groqAnalysis, setGroqAnalysis] = useState(null);
   const [groqErr, setGroqErr] = useState(null);
   const [groqWebhookMeta, setGroqWebhookMeta] = useState(null);
@@ -1131,6 +1140,35 @@ export function Dashboard({ initialAddress } = {}) {
     const on = counts[key] > 0;
     setLoading((s) => (Boolean(s[key]) === on ? s : { ...s, [key]: on }));
   };
+
+  // Load the saved operator key once on mount (SSR-safe — localStorage is browser-only).
+  useEffect(() => {
+    try {
+      const k = window.localStorage.getItem(OPERATOR_KEY_STORAGE) ?? "";
+      setOperatorKey(k);
+      operatorKeyRef.current = k;
+    } catch {
+      /* storage blocked — stay keyless */
+    }
+  }, []);
+
+  const handleOperatorKeyChange = useCallback((value) => {
+    setOperatorKey(value);
+    operatorKeyRef.current = value;
+    try {
+      if (value.trim()) window.localStorage.setItem(OPERATOR_KEY_STORAGE, value.trim());
+      else window.localStorage.removeItem(OPERATOR_KEY_STORAGE);
+    } catch {
+      /* storage blocked — key still works for this session via the ref */
+    }
+  }, []);
+
+  /** Authorization header for dashboard POSTs when an operator key is saved — an
+   *  absent key keeps today's public same-origin behavior exactly. */
+  const operatorHeaders = useCallback(() => {
+    const k = operatorKeyRef.current.trim();
+    return k ? { Authorization: `Bearer ${k}` } : {};
+  }, []);
 
   const fetchJson = useCallback(async (url, key, { timeoutMs } = {}) => {
     setLoad(key, true);
@@ -1244,7 +1282,7 @@ export function Dashboard({ initialAddress } = {}) {
     try {
       const res = await fetch("/api/cases", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ...operatorHeaders() },
         body: JSON.stringify({
           scope: s,
           windowMinutes: Number(scoreWindow) || 5,
@@ -1260,7 +1298,31 @@ export function Dashboard({ initialAddress } = {}) {
     } catch {
       // Silent — case creation is best-effort
     }
-  }, [focusAddress, scoreWindow, scoreHours]);
+  }, [focusAddress, scoreWindow, scoreHours, operatorHeaders]);
+
+  // "+ Watch": queue the focus address for continuous ingestion via POST /api/watchlist
+  // (Turso scan_queue — the worker picks it up within a round or two) and surface the
+  // queued/error response instead of failing silently.
+  const runWatch = useCallback(async () => {
+    const a = focusAddress.trim();
+    if (!a) return;
+    setWatchStatus({ state: "sending" });
+    try {
+      const r = await fetch("/api/watchlist", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...operatorHeaders() },
+        body: JSON.stringify({ address: a }),
+      });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok || j.ok === false) {
+        setWatchStatus({ state: "error", message: typeof j?.error === "string" ? j.error : `HTTP ${r.status}` });
+        return;
+      }
+      setWatchStatus({ state: "queued", message: `Queued ${shortSig(j.queued ?? a)} for continuous ingestion` });
+    } catch (e) {
+      setWatchStatus({ state: "error", message: String(e.message) });
+    }
+  }, [focusAddress, operatorHeaders]);
 
   const runScore = useCallback(async (opts = {}) => {
     const s = focusAddress.trim();
@@ -1574,7 +1636,7 @@ export function Dashboard({ initialAddress } = {}) {
       const groqData = { ...groqEvidence, walletEvidence: walletEvidence ?? null };
       const r = await fetch("/api/groq-brief", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ...operatorHeaders() },
         body: JSON.stringify({
           data: groqData,
           source,
@@ -1590,7 +1652,7 @@ export function Dashboard({ initialAddress } = {}) {
       }
       return j;
     },
-    [groqEvidence],
+    [groqEvidence, operatorHeaders],
   );
 
   const runGroqAuto = useCallback(async (opts = {}) => {
@@ -1682,6 +1744,8 @@ export function Dashboard({ initialAddress } = {}) {
     setGroqAnalysis(null);
     setGroqErr(null);
     setGroqWebhookMeta(null);
+    // Watch feedback is per-address — don't show the previous target's queue result.
+    setWatchStatus(null);
     // Cancel any pending forced-analyst timer on scope change and on unmount.
     return () => window.clearTimeout(fullAnalysisGroqTimerRef.current);
   }, [focusAddress]);
@@ -1815,14 +1879,30 @@ export function Dashboard({ initialAddress } = {}) {
               <label className="mb-1.5 block font-mono text-[10px] font-semibold uppercase tracking-wider text-cm-faint">
                 Solana address (base58)
               </label>
-              <input
-                className="w-full rounded-md border border-cm-border bg-cm-row/80 px-3 py-2.5 font-mono text-sm text-cm-text outline-none ring-cm-accent-ring focus:ring-2"
-                value={focusAddress}
-                onChange={(e) => setFocusAddress(e.target.value)}
-                placeholder="Mint · wallet · program"
-                spellCheck={false}
-                autoComplete="off"
-              />
+              <div className="flex gap-2">
+                <input
+                  className="w-full min-w-0 flex-1 rounded-md border border-cm-border bg-cm-row/80 px-3 py-2.5 font-mono text-sm text-cm-text outline-none ring-cm-accent-ring focus:ring-2"
+                  value={focusAddress}
+                  onChange={(e) => setFocusAddress(e.target.value)}
+                  placeholder="Mint · wallet · program"
+                  spellCheck={false}
+                  autoComplete="off"
+                />
+                <button
+                  type="button"
+                  onClick={() => void runWatch()}
+                  disabled={!focusAddress.trim() || watchStatus?.state === "sending"}
+                  title="Queue this address for continuous pipeline ingestion"
+                  className="shrink-0 rounded-md border border-cm-border bg-cm-elevated px-3 py-2 font-mono text-xs text-cm-muted transition hover:border-cm-accent/40 hover:text-cm-text disabled:opacity-45"
+                >
+                  {watchStatus?.state === "sending" ? "Queuing…" : "+ Watch"}
+                </button>
+              </div>
+              {watchStatus?.message ? (
+                <p className={`mt-1.5 font-mono text-[10px] ${watchStatus.state === "error" ? "text-cm-bad" : "text-cm-terminal"}`}>
+                  {watchStatus.message}
+                </p>
+              ) : null}
             </div>
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-3 lg:col-span-6 lg:gap-4">
               <div>
@@ -1889,6 +1969,28 @@ export function Dashboard({ initialAddress } = {}) {
                 startedAt={analysisStartedAt}
               />
             </div>
+          </div>
+          <div className="mt-4 flex flex-col gap-1.5 border-t border-cm-border-subtle pt-4 sm:flex-row sm:items-center sm:gap-3">
+            <label
+              htmlFor="cm-operator-key"
+              className="shrink-0 font-mono text-[10px] font-semibold uppercase tracking-wider text-cm-faint"
+            >
+              Operator key
+            </label>
+            <input
+              id="cm-operator-key"
+              type="password"
+              className="w-full rounded-md border border-cm-border bg-cm-row/80 px-2 py-1.5 font-mono text-xs text-cm-text outline-none focus:ring-2 focus:ring-cm-accent-ring sm:max-w-xs"
+              value={operatorKey}
+              onChange={(e) => handleOperatorKeyChange(e.target.value)}
+              placeholder="optional — CHAINMIND_OPERATOR_SECRET"
+              spellCheck={false}
+              autoComplete="off"
+            />
+            <p className="text-[10px] leading-relaxed text-cm-faint">
+              Sent as a Bearer token on analysis / case / watch requests. Stored only in this browser — leave empty for
+              the public dashboard.
+            </p>
           </div>
         </Panel>
         </motion.div>
