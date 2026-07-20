@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { requireCronAuth } from "@/lib/api-auth.js";
 import { updateBaselinesForWatchlist } from "@/lib/baseline-update-run.js";
 import { getTursoClient } from "@/lib/turso.js";
 import { loadWatchlist } from "@/lib/watchlist.js";
@@ -6,26 +7,11 @@ import { loadWatchlist } from "@/lib/watchlist.js";
 export const maxDuration = 300;
 export const runtime = "nodejs";
 
-function authorizeCron(request) {
-  const secret = process.env.CRON_SECRET?.trim();
-  if (!secret) {
-    return NextResponse.json(
-      { error: "CRON_SECRET is not set — add it in Vercel env to enable /api/cron/baseline-update" },
-      { status: 503 },
-    );
-  }
-  const auth = request.headers.get("authorization") ?? "";
-  if (auth !== `Bearer ${secret}`) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
-  return null;
-}
-
 /**
  * GET — Vercel Cron (daily). Refreshes `scope_baselines` for every watchlist scope (Turso events).
  */
 export async function GET(request) {
-  const denied = authorizeCron(request);
+  const denied = requireCronAuth(request, "/api/cron/baseline-update");
   if (denied) return denied;
 
   const client = getTursoClient();

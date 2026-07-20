@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { requireCronAuth } from "@/lib/api-auth.js";
 import { recomputeCrossMintIntel } from "@/lib/cross-mint-intel.js";
 import { getTursoClient } from "@/lib/turso.js";
 import { loadWatchlist } from "@/lib/watchlist.js";
@@ -6,26 +7,11 @@ import { loadWatchlist } from "@/lib/watchlist.js";
 export const maxDuration = 120;
 export const runtime = "nodejs";
 
-function authorizeCron(request) {
-  const secret = process.env.CRON_SECRET?.trim();
-  if (!secret) {
-    return NextResponse.json(
-      { error: "CRON_SECRET is not set — required for /api/cron/cross-mint-recompute" },
-      { status: 503 },
-    );
-  }
-  const auth = request.headers.get("authorization") ?? "";
-  if (auth !== `Bearer ${secret}`) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
-  return null;
-}
-
 /**
  * GET — recompute cross-mint intel only (watchlist scopes from Turso events).
  */
 export async function GET(request) {
-  const denied = authorizeCron(request);
+  const denied = requireCronAuth(request, "/api/cron/cross-mint-recompute");
   if (denied) return denied;
 
   let scopes;
