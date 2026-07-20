@@ -8,7 +8,7 @@ import { openDb } from "../lib/db.js";
 import { getSolanaConnection } from "../lib/solana.js";
 import { loadWatchlist } from "../lib/watchlist.js";
 import { countPendingForScope, ingestPendingEventsForScope, syncHeadSignaturesForScope } from "../lib/pipeline-sync.js";
-import { tursoHttpAddToScanQueue, tursoHttpFetchPendingScanQueue, tursoHttpMarkScanQueuePicked } from "../lib/turso-http.js";
+import { tursoHttpAddToScanQueue, tursoHttpFetchPendingScanQueue, tursoHttpMarkScanQueuePicked, tursoHttpMarkScanQueueRetired } from "../lib/turso-http.js";
 import { discoverTrendingSolanaMints } from "../lib/token-discovery.js";
 import { isKnownEntity } from "../lib/known-entities.js";
 
@@ -145,16 +145,20 @@ See docs/strategic-plan-data-pipeline.md (Phase 1).
     try {
       const queued = await tursoHttpFetchPendingScanQueue(20);
       for (const q of queued) {
-        if (scopes.length >= maxActiveScopes) break;
         if (isKnownEntity(q.address)) {
-          await tursoHttpMarkScanQueuePicked(q.address); // retire stablecoins/infra from the queue
+          await tursoHttpMarkScanQueueRetired(q.address); // stablecoins/infra never become scopes
           continue;
         }
-        if (!scopes.find((s) => s.address === q.address)) {
-          scopes.push({ address: q.address, note: q.note ?? "from scan queue" });
+        if (scopes.find((s) => s.address === q.address)) {
+          // Already active — refresh last_picked_at so the stale-active reclaim
+          // stops re-serving it and the fetch window stays open for new rows.
           await tursoHttpMarkScanQueuePicked(q.address);
-          console.log(`+ queue: ${q.address}`);
+          continue;
         }
+        if (scopes.length >= maxActiveScopes) break;
+        scopes.push({ address: q.address, note: q.note ?? "from scan queue" });
+        await tursoHttpMarkScanQueuePicked(q.address);
+        console.log(`+ queue: ${q.address}`);
       }
     } catch (e) {
       console.error("[queue] fetch failed:", e.message);
