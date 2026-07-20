@@ -28,6 +28,7 @@ import {
   useEffect,
   useCallback,
   useImperativeHandle,
+  useRef,
   forwardRef,
 } from "react";
 
@@ -348,8 +349,13 @@ const WalletTable = forwardRef(function WalletTable(
   const [sortKey, setSortKey] = useState("coordinated_txs");
   const [filter, setFilter] = useState("");
 
+  // Monotonic request id so a slow (up to 70s) build for a previous scope can't land
+  // after a newer one and repopulate the table with old-scope rows.
+  const reqSeqRef = useRef(0);
+
   const load = useCallback(async () => {
     if (!scope) return;
+    const reqId = ++reqSeqRef.current;
     setLoading(true);
     setError(null);
     try {
@@ -358,19 +364,30 @@ const WalletTable = forwardRef(function WalletTable(
         { signal: AbortSignal.timeout(EVIDENCE_TIMEOUT_MS) }
       );
       const json = await res.json().catch(() => ({}));
+      if (reqId !== reqSeqRef.current) return; // superseded by a newer build — drop it
       if (!res.ok) throw new Error(json.error ?? `Request failed (HTTP ${res.status})`);
       setData(json);
     } catch (err) {
+      if (reqId !== reqSeqRef.current) return;
       const timedOut = err?.name === "TimeoutError" || err?.name === "AbortError";
       setError(
         timedOut
           ? `Evidence build timed out after ${Math.round(EVIDENCE_TIMEOUT_MS / 1000)}s — this scope is very large. Try a shorter lookback, or Refresh to retry.`
           : err.message
       );
+      // Don't leave the previous build's rows rendering under the error state.
+      setData(null);
     } finally {
-      setLoading(false);
+      if (reqId === reqSeqRef.current) setLoading(false);
     }
   }, [scope, lookback]);
+
+  // A new scope's fetch can take up to 70s — clear the old scope's rows immediately so
+  // they can't render (or feed getRawEvidence) under the new watch target.
+  useEffect(() => {
+    setData(null);
+    setError(null);
+  }, [scope]);
 
   useEffect(() => { load(); }, [load]);
 
