@@ -175,6 +175,7 @@ See docs/strategic-plan-data-pipeline.md (Phase 1).
       console.error("[queue] fetch failed:", e.message);
     }
 
+    let roundParsed = 0;
     for (const s of scopes) {
       const label = s.note ? `${s.address} — ${s.note}` : s.address;
 
@@ -205,11 +206,28 @@ See docs/strategic-plan-data-pipeline.md (Phase 1).
           throttleMs: ingestThrottleMs,
         });
         console.log(`    events parsed ${ing.parsed} (backlog ${Math.max(0, backlog - ing.parsed)} left)`);
+        roundParsed += ing.parsed;
       } catch (e) {
         console.error(`    error: ${String(e?.message ?? e)}`);
       }
 
       if (scopeDelayMs > 0) await sleep(scopeDelayMs);
+    }
+
+    // Heartbeat: stamp round completion into ingest_state so the sync below carries it
+    // to Turso and /api/health can tell a live worker from a silently stalled one.
+    // Same row shape as the per-scope resume cursors (the ingest_state sync is a full
+    // upsert, so the marker rides along with zero extra plumbing).
+    try {
+      db.prepare(
+        "INSERT OR REPLACE INTO ingest_state (scope_key, last_before_signature, updated_at) VALUES (?, ?, ?)",
+      ).run(
+        "worker_heartbeat",
+        JSON.stringify({ at: new Date().toISOString(), scopes: scopes.length, parsed: roundParsed }),
+        new Date().toISOString(),
+      );
+    } catch (e) {
+      console.error("[pipeline] heartbeat:", e.message);
     }
 
     if (tursoSync) {

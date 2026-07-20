@@ -37,6 +37,10 @@ Deploy (Vercel Hobby + Turso + Railway worker):
          (secrets: TURSO_DATABASE_URL, TURSO_AUTH_TOKEN, CHAINMIND_WATCHLIST_JSON,
          SOLANA_RPC_URL). Keep it manual-only while Railway runs.
        Locally: npm run mirror:up, or npm run pipeline -- --turso-sync.
+  6. Monitoring: GET /api/health (no auth, cheap) reads the worker heartbeat the
+     pipeline writes each round — 200 while fresh, 503 when the last ingest is
+     >10 min old. Point UptimeRobot / healthchecks.io at it; the dashboard header
+     shows the same data-live / data-stale badge.
 
 If the build says "No Output Directory named public found":
   Your Vercel project still has a static-site output override. Clear Output Directory
