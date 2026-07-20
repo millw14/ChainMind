@@ -41,6 +41,10 @@ Deploy (Vercel Hobby + Turso + Railway worker):
      pipeline writes each round — 200 while fresh, 503 when the last ingest is
      >10 min old. Point UptimeRobot / healthchecks.io at it; the dashboard header
      shows the same data-live / data-stale badge.
+  7. Backups: .github/workflows/backup.yml uploads a weekly critical-table dump
+     to R2 (repo secrets: TURSO_DATABASE_URL, TURSO_AUTH_TOKEN, R2_ENDPOINT,
+     R2_BUCKET, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY). npm run backup does the
+     same by hand. See docs/backup-restore.md.
 
 If the build says "No Output Directory named public found":
   Your Vercel project still has a static-site output override. Clear Output Directory
