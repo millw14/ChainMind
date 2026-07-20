@@ -1098,6 +1098,11 @@ export function Dashboard({ initialAddress } = {}) {
   const walletTableRef = useRef(/** @type {{ getRawEvidence?: () => unknown } | null} */ (null));
   const queuedPollCountRef = useRef(0);
   const caseAutoCreatedRef = useRef(/** @type {Set<string>} */ (new Set()));
+  // Synchronously readable copy of the focus target. Score/inspect/Groq fetches can run
+  // for up to 70s and outlive a target switch — each captures its address at start and
+  // checks this ref on completion, dropping stale responses instead of letting the
+  // previous scope's data render under the new scope's address.
+  const focusAddressRef = useRef(focusAddress);
 
   const [loading, setLoading] = useState({});
   const [loadingGroq, setLoadingGroq] = useState(false);
@@ -1138,9 +1143,13 @@ export function Dashboard({ initialAddress } = {}) {
     const a = focusAddress.trim();
     if (!a) return;
     const u = `/api/inspect?address=${encodeURIComponent(a)}&limit=${encodeURIComponent(inspectLimit || "12")}`;
+    const stale = () => focusAddressRef.current.trim() !== a;
     try {
-      setInspect(await fetchJson(u, "inspect"));
+      const j = await fetchJson(u, "inspect");
+      if (stale()) return; // response for a previous target — drop it
+      setInspect(j);
     } catch (e) {
+      if (stale()) return;
       setInspect({ ok: false, error: String(e.message) });
     }
   }, [focusAddress, inspectLimit, fetchJson]);
@@ -1208,6 +1217,9 @@ export function Dashboard({ initialAddress } = {}) {
     if (!scoreData || scoreData.empty || scoreData.ok === false) return;
     const s = focusAddress.trim();
     if (!s) return;
+    // Stale-closure guard: runScore can invoke this after the user has moved to a
+    // different target — don't mint a case for the abandoned scope.
+    if (focusAddressRef.current.trim() !== s) return;
     // Auto-create at most once per scope per session — the per-poll firing was minting
     // ~100 duplicate cases/hour. (Server also dedups; this avoids the wasted POSTs.)
     if (caseAutoCreatedRef.current.has(s)) return;
@@ -1236,6 +1248,9 @@ export function Dashboard({ initialAddress } = {}) {
   const runScore = useCallback(async (opts = {}) => {
     const s = focusAddress.trim();
     if (!s) return;
+    // Discard results that land after the user has moved to a different target — a score
+    // fetch can run up to 70s and must not clobber the new scope's panels.
+    const stale = () => focusAddressRef.current.trim() !== s;
     const hours = encodeURIComponent(scoreHours || "24");
     const fresh = opts.force ? "&fresh=1" : "";
     const buildUrl = (w) => `/api/score?scope=${encodeURIComponent(s)}&window=${w}&hours=${hours}${fresh}`;
@@ -1270,9 +1285,11 @@ export function Dashboard({ initialAddress } = {}) {
           }
         }
       }
+      if (stale()) return;
       setScore(result);
       runCreateCase(result);
     } catch (e) {
+      if (stale()) return;
       const timedOut = e?.name === "TimeoutError" || e?.name === "AbortError";
       setScore({
         ok: false,
@@ -1317,6 +1334,11 @@ export function Dashboard({ initialAddress } = {}) {
   }, []);
 
   const clearCompareScopes = useCallback(() => setCompareScopes([]), []);
+
+  // Keep the staleness-check ref in step with the focus target (see focusAddressRef above).
+  useEffect(() => {
+    focusAddressRef.current = focusAddress;
+  }, [focusAddress]);
 
   useEffect(() => {
     void fetch("/api/watchlist")
@@ -1535,10 +1557,16 @@ export function Dashboard({ initialAddress } = {}) {
     }
     groqAutoInFlightRef.current = true;
     groqLastAttemptAtRef.current = now;
+    // Capture the target this request is about; if the user switches scope during the
+    // (many-second) Groq call, drop the response instead of rendering the previous
+    // scope's verdict under the new address.
+    const requestAddress = focusAddressRef.current.trim();
+    const stale = () => focusAddressRef.current.trim() !== requestAddress;
     setLoadingGroq(true);
     setGroqErr(null);
     try {
       const j = await runGroqAnalysis("auto");
+      if (stale()) return; // verdict for a previous target — drop it
       if (j) {
         groqLastReasoningAtRef.current = Date.now();
         setGroqLastCompletedAt(Date.now());
@@ -1553,9 +1581,10 @@ export function Dashboard({ initialAddress } = {}) {
       console.warn("[dashboard] groq auto", e);
       if (e?.status === 429) {
         const backoff = parseGroqRetryMs(e.message) ?? GROQ_RATE_LIMIT_BACKOFF_MS;
+        // The cooldown is account-global, so honor it even for a stale-scope response.
         groqCooldownUntilRef.current = Date.now() + backoff;
-        setGroqErr(`Rate-limited by Groq — pausing auto-reasoning for ~${Math.round(backoff / 1000)}s`);
-      } else {
+        if (!stale()) setGroqErr(`Rate-limited by Groq — pausing auto-reasoning for ~${Math.round(backoff / 1000)}s`);
+      } else if (!stale()) {
         setGroqErr(`Reasoning failed: ${String(e.message)}`);
       }
     } finally {
@@ -1593,6 +1622,10 @@ export function Dashboard({ initialAddress } = {}) {
     groqLastAttemptAtRef.current = 0;
     groqCooldownUntilRef.current = 0;
     setGroqLastCompletedAt(null);
+    // Don't carry the previous target's verdict into the new scope's Synthesis panel.
+    setGroqAnalysis(null);
+    setGroqErr(null);
+    setGroqWebhookMeta(null);
   }, [focusAddress]);
 
   useEffect(() => {
