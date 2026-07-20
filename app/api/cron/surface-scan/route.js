@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { internalAuthHeaders, requireCronAuth } from "@/lib/api-auth.js";
 import { appBaseUrl } from "@/lib/app-base-url.js";
 import { recomputeCrossMintIntel } from "@/lib/cross-mint-intel.js";
 import { evaluateSurfaceTriggers, externalRulesDocumentation } from "@/lib/surface-triggers.js";
@@ -8,23 +9,8 @@ import { loadWatchlist } from "@/lib/watchlist.js";
 export const maxDuration = 120;
 export const runtime = "nodejs";
 
-function authorizeCron(request) {
-  const secret = process.env.CRON_SECRET?.trim();
-  if (!secret) {
-    return NextResponse.json(
-      { error: "CRON_SECRET is not set — add it in Vercel env to enable /api/cron/surface-scan" },
-      { status: 503 },
-    );
-  }
-  const auth = request.headers.get("authorization") ?? "";
-  if (auth !== `Bearer ${secret}`) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
-  return null;
-}
-
 async function fetchJson(url) {
-  const r = await fetch(url, { cache: "no-store" });
+  const r = await fetch(url, { cache: "no-store", headers: internalAuthHeaders() });
   const j = await r.json().catch(() => ({}));
   return { r, j };
 }
@@ -34,7 +20,7 @@ async function fetchJson(url) {
  * evaluates surface triggers, optionally persists hits to Turso `surface_hits`.
  */
 export async function GET(request) {
-  const denied = authorizeCron(request);
+  const denied = requireCronAuth(request, "/api/cron/surface-scan");
   if (denied) return denied;
 
   let scopes;

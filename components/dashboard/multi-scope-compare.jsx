@@ -11,6 +11,13 @@ function shortAddr(s) {
   return `${s.slice(0, 4)}…${s.slice(-4)}`;
 }
 
+/** Debounce for the typed primary address — /api/score is the heaviest endpoint, so wait
+ *  for a pause in typing instead of firing a burst of requests per keystroke. */
+const PRIMARY_DEBOUNCE_MS = 450;
+/** Plausible base58 Solana address (same 32-44 length check as the score API's PublicKey
+ *  parse) — partial typed strings would just 400 out server-side and flash error tiles. */
+const BASE58_ADDR_RE = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
+
 const tierColor = {
   critical: "text-cm-bad",
   high: "text-orange-300",
@@ -44,12 +51,21 @@ export function MultiScopeComparePanel({
   onClearCompare,
 }) {
   const reduce = useReducedMotion() ?? false;
+
+  // The primary prop is the dashboard's raw, undebounced input value — settle it here.
+  const [debouncedPrimary, setDebouncedPrimary] = useState(primary);
+  useEffect(() => {
+    const id = setTimeout(() => setDebouncedPrimary(primary), PRIMARY_DEBOUNCE_MS);
+    return () => clearTimeout(id);
+  }, [primary]);
+
   const scopes = useMemo(() => {
-    const p = primary.trim();
+    const p = debouncedPrimary.trim();
     const rest = compareScopes.map((s) => s.trim()).filter(Boolean);
-    const u = [...new Set([p, ...rest].filter(Boolean))].slice(0, 6);
+    const head = BASE58_ADDR_RE.test(p) ? [p] : [];
+    const u = [...new Set([...head, ...rest])].slice(0, 6);
     return u;
-  }, [primary, compareScopes]);
+  }, [debouncedPrimary, compareScopes]);
 
   const [rows, setRows] = useState(/** @type {Record<string, { ok: boolean, body: any }>} */ ({}));
   const [loading, setLoading] = useState(false);
@@ -64,7 +80,8 @@ export function MultiScopeComparePanel({
     (async () => {
       const win = scoreWindow || "5";
       const hrs = scoreHours || "168";
-      const next = {};
+      // Merge each result into the map as it lands — rebuilding from scratch would blank
+      // already-loaded tiles for the duration of every refresh.
       await Promise.all(
         scopes.map(async (scope) => {
           try {
@@ -72,16 +89,13 @@ export function MultiScopeComparePanel({
               `/api/score?scope=${encodeURIComponent(scope)}&window=${encodeURIComponent(win)}&hours=${encodeURIComponent(hrs)}`,
             );
             const j = await r.json().catch(() => ({}));
-            if (!cancel) next[scope] = { ok: r.ok, body: j };
+            if (!cancel) setRows((prev) => ({ ...prev, [scope]: { ok: r.ok, body: j } }));
           } catch {
-            if (!cancel) next[scope] = { ok: false, body: { error: "fetch failed" } };
+            if (!cancel) setRows((prev) => ({ ...prev, [scope]: { ok: false, body: { error: "fetch failed" } } }));
           }
         }),
       );
-      if (!cancel) {
-        setRows(next);
-        setLoading(false);
-      }
+      if (!cancel) setLoading(false);
     })();
     return () => {
       cancel = true;

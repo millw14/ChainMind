@@ -1,8 +1,9 @@
 import { NextResponse } from "next/server";
 import { PublicKey } from "@solana/web3.js";
 
+import { clientIp, hasOperatorAuth, isSameOriginBrowser } from "@/lib/api-auth.js";
 import { loadWatchlist } from "@/lib/watchlist.js";
-import { getTursoClient, tursoAddToScanQueue } from "@/lib/turso.js";
+import { getTursoClient, tursoAddToScanQueue, tursoRateLimit } from "@/lib/turso.js";
 
 export const runtime = "nodejs";
 
@@ -22,6 +23,12 @@ export async function GET() {
 }
 
 export async function POST(request) {
+  // Queueing an address commits the ingest worker's RPC budget to it — operator
+  // auth (CHAINMIND_OPERATOR_SECRET), or the same-origin dashboard rate limited per IP.
+  const operator = hasOperatorAuth(request);
+  if (!operator && !isSameOriginBrowser(request)) {
+    return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
+  }
   let body;
   try {
     body = await request.json();
@@ -37,6 +44,13 @@ export async function POST(request) {
   }
   const client = getTursoClient();
   if (!client) return NextResponse.json({ ok: false, error: "Turso not configured" }, { status: 503 });
-  await tursoAddToScanQueue(client, address, body.note ?? null);
+  if (!operator) {
+    const rl = await tursoRateLimit(client, `watchlist:${clientIp(request)}`, 5);
+    if (!rl.allowed) {
+      return NextResponse.json({ ok: false, error: "Too many requests — slow down a moment." }, { status: 429 });
+    }
+  }
+  const note = typeof body.note === "string" ? body.note.slice(0, 200) : null;
+  await tursoAddToScanQueue(client, address, note);
   return NextResponse.json({ ok: true, queued: address });
 }

@@ -7,14 +7,6 @@
     {
       "path": "/api/cron/surface-scan",
       "schedule": "15 2 * * *"
-    },
-    {
-      "path": "/api/cron/baseline-update",
-      "schedule": "45 3 * * *"
-    },
-    {
-      "path": "/api/cron/cross-mint-recompute",
-      "schedule": "30 4 * * *"
     }
   ]
 }

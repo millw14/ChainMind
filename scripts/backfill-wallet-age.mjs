@@ -2,21 +2,29 @@
 // fee-payers that lack a wallet_first_seen row, so the fresh-wallet-cohort detector
 // has data. RPC-heavy (paginates per wallet) — capped + throttled. Run on demand.
 //
-// Env: SOLANA_RPC_URL (+ data/.libsql-auth.json for the libSQL target).
-import fs from "node:fs";
+// Env: SOLANA_RPC_URL + TURSO_DATABASE_URL/TURSO_AUTH_TOKEN (or LIBSQL_URL/LIBSQL_TOKEN).
 import { loadEnv } from "../lib/load-env.js";
 loadEnv();
 import { createClient } from "@libsql/client/web";
 import { getSolanaConnection } from "../lib/solana.js";
-import { tursoUpsertWalletFirstSeen } from "../lib/turso.js";
+import { getTursoClient, tursoUpsertWalletFirstSeen } from "../lib/turso.js";
 import { fetchOldestSignatureForAddress } from "../lib/wallet-age-rpc.js";
 
 const LIMIT = Math.max(1, Number(process.env.WALLET_AGE_BACKFILL_LIMIT) || 120);
 const MAX_PAGES = Math.max(1, Number(process.env.WALLET_AGE_MAX_PAGES) || 4);
 const THROTTLE = Math.max(0, Number(process.env.WALLET_AGE_THROTTLE_MS) || 150);
 
-const { token } = JSON.parse(fs.readFileSync("data/.libsql-auth.json", "utf8"));
-const client = createClient({ url: "https://libsql-production-9bc3.up.railway.app", authToken: token });
+const client =
+  process.env.LIBSQL_URL && process.env.LIBSQL_TOKEN
+    ? createClient({
+        url: process.env.LIBSQL_URL.replace(/^libsql:\/\//, "https://"),
+        authToken: process.env.LIBSQL_TOKEN,
+      })
+    : getTursoClient();
+if (!client) {
+  console.error("Set TURSO_DATABASE_URL + TURSO_AUTH_TOKEN (or LIBSQL_URL + LIBSQL_TOKEN).");
+  process.exit(1);
+}
 const connection = getSolanaConnection();
 
 const res = await client.execute({

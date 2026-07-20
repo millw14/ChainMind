@@ -12,11 +12,39 @@ Production build:
   npm start
 
 Vercel + GitHub:
-  - Connect the repo; Vercel detects Next.js (no vercel.json needed).
+  - Connect the repo; Vercel detects Next.js (vercel.json only carries the 2 cron entries).
   - Set SOLANA_RPC_URL (and optional TURSO_* for DB panels).
   - Framework Preset: Next.js
   - IMPORTANT: Do NOT set Output Directory to "public" (that was for the old static page).
     Next.js outputs to .next — leave Output Directory empty / default.
+
+Deploy (Vercel Hobby + Turso + Railway worker):
+  1. Turso (turso.tech): create a DB, grab TURSO_DATABASE_URL + TURSO_AUTH_TOKEN,
+     then run npm run turso:schema (idempotent).
+  2. Vercel env: TURSO_DATABASE_URL, TURSO_AUTH_TOKEN, SOLANA_RPC_URL, GROQ_API_KEY,
+     CRON_SECRET (long random string), CHAINMIND_WATCHLIST_JSON, NEXT_PUBLIC_APP_URL
+     (the public domain — self-fetching crons break behind Deployment Protection).
+     Never set CHAINMIND_LOCAL_DB=1 on Vercel.
+  3. vercel.json keeps 2 daily crons (Hobby limit): analyst-sweep + surface-scan
+     (surface-scan includes the cross-mint recompute).
+     .github/workflows/baseline.yml covers the daily baseline-update via the API
+     route (secrets: APP_URL, CRON_SECRET).
+  4. Railway runs the always-on ingest worker (nixpacks.toml:
+     node scripts/pipeline-worker.mjs --turso-sync). Set the same TURSO_*,
+     SOLANA_RPC_URL and CHAINMIND_WATCHLIST_JSON env there.
+  5. Fallbacks if the Railway worker is down:
+       .github/workflows/ingest.yml — manual dispatch: one pipeline round + sync
+         (secrets: TURSO_DATABASE_URL, TURSO_AUTH_TOKEN, CHAINMIND_WATCHLIST_JSON,
+         SOLANA_RPC_URL). Keep it manual-only while Railway runs.
+       Locally: npm run mirror:up, or npm run pipeline -- --turso-sync.
+  6. Monitoring: GET /api/health (no auth, cheap) reads the worker heartbeat the
+     pipeline writes each round — 200 while fresh, 503 when the last ingest is
+     >10 min old. Point UptimeRobot / healthchecks.io at it; the dashboard header
+     shows the same data-live / data-stale badge.
+  7. Backups: .github/workflows/backup.yml uploads a weekly critical-table dump
+     to R2 (repo secrets: TURSO_DATABASE_URL, TURSO_AUTH_TOKEN, R2_ENDPOINT,
+     R2_BUCKET, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY). npm run backup does the
+     same by hand. See docs/backup-restore.md.
 
 If the build says "No Output Directory named public found":
   Your Vercel project still has a static-site output override. Clear Output Directory

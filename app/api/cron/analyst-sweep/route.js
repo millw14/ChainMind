@@ -1,29 +1,11 @@
 import { NextResponse } from "next/server";
+import { requireCronAuth } from "@/lib/api-auth.js";
 import { appBaseUrl } from "@/lib/app-base-url.js";
 import { runAnalystSweepForScope } from "@/lib/analyst-sweep-run.js";
 import { loadWatchlist } from "@/lib/watchlist.js";
 
 export const maxDuration = 300;
 export const runtime = "nodejs";
-
-/**
- * Secured scheduled sweep: Vercel Cron sends Authorization: Bearer CRON_SECRET when env is set.
- * @param {Request} request
- */
-function authorizeCron(request) {
-  const secret = process.env.CRON_SECRET?.trim();
-  if (!secret) {
-    return NextResponse.json(
-      { error: "CRON_SECRET is not set — add it in Vercel env to enable /api/cron/analyst-sweep" },
-      { status: 503 },
-    );
-  }
-  const auth = request.headers.get("authorization") ?? "";
-  if (auth !== `Bearer ${secret}`) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
-  return null;
-}
 
 function truthyEnv(v) {
   const s = String(v ?? "").trim().toLowerCase();
@@ -37,7 +19,7 @@ function truthyEnv(v) {
  * If co-activity > GROQ_AUTO_CO_ACTIVITY, POSTs to /api/groq-brief (source=auto) per scope.
  */
 export async function GET(request) {
-  const denied = authorizeCron(request);
+  const denied = requireCronAuth(request, "/api/cron/analyst-sweep");
   if (denied) return denied;
 
   const useWatchlist = truthyEnv(process.env.CHAINMIND_ANALYST_SWEEP_WATCHLIST);

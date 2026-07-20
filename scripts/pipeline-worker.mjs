@@ -8,7 +8,7 @@ import { openDb } from "../lib/db.js";
 import { getSolanaConnection } from "../lib/solana.js";
 import { loadWatchlist } from "../lib/watchlist.js";
 import { countPendingForScope, ingestPendingEventsForScope, syncHeadSignaturesForScope } from "../lib/pipeline-sync.js";
-import { tursoHttpAddToScanQueue, tursoHttpFetchPendingScanQueue, tursoHttpMarkScanQueuePicked } from "../lib/turso-http.js";
+import { tursoHttpAddToScanQueue, tursoHttpFetchPendingScanQueue, tursoHttpMarkScanQueuePicked, tursoHttpMarkScanQueueRetired } from "../lib/turso-http.js";
 import { discoverTrendingSolanaMints } from "../lib/token-discovery.js";
 import { isKnownEntity } from "../lib/known-entities.js";
 
@@ -141,25 +141,41 @@ See docs/strategic-plan-data-pipeline.md (Phase 1).
     }
 
     // Merge new addresses from scan queue, capped at maxActiveScopes (the worker
-    // processes every scope each round, so total must stay bounded).
+    // processes every scope each round, so total must stay bounded). At capacity,
+    // rotate: static watchlist scopes are permanent, but queue-derived scopes yield
+    // their slot to the least-recently-picked queue row — bounded per round so each
+    // admitted scope still gets several rounds of processing before rotating out.
+    const maxRotations = 2;
+    let rotations = 0;
     try {
       const queued = await tursoHttpFetchPendingScanQueue(20);
       for (const q of queued) {
-        if (scopes.length >= maxActiveScopes) break;
         if (isKnownEntity(q.address)) {
-          await tursoHttpMarkScanQueuePicked(q.address); // retire stablecoins/infra from the queue
+          await tursoHttpMarkScanQueueRetired(q.address); // stablecoins/infra never become scopes
           continue;
         }
-        if (!scopes.find((s) => s.address === q.address)) {
-          scopes.push({ address: q.address, note: q.note ?? "from scan queue" });
+        if (scopes.find((s) => s.address === q.address)) {
+          // Already active — refresh last_picked_at so the stale-active reclaim
+          // stops re-serving it and the fetch window stays open for new rows.
           await tursoHttpMarkScanQueuePicked(q.address);
-          console.log(`+ queue: ${q.address}`);
+          continue;
         }
+        if (scopes.length >= maxActiveScopes) {
+          const evictAt = scopes.findIndex((s) => !staticScopes.some((w) => w.address === s.address));
+          if (evictAt === -1 || rotations >= maxRotations) break;
+          const [evicted] = scopes.splice(evictAt, 1);
+          rotations++;
+          console.log(`- rotate: ${evicted.address} yields slot`);
+        }
+        scopes.push({ address: q.address, note: q.note ?? "from scan queue" });
+        await tursoHttpMarkScanQueuePicked(q.address);
+        console.log(`+ queue: ${q.address}`);
       }
     } catch (e) {
       console.error("[queue] fetch failed:", e.message);
     }
 
+    let roundParsed = 0;
     for (const s of scopes) {
       const label = s.note ? `${s.address} — ${s.note}` : s.address;
 
@@ -190,6 +206,7 @@ See docs/strategic-plan-data-pipeline.md (Phase 1).
           throttleMs: ingestThrottleMs,
         });
         console.log(`    events parsed ${ing.parsed} (backlog ${Math.max(0, backlog - ing.parsed)} left)`);
+        roundParsed += ing.parsed;
       } catch (e) {
         console.error(`    error: ${String(e?.message ?? e)}`);
       }
@@ -197,11 +214,31 @@ See docs/strategic-plan-data-pipeline.md (Phase 1).
       if (scopeDelayMs > 0) await sleep(scopeDelayMs);
     }
 
+    // Heartbeat: stamp round completion into ingest_state so the sync below carries it
+    // to Turso and /api/health can tell a live worker from a silently stalled one.
+    // Same row shape as the per-scope resume cursors (the ingest_state sync is a full
+    // upsert, so the marker rides along with zero extra plumbing).
+    try {
+      db.prepare(
+        "INSERT OR REPLACE INTO ingest_state (scope_key, last_before_signature, updated_at) VALUES (?, ?, ?)",
+      ).run(
+        "worker_heartbeat",
+        JSON.stringify({ at: new Date().toISOString(), scopes: scopes.length, parsed: roundParsed }),
+        new Date().toISOString(),
+      );
+    } catch (e) {
+      console.error("[pipeline] heartbeat:", e.message);
+    }
+
     if (tursoSync) {
       try {
         execSync("node scripts/sync-sqlite-to-turso.mjs", { stdio: "inherit", cwd: process.cwd() });
       } catch {
+        // In --once (scheduled/CI) mode a swallowed sync failure means the run
+        // produced nothing durable — surface it via the exit code so the
+        // scheduler shows red. Continuous mode retries next round as before.
         console.error("Turso sync failed (see log above). Continuing.");
+        if (once) process.exitCode = 1;
       }
     }
 

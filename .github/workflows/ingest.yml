@@ -1,0 +1,82 @@
+# MANUAL FALLBACK ingestion — the primary ingest worker runs 24/7 on Railway
+# (nixpacks.toml). Trigger this by hand (Actions tab → ingest → Run workflow)
+# only when the Railway worker is down, to keep Turso fresh in the meantime.
+# Do NOT add a schedule while the Railway worker is running: two concurrent
+# writers interact badly with the sync high-water mark.
+#
+# Each run: restore dedup state (signatures + events) from Turso into a local
+# SQLite file, run ONE pipeline round (head-signature catch-up + parse batch +
+# scan-queue drain + discovery), and sync the results back to Turso. Every write
+# is idempotent (INSERT OR REPLACE / OR IGNORE on natural keys) and the sync is
+# incremental via a per-table high-water mark, so ephemeral runners are safe.
+#
+# Required repository secrets (Settings → Secrets and variables → Actions):
+#   TURSO_DATABASE_URL       libsql://<db>.turso.io
+#   TURSO_AUTH_TOKEN         Turso auth token
+#   CHAINMIND_WATCHLIST_JSON e.g. {"scopes":[{"address":"<base58>","note":"..."}]}
+#                            (config/watchlist.json is gitignored — the worker
+#                            exits 1 without a watchlist)
+#   SOLANA_RPC_URL           recommended: free Helius/QuickNode endpoint; the
+#                            public RPC is too rate-limited for parse volume
+#
+# Notes:
+# - GitHub cron is best-effort (runs can lag 5–30 min at busy times).
+# - Scheduled workflows are auto-disabled after 60 days without repo activity —
+#   re-enable under the Actions tab if the pipeline goes quiet.
+# - On private repos this consumes the 2000 free minutes/month quickly; keep the
+#   repo public or reduce the cadence.
+name: ingest
+
+on:
+  workflow_dispatch: {}
+
+concurrency:
+  group: ingest
+  cancel-in-progress: false
+
+jobs:
+  ingest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      TURSO_DATABASE_URL: ${{ secrets.TURSO_DATABASE_URL }}
+      TURSO_AUTH_TOKEN: ${{ secrets.TURSO_AUTH_TOKEN }}
+      SOLANA_RPC_URL: ${{ secrets.SOLANA_RPC_URL }}
+      CHAINMIND_WATCHLIST_JSON: ${{ secrets.CHAINMIND_WATCHLIST_JSON }}
+      # Queued/discovered scopes are marked 'active' on pickup and only re-picked
+      # after this stale window — keep it just under the cron cadence.
+      SCAN_QUEUE_STALE_ACTIVE_SECONDS: "1500"
+    steps:
+      - name: Check required secrets
+        run: |
+          missing=0
+          for v in TURSO_DATABASE_URL TURSO_AUTH_TOKEN CHAINMIND_WATCHLIST_JSON; do
+            if [ -z "${!v}" ]; then echo "::error::secret $v is not set"; missing=1; fi
+          done
+          exit $missing
+
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      # postinstall must run — it stubs the native libsql package.
+      - run: npm ci
+
+      # Idempotent (IF NOT EXISTS everywhere) — makes a fresh Turso DB work
+      # with zero manual setup.
+      - name: Ensure Turso schema
+        run: node scripts/turso-init-schema.mjs
+
+      # Only signatures + events are needed for dedup/backlog correctness;
+      # everything derived is rebuilt per-tx or lives only in Turso.
+      - name: Restore dedup state from Turso
+        run: node scripts/export-turso-to-sqlite.mjs
+        env:
+          EXPORT_OUT_PATH: data/chainmind.db
+          SKIP_TABLES: scope_baselines,signers,transfers,program_calls,edges,surface_hits,wallet_first_seen,investigation_cases,score_cache,rate_limit,groq_analysis_log,intel_scope_top_payers,intel_cross_mint_pair,intel_cluster_track,scan_queue
+
+      - name: Ingest one round and sync to Turso
+        run: node scripts/pipeline-worker.mjs --once --turso-sync
