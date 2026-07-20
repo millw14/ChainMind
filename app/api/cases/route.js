@@ -1,12 +1,13 @@
 import crypto from "node:crypto";
 import { NextResponse } from "next/server";
 import { PublicKey } from "@solana/web3.js";
+import { clientIp, hasOperatorAuth, isSameOriginBrowser } from "@/lib/api-auth.js";
 import { appBaseUrl } from "@/lib/app-base-url.js";
 import { buildInvestigationCasePayload } from "@/lib/case-file.js";
 import { expandFundingTreeInbound } from "@/lib/funding-tree-turso.js";
 import { runGroqBriefForInvestigationCase } from "@/lib/groq-auto-for-case.js";
 import { buildTursoScoreBundle } from "@/lib/score-bundle.js";
-import { getTursoClient, tursoInsertInvestigationCase, tursoFetchRecentCases } from "@/lib/turso.js";
+import { getTursoClient, tursoInsertInvestigationCase, tursoFetchRecentCases, tursoRateLimit } from "@/lib/turso.js";
 import { isKnownEntity } from "@/lib/known-entities.js";
 
 /** Hours within which a scope's existing case suppresses auto-creating a duplicate. */
@@ -34,16 +35,19 @@ export async function GET(request) {
   }
 }
 
-function authorizeCaseCreate(request) {
-  const secret = process.env.CASE_CREATE_SECRET?.trim();
-  if (!secret) return true;
-  const h = request.headers.get("authorization") || "";
-  return h === `Bearer ${secret}`;
+/** Per-IP case creations/min for unauthenticated (same-origin browser) callers. */
+function caseRateLimitPerMin() {
+  const n = Number(process.env.CHAINMIND_CASE_RATE_LIMIT_PER_MIN);
+  return Number.isFinite(n) && n > 0 ? n : 3;
 }
 
 export async function POST(request) {
-  if (!authorizeCaseCreate(request)) {
-    return NextResponse.json({ ok: false, error: "Unauthorized (set CASE_CREATE_SECRET or send Bearer token)" }, { status: 401 });
+  // Operator auth (CHAINMIND_OPERATOR_SECRET; CASE_CREATE_SECRET as legacy alias;
+  // CRON_SECRET for cron self-fetches) unlocks force/autoGroq/groqAnalysis. Everyone
+  // else must look like the same-origin dashboard and is rate limited per IP below.
+  const operator = hasOperatorAuth(request, ["CASE_CREATE_SECRET", "CRON_SECRET"]);
+  if (!operator && !isSameOriginBrowser(request)) {
+    return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
   }
 
   let body;
@@ -65,11 +69,16 @@ export async function POST(request) {
 
   const windowMinutes = Math.min(1440, Math.max(1, Number(body.windowMinutes ?? body.window ?? 5) || 5));
   const lastHours = Math.min(24 * 30, Math.max(1, Number(body.lastHours ?? body.hours ?? 24) || 24));
-  const title = body.title != null ? String(body.title).slice(0, 240) : null;
+  const title = typeof body.title === "string" ? body.title.slice(0, 200) : null;
+  // Attacker-supplied groqAnalysis would be rendered on the public /investigation
+  // pages as a real verdict — operator-only, like force/autoGroq below.
   let groqAnalysis =
-    body.groqAnalysis != null && typeof body.groqAnalysis === "object" ? body.groqAnalysis : null;
+    operator && body.groqAnalysis != null && typeof body.groqAnalysis === "object"
+      ? body.groqAnalysis
+      : null;
 
   const autoGroq =
+    operator &&
     groqAnalysis == null &&
     (Boolean(body.autoGroq) || String(process.env.CASE_AUTO_GROQ ?? "").trim() === "1");
 
@@ -86,7 +95,15 @@ export async function POST(request) {
     );
   }
 
-  const force = Boolean(body.force);
+  // Non-operator callers get the per-IP limiter and can't bypass the flood guards.
+  if (!operator) {
+    const rl = await tursoRateLimit(client, `cases:${clientIp(request)}`, caseRateLimitPerMin());
+    if (!rl.allowed) {
+      return NextResponse.json({ ok: false, error: "Too many requests — slow down a moment." }, { status: 429 });
+    }
+  }
+
+  const force = operator && Boolean(body.force);
 
   // Skip case creation for known entities (stablecoins/infra/CEX) — they're not
   // investigation targets and were flooding the case list (e.g. USDC). Cheap guard
