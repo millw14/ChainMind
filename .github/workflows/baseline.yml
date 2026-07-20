@@ -1,0 +1,29 @@
+# Daily scope-baseline recompute — replaces the vercel.json baseline-update cron
+# (dropped to fit the Vercel Hobby 2-cron limit). Hits the deployed route with
+# the same Authorization header Vercel Cron would send.
+#
+# Required repository secrets:
+#   APP_URL      https://<your-app>.vercel.app  (no trailing slash)
+#   CRON_SECRET  same value as the CRON_SECRET env var on Vercel
+name: baseline
+
+on:
+  schedule:
+    - cron: "45 3 * * *"
+  workflow_dispatch: {}
+
+jobs:
+  baseline:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      APP_URL: ${{ secrets.APP_URL }}
+      CRON_SECRET: ${{ secrets.CRON_SECRET }}
+    steps:
+      - name: Trigger /api/cron/baseline-update
+        run: |
+          [ -n "$APP_URL" ] || { echo "::error::secret APP_URL is not set"; exit 1; }
+          [ -n "$CRON_SECRET" ] || { echo "::error::secret CRON_SECRET is not set"; exit 1; }
+          curl -fsS --max-time 320 \
+            -H "Authorization: Bearer $CRON_SECRET" \
+            "$APP_URL/api/cron/baseline-update"
