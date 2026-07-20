@@ -198,6 +198,10 @@ export async function GET(request) {
       } catch (e) {
         console.error("[score] rpc-live", e);
         body.queued = true; // fall back to the DB empty + "pulling in" UX
+        // Cache the queued-empty fallback too: the dashboard polls a queued scope
+        // every 25s, and without a cache hit each poll re-enters this cold path
+        // and 429s the client out of its own cold-scope budget within ~2 minutes.
+        await tursoUpsertScoreCache(client, scope, windowMinutes, lastHours, body);
       }
     } else {
       await tursoUpsertScoreCache(client, scope, windowMinutes, lastHours, body);
