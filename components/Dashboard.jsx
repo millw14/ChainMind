@@ -32,11 +32,12 @@ const USDC_MAINNET = "Xqfwj8PrgpjksqgnopR9DwDuNZAXrqVHDbdcQ34pump";
 const INSPECT_DEBOUNCE_MS = 350;
 const LIVE_POLL_MS = 42_000;
 /** When a searched scope is queued for first-time ingestion, re-check the score on this cadence.
- *  Ingestion runs on a schedule (GitHub Actions, default every 30 min), so poll slowly but long
- *  enough to span a full ingest cycle. */
-const QUEUED_POLL_MS = 60_000;
-/** Stop auto-polling a queued scope after this many tries (~QUEUED_POLL_MS each) to bound RPC/load. */
-const QUEUED_POLL_MAX = 40;
+ *  The always-on worker picks queued scopes up within a minute or two, so poll briskly. */
+const QUEUED_POLL_MS = 25_000;
+/** Stop auto-polling a queued scope after this many tries to bound RPC/load. Counted in
+ *  runScore itself (every poll path lands there), and once spent runScore skips the fetch
+ *  entirely — each /api/score miss also re-enqueues the scope server-side. */
+const QUEUED_POLL_MAX = 12;
 /** Minimum time between auto reasoning *attempts* (success OR failure), so failed calls
  *  don't retry every data poll and hammer Groq's rate limit during live polling. */
 const GROQ_REASONING_MIN_INTERVAL_MS = 120_000;
@@ -400,9 +401,8 @@ function ScoreBody({ data, loading, hideMainScore }) {
             <div className="space-y-1">
               <p className="text-sm font-medium text-cm-text">Pulling this address in for the first time…</p>
               <p className="text-xs leading-relaxed text-cm-muted">
-                We haven’t indexed this scope yet — it’s queued for the next scheduled ingest run. The first scan
-                usually lands within the next half hour or so — this panel refreshes automatically, no need to
-                re-search.
+                We haven’t indexed this scope yet, so the ingest worker is fetching its history now. The first scan
+                usually lands within a couple of minutes — this panel refreshes automatically, no need to re-search.
               </p>
             </div>
           </div>
@@ -1251,6 +1251,11 @@ export function Dashboard({ initialAddress } = {}) {
     // Discard results that land after the user has moved to a different target — a score
     // fetch can run up to 70s and must not clobber the new scope's panels.
     const stale = () => focusAddressRef.current.trim() !== s;
+    // Queued-scope poll budget: every /api/score call for a still-un-ingested scope also
+    // re-enqueues it server-side, so once the budget is spent skip the fetch entirely —
+    // that stops the 42s sweep and the queued re-check timer alike. The budget resets on
+    // a fresh search, a real (non-queued) result, or a manual Run full analysis (force).
+    if (!opts.force && queuedPollCountRef.current >= QUEUED_POLL_MAX) return;
     const hours = encodeURIComponent(scoreHours || "24");
     const fresh = opts.force ? "&fresh=1" : "";
     const buildUrl = (w) => `/api/score?scope=${encodeURIComponent(s)}&window=${w}&hours=${hours}${fresh}`;
@@ -1286,6 +1291,10 @@ export function Dashboard({ initialAddress } = {}) {
         }
       }
       if (stale()) return;
+      // Count queued polls where every poll path actually lands (sweep, re-check timer,
+      // debounce) so QUEUED_POLL_MAX really bounds the load; a real result resets it.
+      if (result?.empty && result?.queued) queuedPollCountRef.current += 1;
+      else queuedPollCountRef.current = 0;
       setScore(result);
       runCreateCase(result);
     } catch (e) {
@@ -1415,11 +1424,11 @@ export function Dashboard({ initialAddress } = {}) {
     if (!score?.empty || !score?.queued) return;
     if (queuedPollCountRef.current >= QUEUED_POLL_MAX) return;
     const id = setTimeout(() => {
-      queuedPollCountRef.current += 1;
       void runScore();
     }, QUEUED_POLL_MS);
     return () => clearTimeout(id);
     // Depend on the score object (new ref each fetch) so each still-empty poll re-arms the timer.
+    // (The poll budget itself is counted inside runScore, which every poll path shares.)
   }, [score, runScore]);
 
   useEffect(() => {
