@@ -1,0 +1,61 @@
+# Scheduled off-site backup — dumps the irreplaceable Turso tables to a timestamped
+# SQLite file and uploads it to Cloudflare R2 (scripts/backup-and-upload.mjs, the
+# same path as `npm run backup`). Weekly by default; also runnable by hand
+# (Actions tab → backup → Run workflow) before risky changes.
+#
+# Required repository secrets (Settings → Secrets and variables → Actions):
+#   TURSO_DATABASE_URL   libsql://<db>.turso.io
+#   TURSO_AUTH_TOKEN     Turso auth token
+#   R2_ENDPOINT          https://<account_id>.r2.cloudflarestorage.com
+#   R2_BUCKET            e.g. chainmindbackups
+#   R2_ACCESS_KEY_ID     R2 API token (Object Read & Write) key id
+#   R2_SECRET_ACCESS_KEY R2 API token secret
+#
+# Notes:
+# - Scheduled workflows are auto-disabled after 60 days without repo activity —
+#   re-enable under the Actions tab if backups go quiet.
+# - Regenerable tables (signatures/events/transfers/edges/signers/program_calls)
+#   are skipped; the worker rebuilds them from chain. See docs/backup-restore.md.
+name: backup
+
+on:
+  schedule:
+    - cron: "20 4 * * 1"
+  workflow_dispatch: {}
+
+concurrency:
+  group: backup
+  cancel-in-progress: false
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      TURSO_DATABASE_URL: ${{ secrets.TURSO_DATABASE_URL }}
+      TURSO_AUTH_TOKEN: ${{ secrets.TURSO_AUTH_TOKEN }}
+      R2_ENDPOINT: ${{ secrets.R2_ENDPOINT }}
+      R2_BUCKET: ${{ secrets.R2_BUCKET }}
+      R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+      R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+    steps:
+      - name: Check required secrets
+        run: |
+          missing=0
+          for v in TURSO_DATABASE_URL TURSO_AUTH_TOKEN R2_ENDPOINT R2_BUCKET R2_ACCESS_KEY_ID R2_SECRET_ACCESS_KEY; do
+            if [ -z "${!v}" ]; then echo "::error::secret $v is not set — the off-site backup cannot run without it (see the header of this workflow)"; missing=1; fi
+          done
+          exit $missing
+
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      # postinstall must run — it stubs the native libsql package.
+      - run: npm ci
+
+      - name: Dump critical tables and upload to R2
+        run: node scripts/backup-and-upload.mjs

@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { PublicKey } from "@solana/web3.js";
+import { clientIp, hasOperatorAuth, isSameOriginBrowser } from "@/lib/api-auth.js";
 import { buildTursoScoreBundle } from "@/lib/score-bundle.js";
 import {
   getTursoClient,
@@ -120,17 +121,24 @@ export async function GET(request) {
   }
 
   // Abuse/cost control: per-IP rate limit (public endpoint hits RPC/Groq/compute).
-  const ip = (request.headers.get("x-forwarded-for") || "").split(",")[0].trim() || "unknown";
+  const ip = clientIp(request);
   const rl = await tursoRateLimit(client, `score:${ip}`, rateLimitPerMin());
   if (!rl.allowed) {
     return NextResponse.json({ ok: false, error: "Too many requests — slow down a moment." }, { status: 429 });
   }
+  // CRON_SECRET counts as operator here so the cron routes' self-fetches keep
+  // their enqueue rights and skip the public cold-scope budget.
+  const operator = hasOperatorAuth(request, ["CRON_SECRET"]);
+  const sameOrigin = isSameOriginBrowser(request);
   // Serve repeat/popular searches + dashboard polls from cache (no RPC/compute).
-  // `?fresh=1` (Re-Analyze in the dashboard) bypasses the read to force a recompute.
+  // `?fresh=1` (Re-Analyze in the dashboard) bypasses the read to force a recompute —
+  // same-origin browser or operator auth only, so scripts can't force recomputes.
   const ttl = scoreCacheTtlSec();
-  const bypassCache = ["1", "true", "yes"].includes(
-    String(searchParams.get("fresh") ?? searchParams.get("noCache") ?? "").toLowerCase(),
-  );
+  const bypassCache =
+    (operator || sameOrigin) &&
+    ["1", "true", "yes"].includes(
+      String(searchParams.get("fresh") ?? searchParams.get("noCache") ?? "").toLowerCase(),
+    );
   if (ttl > 0 && !bypassCache) {
     const cached = await tursoFetchScoreCache(client, scope, windowMinutes, lastHours, ttl);
     if (cached) return NextResponse.json({ ...cached, cached: true });
@@ -163,10 +171,23 @@ export async function GET(request) {
         await tursoUpsertScoreCache(client, scope, windowMinutes, lastHours, out);
         return NextResponse.json(out);
       }
-      try {
-        await tursoAddToScanQueue(client, scope, "on-demand search");
-      } catch (e) {
-        console.error("[score] scan-queue enqueue", e);
+      // Cold scope: the live-RPC crawl + worker enqueue are the expensive path, so
+      // non-operator callers get a coarser per-IP budget (5 per 10 minutes).
+      if (!operator) {
+        const coldRl = await tursoRateLimit(client, `score-cold:${ip}`, 5, 600);
+        if (!coldRl.allowed) {
+          return NextResponse.json(
+            { ok: false, error: "Too many cold-scope scans — try again in a few minutes." },
+            { status: 429 },
+          );
+        }
+      }
+      if (operator || sameOrigin) {
+        try {
+          await tursoAddToScanQueue(client, scope, "on-demand search");
+        } catch (e) {
+          console.error("[score] scan-queue enqueue", e);
+        }
       }
       try {
         const connection = getSolanaConnection();
@@ -177,6 +198,10 @@ export async function GET(request) {
       } catch (e) {
         console.error("[score] rpc-live", e);
         body.queued = true; // fall back to the DB empty + "pulling in" UX
+        // Cache the queued-empty fallback too: the dashboard polls a queued scope
+        // every 25s, and without a cache hit each poll re-enters this cold path
+        // and 429s the client out of its own cold-scope budget within ~2 minutes.
+        await tursoUpsertScoreCache(client, scope, windowMinutes, lastHours, body);
       }
     } else {
       await tursoUpsertScoreCache(client, scope, windowMinutes, lastHours, body);

@@ -31,9 +31,19 @@ const USDC_MAINNET = "Xqfwj8PrgpjksqgnopR9DwDuNZAXrqVHDbdcQ34pump";
 
 const INSPECT_DEBOUNCE_MS = 350;
 const LIVE_POLL_MS = 42_000;
-/** When a searched scope is queued for first-time ingestion, re-check the score on this cadence. */
+/** Slow /api/health poll driving the header data-live/stale badge — freshness only
+ *  changes on worker cadence (~90s rounds), so once a minute is plenty. */
+const HEALTH_POLL_MS = 60_000;
+/** localStorage key for the optional operator Bearer token (CHAINMIND_OPERATOR_SECRET).
+ *  When present it rides the dashboard's POSTs; absent, the public same-origin
+ *  behavior is unchanged. Stored only in this browser — never rendered back out. */
+const OPERATOR_KEY_STORAGE = "cm_operator_key";
+/** When a searched scope is queued for first-time ingestion, re-check the score on this cadence.
+ *  The always-on worker picks queued scopes up within a minute or two, so poll briskly. */
 const QUEUED_POLL_MS = 25_000;
-/** Stop auto-polling a queued scope after this many tries (~QUEUED_POLL_MS each) to bound RPC/load. */
+/** Stop auto-polling a queued scope after this many tries to bound RPC/load. Counted in
+ *  runScore itself (every poll path lands there), and once spent runScore skips the fetch
+ *  entirely — each /api/score miss also re-enqueues the scope server-side. */
 const QUEUED_POLL_MAX = 12;
 /** Minimum time between auto reasoning *attempts* (success OR failure), so failed calls
  *  don't retry every data poll and hammer Groq's rate limit during live polling. */
@@ -399,7 +409,7 @@ function ScoreBody({ data, loading, hideMainScore }) {
               <p className="text-sm font-medium text-cm-text">Pulling this address in for the first time…</p>
               <p className="text-xs leading-relaxed text-cm-muted">
                 We haven’t indexed this scope yet, so the ingest worker is fetching its history now. The first scan
-                usually lands within a minute or two — this panel refreshes automatically, no need to re-search.
+                usually lands within a couple of minutes — this panel refreshes automatically, no need to re-search.
               </p>
             </div>
           </div>
@@ -1053,6 +1063,7 @@ function BriefBody({ analysis, preliminary, error, loading, webhookMeta, entityC
 
 export function Dashboard({ initialAddress } = {}) {
   const [ping, setPing] = useState(null);
+  const [health, setHealth] = useState(null);
   // Scope comes from the server (?address= read in the page's searchParams), so the
   // correct target is rendered on first paint — no flash, no throwaway fetch.
   const [focusAddress, setFocusAddress] = useState(
@@ -1081,6 +1092,11 @@ export function Dashboard({ initialAddress } = {}) {
   const [watchlistScopes, setWatchlistScopes] = useState(/** @type {Array<{ address: string, note?: string | null }> | null} */ (null));
   const [compareScopes, setCompareScopes] = useState(/** @type {string[]} */ ([]));
 
+  const [operatorKey, setOperatorKey] = useState("");
+  const [watchStatus, setWatchStatus] = useState(/** @type {{ state: string, message?: string } | null} */ (null));
+  // Ref copy so long-lived callbacks read the current key without re-creating on each keystroke.
+  const operatorKeyRef = useRef("");
+
   const [groqAnalysis, setGroqAnalysis] = useState(null);
   const [groqErr, setGroqErr] = useState(null);
   const [groqWebhookMeta, setGroqWebhookMeta] = useState(null);
@@ -1095,6 +1111,14 @@ export function Dashboard({ initialAddress } = {}) {
   const walletTableRef = useRef(/** @type {{ getRawEvidence?: () => unknown } | null} */ (null));
   const queuedPollCountRef = useRef(0);
   const caseAutoCreatedRef = useRef(/** @type {Set<string>} */ (new Set()));
+  // Synchronously readable copy of the focus target. Score/inspect/Groq fetches can run
+  // for up to 70s and outlive a target switch — each captures its address at start and
+  // checks this ref on completion, dropping stale responses instead of letting the
+  // previous scope's data render under the new scope's address.
+  const focusAddressRef = useRef(focusAddress);
+  // Pending "force the analyst after score/evidence kick off" timer from runFullAnalysis —
+  // tracked so a scope switch or unmount cancels it (force bypasses all throttles).
+  const fullAnalysisGroqTimerRef = useRef(0);
 
   const [loading, setLoading] = useState({});
   const [loadingGroq, setLoadingGroq] = useState(false);
@@ -1105,7 +1129,46 @@ export function Dashboard({ initialAddress } = {}) {
   const [analysisStartedAt, setAnalysisStartedAt] = useState(/** @type {number | null} */ (null));
   const handleEvidenceStatus = useCallback((s) => setEvidenceStatus(s), []);
 
-  const setLoad = (key, v) => setLoading((s) => ({ ...s, [key]: v }));
+  // Loading keys are reference-counted: overlapping fetches share keys (the 42s sweep,
+  // queued re-checks and widen retries all use "score"), so only the last one to finish
+  // may clear the flag — otherwise the staged progress indicator reports completion and
+  // re-enables the Run button while work is still in flight.
+  const loadCountsRef = useRef({});
+  const setLoad = (key, v) => {
+    const counts = loadCountsRef.current;
+    counts[key] = Math.max(0, (counts[key] ?? 0) + (v ? 1 : -1));
+    const on = counts[key] > 0;
+    setLoading((s) => (Boolean(s[key]) === on ? s : { ...s, [key]: on }));
+  };
+
+  // Load the saved operator key once on mount (SSR-safe — localStorage is browser-only).
+  useEffect(() => {
+    try {
+      const k = window.localStorage.getItem(OPERATOR_KEY_STORAGE) ?? "";
+      setOperatorKey(k);
+      operatorKeyRef.current = k;
+    } catch {
+      /* storage blocked — stay keyless */
+    }
+  }, []);
+
+  const handleOperatorKeyChange = useCallback((value) => {
+    setOperatorKey(value);
+    operatorKeyRef.current = value;
+    try {
+      if (value.trim()) window.localStorage.setItem(OPERATOR_KEY_STORAGE, value.trim());
+      else window.localStorage.removeItem(OPERATOR_KEY_STORAGE);
+    } catch {
+      /* storage blocked — key still works for this session via the ref */
+    }
+  }, []);
+
+  /** Authorization header for dashboard POSTs when an operator key is saved — an
+   *  absent key keeps today's public same-origin behavior exactly. */
+  const operatorHeaders = useCallback(() => {
+    const k = operatorKeyRef.current.trim();
+    return k ? { Authorization: `Bearer ${k}` } : {};
+  }, []);
 
   const fetchJson = useCallback(async (url, key, { timeoutMs } = {}) => {
     setLoad(key, true);
@@ -1135,9 +1198,13 @@ export function Dashboard({ initialAddress } = {}) {
     const a = focusAddress.trim();
     if (!a) return;
     const u = `/api/inspect?address=${encodeURIComponent(a)}&limit=${encodeURIComponent(inspectLimit || "12")}`;
+    const stale = () => focusAddressRef.current.trim() !== a;
     try {
-      setInspect(await fetchJson(u, "inspect"));
+      const j = await fetchJson(u, "inspect");
+      if (stale()) return; // response for a previous target — drop it
+      setInspect(j);
     } catch (e) {
+      if (stale()) return;
       setInspect({ ok: false, error: String(e.message) });
     }
   }, [focusAddress, inspectLimit, fetchJson]);
@@ -1205,6 +1272,9 @@ export function Dashboard({ initialAddress } = {}) {
     if (!scoreData || scoreData.empty || scoreData.ok === false) return;
     const s = focusAddress.trim();
     if (!s) return;
+    // Stale-closure guard: runScore can invoke this after the user has moved to a
+    // different target — don't mint a case for the abandoned scope.
+    if (focusAddressRef.current.trim() !== s) return;
     // Auto-create at most once per scope per session — the per-poll firing was minting
     // ~100 duplicate cases/hour. (Server also dedups; this avoids the wasted POSTs.)
     if (caseAutoCreatedRef.current.has(s)) return;
@@ -1212,7 +1282,7 @@ export function Dashboard({ initialAddress } = {}) {
     try {
       const res = await fetch("/api/cases", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ...operatorHeaders() },
         body: JSON.stringify({
           scope: s,
           windowMinutes: Number(scoreWindow) || 5,
@@ -1228,11 +1298,43 @@ export function Dashboard({ initialAddress } = {}) {
     } catch {
       // Silent — case creation is best-effort
     }
-  }, [focusAddress, scoreWindow, scoreHours]);
+  }, [focusAddress, scoreWindow, scoreHours, operatorHeaders]);
+
+  // "+ Watch": queue the focus address for continuous ingestion via POST /api/watchlist
+  // (Turso scan_queue — the worker picks it up within a round or two) and surface the
+  // queued/error response instead of failing silently.
+  const runWatch = useCallback(async () => {
+    const a = focusAddress.trim();
+    if (!a) return;
+    setWatchStatus({ state: "sending" });
+    try {
+      const r = await fetch("/api/watchlist", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...operatorHeaders() },
+        body: JSON.stringify({ address: a }),
+      });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok || j.ok === false) {
+        setWatchStatus({ state: "error", message: typeof j?.error === "string" ? j.error : `HTTP ${r.status}` });
+        return;
+      }
+      setWatchStatus({ state: "queued", message: `Queued ${shortSig(j.queued ?? a)} for continuous ingestion` });
+    } catch (e) {
+      setWatchStatus({ state: "error", message: String(e.message) });
+    }
+  }, [focusAddress, operatorHeaders]);
 
   const runScore = useCallback(async (opts = {}) => {
     const s = focusAddress.trim();
     if (!s) return;
+    // Discard results that land after the user has moved to a different target — a score
+    // fetch can run up to 70s and must not clobber the new scope's panels.
+    const stale = () => focusAddressRef.current.trim() !== s;
+    // Queued-scope poll budget: every /api/score call for a still-un-ingested scope also
+    // re-enqueues it server-side, so once the budget is spent skip the fetch entirely —
+    // that stops the 42s sweep and the queued re-check timer alike. The budget resets on
+    // a fresh search, a real (non-queued) result, or a manual Run full analysis (force).
+    if (!opts.force && queuedPollCountRef.current >= QUEUED_POLL_MAX) return;
     const hours = encodeURIComponent(scoreHours || "24");
     const fresh = opts.force ? "&fresh=1" : "";
     const buildUrl = (w) => `/api/score?scope=${encodeURIComponent(s)}&window=${w}&hours=${hours}${fresh}`;
@@ -1267,9 +1369,15 @@ export function Dashboard({ initialAddress } = {}) {
           }
         }
       }
+      if (stale()) return;
+      // Count queued polls where every poll path actually lands (sweep, re-check timer,
+      // debounce) so QUEUED_POLL_MAX really bounds the load; a real result resets it.
+      if (result?.empty && result?.queued) queuedPollCountRef.current += 1;
+      else queuedPollCountRef.current = 0;
       setScore(result);
       runCreateCase(result);
     } catch (e) {
+      if (stale()) return;
       const timedOut = e?.name === "TimeoutError" || e?.name === "AbortError";
       setScore({
         ok: false,
@@ -1315,6 +1423,33 @@ export function Dashboard({ initialAddress } = {}) {
 
   const clearCompareScopes = useCallback(() => setCompareScopes([]), []);
 
+  // Keep the staleness-check ref in step with the focus target (see focusAddressRef above).
+  useEffect(() => {
+    focusAddressRef.current = focusAddress;
+  }, [focusAddress]);
+
+  // Ingest-freshness poll — drives the header badge so stale pipeline data is never
+  // silently presented as live. /api/health answers 503 when stale; read the body
+  // either way.
+  useEffect(() => {
+    let cancelled = false;
+    const poll = async () => {
+      try {
+        const r = await fetch("/api/health");
+        const j = await r.json().catch(() => null);
+        if (!cancelled) setHealth(j);
+      } catch {
+        if (!cancelled) setHealth(null);
+      }
+    };
+    void poll();
+    const id = setInterval(() => void poll(), HEALTH_POLL_MS);
+    return () => {
+      cancelled = true;
+      clearInterval(id);
+    };
+  }, []);
+
   useEffect(() => {
     void fetch("/api/watchlist")
       .then((r) => r.json())
@@ -1353,14 +1488,21 @@ export function Dashboard({ initialAddress } = {}) {
     const a = focusAddress.trim();
     if (!a) {
       setInspect(null);
-      setLoad("inspect", false);
       return;
     }
+    // Hold the inspect loading key through the debounce gap so the UI doesn't flash
+    // "done"; the fetch takes its own (ref-counted) hold when the timer fires.
     setLoad("inspect", true);
+    let held = true;
     const id = setTimeout(() => {
       void runInspect();
+      setLoad("inspect", false);
+      held = false;
     }, INSPECT_DEBOUNCE_MS);
-    return () => clearTimeout(id);
+    return () => {
+      clearTimeout(id);
+      if (held) setLoad("inspect", false);
+    };
   }, [focusAddress, inspectLimit, runInspect]);
 
   useEffect(() => {
@@ -1390,11 +1532,11 @@ export function Dashboard({ initialAddress } = {}) {
     if (!score?.empty || !score?.queued) return;
     if (queuedPollCountRef.current >= QUEUED_POLL_MAX) return;
     const id = setTimeout(() => {
-      queuedPollCountRef.current += 1;
       void runScore();
     }, QUEUED_POLL_MS);
     return () => clearTimeout(id);
     // Depend on the score object (new ref each fetch) so each still-empty poll re-arms the timer.
+    // (The poll budget itself is counted inside runScore, which every poll path shares.)
   }, [score, runScore]);
 
   useEffect(() => {
@@ -1494,7 +1636,7 @@ export function Dashboard({ initialAddress } = {}) {
       const groqData = { ...groqEvidence, walletEvidence: walletEvidence ?? null };
       const r = await fetch("/api/groq-brief", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ...operatorHeaders() },
         body: JSON.stringify({
           data: groqData,
           source,
@@ -1510,7 +1652,7 @@ export function Dashboard({ initialAddress } = {}) {
       }
       return j;
     },
-    [groqEvidence],
+    [groqEvidence, operatorHeaders],
   );
 
   const runGroqAuto = useCallback(async (opts = {}) => {
@@ -1532,10 +1674,16 @@ export function Dashboard({ initialAddress } = {}) {
     }
     groqAutoInFlightRef.current = true;
     groqLastAttemptAtRef.current = now;
+    // Capture the target this request is about; if the user switches scope during the
+    // (many-second) Groq call, drop the response instead of rendering the previous
+    // scope's verdict under the new address.
+    const requestAddress = focusAddressRef.current.trim();
+    const stale = () => focusAddressRef.current.trim() !== requestAddress;
     setLoadingGroq(true);
     setGroqErr(null);
     try {
       const j = await runGroqAnalysis("auto");
+      if (stale()) return; // verdict for a previous target — drop it
       if (j) {
         groqLastReasoningAtRef.current = Date.now();
         setGroqLastCompletedAt(Date.now());
@@ -1550,9 +1698,10 @@ export function Dashboard({ initialAddress } = {}) {
       console.warn("[dashboard] groq auto", e);
       if (e?.status === 429) {
         const backoff = parseGroqRetryMs(e.message) ?? GROQ_RATE_LIMIT_BACKOFF_MS;
+        // The cooldown is account-global, so honor it even for a stale-scope response.
         groqCooldownUntilRef.current = Date.now() + backoff;
-        setGroqErr(`Rate-limited by Groq — pausing auto-reasoning for ~${Math.round(backoff / 1000)}s`);
-      } else {
+        if (!stale()) setGroqErr(`Rate-limited by Groq — pausing auto-reasoning for ~${Math.round(backoff / 1000)}s`);
+      } else if (!stale()) {
         setGroqErr(`Reasoning failed: ${String(e.message)}`);
       }
     } finally {
@@ -1573,7 +1722,8 @@ export function Dashboard({ initialAddress } = {}) {
       void runScore({ force });
       walletTableRef.current?.reload?.();
       // Let score/evidence start populating the snapshot, then force the analyst.
-      window.setTimeout(() => {
+      window.clearTimeout(fullAnalysisGroqTimerRef.current);
+      fullAnalysisGroqTimerRef.current = window.setTimeout(() => {
         void runGroqAuto({ force: true });
       }, 1200);
     },
@@ -1590,6 +1740,14 @@ export function Dashboard({ initialAddress } = {}) {
     groqLastAttemptAtRef.current = 0;
     groqCooldownUntilRef.current = 0;
     setGroqLastCompletedAt(null);
+    // Don't carry the previous target's verdict into the new scope's Synthesis panel.
+    setGroqAnalysis(null);
+    setGroqErr(null);
+    setGroqWebhookMeta(null);
+    // Watch feedback is per-address — don't show the previous target's queue result.
+    setWatchStatus(null);
+    // Cancel any pending forced-analyst timer on scope change and on unmount.
+    return () => window.clearTimeout(fullAnalysisGroqTimerRef.current);
   }, [focusAddress]);
 
   useEffect(() => {
@@ -1635,6 +1793,20 @@ export function Dashboard({ initialAddress } = {}) {
             <p className="font-mono text-[10px] text-cm-faint">
               Auto sweep <span className="text-cm-muted">{LIVE_POLL_MS / 1000}s</span>
             </p>
+            {health?.database === "turso" ? (
+              <>
+                <div className="hidden h-8 w-px bg-cm-border sm:block" />
+                <p className="font-mono text-[10px]" title={health.lastIngestAt ? `Last ingest ${health.lastIngestAt}` : "No worker heartbeat yet"}>
+                  {health.stale ? (
+                    <span className="text-cm-warn">
+                      data stale{Number.isFinite(health.staleMinutes) ? ` since ${health.staleMinutes} min` : ""}
+                    </span>
+                  ) : (
+                    <span className="text-cm-terminal">data live</span>
+                  )}
+                </p>
+              </>
+            ) : null}
           </div>
           <button
             type="button"
@@ -1707,14 +1879,30 @@ export function Dashboard({ initialAddress } = {}) {
               <label className="mb-1.5 block font-mono text-[10px] font-semibold uppercase tracking-wider text-cm-faint">
                 Solana address (base58)
               </label>
-              <input
-                className="w-full rounded-md border border-cm-border bg-cm-row/80 px-3 py-2.5 font-mono text-sm text-cm-text outline-none ring-cm-accent-ring focus:ring-2"
-                value={focusAddress}
-                onChange={(e) => setFocusAddress(e.target.value)}
-                placeholder="Mint · wallet · program"
-                spellCheck={false}
-                autoComplete="off"
-              />
+              <div className="flex gap-2">
+                <input
+                  className="w-full min-w-0 flex-1 rounded-md border border-cm-border bg-cm-row/80 px-3 py-2.5 font-mono text-sm text-cm-text outline-none ring-cm-accent-ring focus:ring-2"
+                  value={focusAddress}
+                  onChange={(e) => setFocusAddress(e.target.value)}
+                  placeholder="Mint · wallet · program"
+                  spellCheck={false}
+                  autoComplete="off"
+                />
+                <button
+                  type="button"
+                  onClick={() => void runWatch()}
+                  disabled={!focusAddress.trim() || watchStatus?.state === "sending"}
+                  title="Queue this address for continuous pipeline ingestion"
+                  className="shrink-0 rounded-md border border-cm-border bg-cm-elevated px-3 py-2 font-mono text-xs text-cm-muted transition hover:border-cm-accent/40 hover:text-cm-text disabled:opacity-45"
+                >
+                  {watchStatus?.state === "sending" ? "Queuing…" : "+ Watch"}
+                </button>
+              </div>
+              {watchStatus?.message ? (
+                <p className={`mt-1.5 font-mono text-[10px] ${watchStatus.state === "error" ? "text-cm-bad" : "text-cm-terminal"}`}>
+                  {watchStatus.message}
+                </p>
+              ) : null}
             </div>
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-3 lg:col-span-6 lg:gap-4">
               <div>
@@ -1781,6 +1969,28 @@ export function Dashboard({ initialAddress } = {}) {
                 startedAt={analysisStartedAt}
               />
             </div>
+          </div>
+          <div className="mt-4 flex flex-col gap-1.5 border-t border-cm-border-subtle pt-4 sm:flex-row sm:items-center sm:gap-3">
+            <label
+              htmlFor="cm-operator-key"
+              className="shrink-0 font-mono text-[10px] font-semibold uppercase tracking-wider text-cm-faint"
+            >
+              Operator key
+            </label>
+            <input
+              id="cm-operator-key"
+              type="password"
+              className="w-full rounded-md border border-cm-border bg-cm-row/80 px-2 py-1.5 font-mono text-xs text-cm-text outline-none focus:ring-2 focus:ring-cm-accent-ring sm:max-w-xs"
+              value={operatorKey}
+              onChange={(e) => handleOperatorKeyChange(e.target.value)}
+              placeholder="optional — CHAINMIND_OPERATOR_SECRET"
+              spellCheck={false}
+              autoComplete="off"
+            />
+            <p className="text-[10px] leading-relaxed text-cm-faint">
+              Sent as a Bearer token on analysis / case / watch requests. Stored only in this browser — leave empty for
+              the public dashboard.
+            </p>
           </div>
         </Panel>
         </motion.div>
