@@ -81,6 +81,7 @@ try {
   await syncTable(db, "events", ["signature", "scope_address", "slot", "block_time", "fee_payer", "event_type", "programs_json", "counterparties_json", "parse_note", "ingested_at"]);
   await syncTable(db, "signers", ["tx_sig", "scope_address", "address", "role", "ingested_at"]);
   await syncTable(db, "transfers", ["tx_sig", "scope_address", "idx", "from_address", "to_address", "mint", "amount", "slot", "ingested_at"]);
+  await syncTable(db, "program_calls", ["tx_sig", "scope_address", "idx", "program_id", "instruction_name", "slot", "ingested_at"]);
   // edges: omit autoincrement id (local ids reset on ephemeral hosts and would clobber
   // unrelated Turso rows); dedupe on the natural unique index via INSERT OR IGNORE.
   await syncTable(db, "edges", ["scope_address", "from_address", "to_address", "tx_sig", "slot", "edge_type", "mint", "ingested_at"], { orMode: "IGNORE" });
