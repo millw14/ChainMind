@@ -126,7 +126,9 @@ export async function GET(request) {
   if (!rl.allowed) {
     return NextResponse.json({ ok: false, error: "Too many requests — slow down a moment." }, { status: 429 });
   }
-  const operator = hasOperatorAuth(request);
+  // CRON_SECRET counts as operator here so the cron routes' self-fetches keep
+  // their enqueue rights and skip the public cold-scope budget.
+  const operator = hasOperatorAuth(request, ["CRON_SECRET"]);
   const sameOrigin = isSameOriginBrowser(request);
   // Serve repeat/popular searches + dashboard polls from cache (no RPC/compute).
   // `?fresh=1` (Re-Analyze in the dashboard) bypasses the read to force a recompute —
