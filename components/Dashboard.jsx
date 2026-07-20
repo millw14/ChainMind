@@ -31,10 +31,12 @@ const USDC_MAINNET = "Xqfwj8PrgpjksqgnopR9DwDuNZAXrqVHDbdcQ34pump";
 
 const INSPECT_DEBOUNCE_MS = 350;
 const LIVE_POLL_MS = 42_000;
-/** When a searched scope is queued for first-time ingestion, re-check the score on this cadence. */
-const QUEUED_POLL_MS = 25_000;
+/** When a searched scope is queued for first-time ingestion, re-check the score on this cadence.
+ *  Ingestion runs on a schedule (GitHub Actions, default every 30 min), so poll slowly but long
+ *  enough to span a full ingest cycle. */
+const QUEUED_POLL_MS = 60_000;
 /** Stop auto-polling a queued scope after this many tries (~QUEUED_POLL_MS each) to bound RPC/load. */
-const QUEUED_POLL_MAX = 12;
+const QUEUED_POLL_MAX = 40;
 /** Minimum time between auto reasoning *attempts* (success OR failure), so failed calls
  *  don't retry every data poll and hammer Groq's rate limit during live polling. */
 const GROQ_REASONING_MIN_INTERVAL_MS = 120_000;
@@ -398,8 +400,9 @@ function ScoreBody({ data, loading, hideMainScore }) {
             <div className="space-y-1">
               <p className="text-sm font-medium text-cm-text">Pulling this address in for the first time…</p>
               <p className="text-xs leading-relaxed text-cm-muted">
-                We haven’t indexed this scope yet, so the ingest worker is fetching its history now. The first scan
-                usually lands within a minute or two — this panel refreshes automatically, no need to re-search.
+                We haven’t indexed this scope yet — it’s queued for the next scheduled ingest run. The first scan
+                usually lands within the next half hour or so — this panel refreshes automatically, no need to
+                re-search.
               </p>
             </div>
           </div>
