@@ -18,25 +18,25 @@ Vercel + GitHub:
   - IMPORTANT: Do NOT set Output Directory to "public" (that was for the old static page).
     Next.js outputs to .next — leave Output Directory empty / default.
 
-Free deploy — no Railway (Vercel Hobby + Turso free + GitHub Actions):
-  1. Turso (turso.tech): create a DB, grab TURSO_DATABASE_URL + TURSO_AUTH_TOKEN.
-     Schema is applied automatically by the ingest workflow (or run npm run turso:schema).
+Deploy (Vercel Hobby + Turso + Railway worker):
+  1. Turso (turso.tech): create a DB, grab TURSO_DATABASE_URL + TURSO_AUTH_TOKEN,
+     then run npm run turso:schema (idempotent).
   2. Vercel env: TURSO_DATABASE_URL, TURSO_AUTH_TOKEN, SOLANA_RPC_URL, GROQ_API_KEY,
      CRON_SECRET (long random string), CHAINMIND_WATCHLIST_JSON, NEXT_PUBLIC_APP_URL
      (the public domain — self-fetching crons break behind Deployment Protection).
      Never set CHAINMIND_LOCAL_DB=1 on Vercel.
   3. vercel.json keeps 2 daily crons (Hobby limit): analyst-sweep + surface-scan
      (surface-scan includes the cross-mint recompute).
-  4. GitHub Actions replaces the always-on ingest worker:
-       .github/workflows/ingest.yml   — every 30 min: one pipeline round + Turso sync.
-         Secrets: TURSO_DATABASE_URL, TURSO_AUTH_TOKEN, CHAINMIND_WATCHLIST_JSON,
-         SOLANA_RPC_URL.
-       .github/workflows/baseline.yml — daily baseline-update via the API route.
-         Secrets: APP_URL, CRON_SECRET.
-     Note: GitHub disables schedules after 60 days without repo activity; private
-     repos burn the 2000 free min/month fast — keep the repo public or lower cadence.
-  5. Local alternative to (4): npm run mirror:up  (one ingest round + Turso sync),
-     or npm run pipeline -- --turso-sync for a continuous loop while your PC is on.
+     .github/workflows/baseline.yml covers the daily baseline-update via the API
+     route (secrets: APP_URL, CRON_SECRET).
+  4. Railway runs the always-on ingest worker (nixpacks.toml:
+     node scripts/pipeline-worker.mjs --turso-sync). Set the same TURSO_*,
+     SOLANA_RPC_URL and CHAINMIND_WATCHLIST_JSON env there.
+  5. Fallbacks if the Railway worker is down:
+       .github/workflows/ingest.yml — manual dispatch: one pipeline round + sync
+         (secrets: TURSO_DATABASE_URL, TURSO_AUTH_TOKEN, CHAINMIND_WATCHLIST_JSON,
+         SOLANA_RPC_URL). Keep it manual-only while Railway runs.
+       Locally: npm run mirror:up, or npm run pipeline -- --turso-sync.
 
 If the build says "No Output Directory named public found":
   Your Vercel project still has a static-site output override. Clear Output Directory

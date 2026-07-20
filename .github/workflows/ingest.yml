@@ -1,4 +1,8 @@
-# Scheduled ingestion — replaces the always-on Railway pipeline worker.
+# MANUAL FALLBACK ingestion — the primary ingest worker runs 24/7 on Railway
+# (nixpacks.toml). Trigger this by hand (Actions tab → ingest → Run workflow)
+# only when the Railway worker is down, to keep Turso fresh in the meantime.
+# Do NOT add a schedule while the Railway worker is running: two concurrent
+# writers interact badly with the sync high-water mark.
 #
 # Each run: restore dedup state (signatures + events) from Turso into a local
 # SQLite file, run ONE pipeline round (head-signature catch-up + parse batch +
@@ -24,8 +28,6 @@
 name: ingest
 
 on:
-  schedule:
-    - cron: "*/30 * * * *"
   workflow_dispatch: {}
 
 concurrency:
