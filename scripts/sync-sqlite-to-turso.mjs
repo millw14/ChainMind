@@ -1,6 +1,7 @@
 import { loadEnv } from "../lib/load-env.js";
 loadEnv();
 import { openDb } from "../lib/db.js";
+import { SYNC_TABLES, ensureSyncState, syncTable } from "../lib/sync-tables.js";
 
 const TURSO_URL = process.env.TURSO_DATABASE_URL?.trim()?.replace("libsql://", "https://");
 const TURSO_TOKEN = process.env.TURSO_AUTH_TOKEN?.trim();
@@ -36,82 +37,17 @@ async function tursoPipeline(stmts) {
   return data.results ?? [];
 }
 
-/** High-water mark already in Turso for a table (first-run fallback only — see syncTable). */
-async function tursoMaxMarker(table, col) {
-  const results = await tursoPipeline([{ sql: `SELECT MAX(${col}) AS m FROM ${table}`, args: [] }]);
-  const v = results[0]?.response?.result?.rows?.[0]?.[0]?.value;
-  return v == null ? "" : String(v);
-}
-
-/**
- * Last marker THIS local db has synced for a table. Turso's global MAX spans every
- * writer (reparse-libsql, other ingest hosts) whose clocks can run ahead of ours,
- * which would permanently skip our older unsynced rows — so the watermark is kept
- * per local database, falling back to Turso's MAX only when no local marker exists.
- */
-function localMarker(db, table) {
-  return db.prepare("SELECT last_marker FROM sync_state WHERE table_name = ?").get(table)?.last_marker ?? "";
-}
-
-function saveLocalMarker(db, table, marker) {
-  db.prepare("INSERT OR REPLACE INTO sync_state (table_name, last_marker, updated_at) VALUES (?, ?, ?)")
-    .run(table, marker, new Date().toISOString());
-}
-
-/**
- * Stream local rows newer than the high-water mark and upsert them in batches.
- * Streaming (.iterate) avoids loading whole tables into memory — the OOM/abort that
- * killed the old SELECT *.all() approach once data grew.
- */
-async function syncTable(db, table, columns, { markerCol = "ingested_at", orMode = "REPLACE" } = {}) {
-  const hw = localMarker(db, table) || (await tursoMaxMarker(table, markerCol));
-  const colList = columns.join(", ");
-  const insertSql = `INSERT OR ${orMode} INTO ${table} (${colList}) VALUES (${columns.map(() => "?").join(", ")})`;
-  const selectSql = hw
-    ? `SELECT ${colList} FROM ${table} WHERE ${markerCol} >= ? ORDER BY ${markerCol}`
-    : `SELECT ${colList} FROM ${table}`;
-  const iterator = hw ? db.prepare(selectSql).iterate(hw) : db.prepare(selectSql).iterate();
-
-  let batch = [];
-  let n = 0;
-  let maxSeen = "";
-  for (const row of iterator) {
-    const m = row[markerCol];
-    if (m != null && String(m) > maxSeen) maxSeen = String(m);
-    batch.push({ sql: insertSql, args: columns.map((c) => row[c]) });
-    if (batch.length >= BATCH) {
-      await tursoPipeline(batch);
-      n += batch.length;
-      batch = [];
-    }
-  }
-  if (batch.length) {
-    await tursoPipeline(batch);
-    n += batch.length;
-  }
-  if (maxSeen || hw) saveLocalMarker(db, table, maxSeen || hw);
-  console.log(`Synced ${table}: +${n} rows (since ${markerCol} >= ${hw || "BEGINNING"})`);
-  return n;
-}
+// The per-table sync core (marker resolution, row selection, statement building)
+// lives in lib/sync-tables.js so it can be unit-tested; this script only wires it
+// to the real Turso pipeline endpoint.
+const client = { pipeline: tursoPipeline };
 
 const db = openDb();
-// Local-only bookkeeping (never pushed to Turso): per-table sync watermark.
-db.exec(`
-  CREATE TABLE IF NOT EXISTS sync_state (
-    table_name TEXT PRIMARY KEY,
-    last_marker TEXT NOT NULL,
-    updated_at TEXT NOT NULL
-  );
-`);
+ensureSyncState(db);
 try {
-  await syncTable(db, "signatures", ["signature", "scope_address", "slot", "block_time", "err", "summary_json", "ingested_at"]);
-  await syncTable(db, "events", ["signature", "scope_address", "slot", "block_time", "fee_payer", "event_type", "programs_json", "counterparties_json", "parse_note", "ingested_at"]);
-  await syncTable(db, "signers", ["tx_sig", "scope_address", "address", "role", "ingested_at"]);
-  await syncTable(db, "transfers", ["tx_sig", "scope_address", "idx", "from_address", "to_address", "mint", "amount", "slot", "ingested_at"]);
-  await syncTable(db, "program_calls", ["tx_sig", "scope_address", "idx", "program_id", "instruction_name", "slot", "ingested_at"]);
-  // edges: omit autoincrement id (local ids reset on ephemeral hosts and would clobber
-  // unrelated Turso rows); dedupe on the natural unique index via INSERT OR IGNORE.
-  await syncTable(db, "edges", ["scope_address", "from_address", "to_address", "tx_sig", "slot", "edge_type", "mint", "ingested_at"], { orMode: "IGNORE" });
+  for (const { table, columns, orMode } of SYNC_TABLES) {
+    await syncTable(db, client, table, columns, { orMode, batchSize: BATCH });
+  }
 
   // ingest_state is tiny (one row per scope) — full upsert, no marker needed.
   const stateRows = db.prepare("SELECT scope_key, last_before_signature, updated_at FROM ingest_state").all();
