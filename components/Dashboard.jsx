@@ -31,6 +31,9 @@ const USDC_MAINNET = "Xqfwj8PrgpjksqgnopR9DwDuNZAXrqVHDbdcQ34pump";
 
 const INSPECT_DEBOUNCE_MS = 350;
 const LIVE_POLL_MS = 42_000;
+/** Slow /api/health poll driving the header data-live/stale badge — freshness only
+ *  changes on worker cadence (~90s rounds), so once a minute is plenty. */
+const HEALTH_POLL_MS = 60_000;
 /** When a searched scope is queued for first-time ingestion, re-check the score on this cadence.
  *  The always-on worker picks queued scopes up within a minute or two, so poll briskly. */
 const QUEUED_POLL_MS = 25_000;
@@ -1056,6 +1059,7 @@ function BriefBody({ analysis, preliminary, error, loading, webhookMeta, entityC
 
 export function Dashboard({ initialAddress } = {}) {
   const [ping, setPing] = useState(null);
+  const [health, setHealth] = useState(null);
   // Scope comes from the server (?address= read in the page's searchParams), so the
   // correct target is rendered on first paint — no flash, no throwaway fetch.
   const [focusAddress, setFocusAddress] = useState(
@@ -1361,6 +1365,28 @@ export function Dashboard({ initialAddress } = {}) {
   useEffect(() => {
     focusAddressRef.current = focusAddress;
   }, [focusAddress]);
+
+  // Ingest-freshness poll — drives the header badge so stale pipeline data is never
+  // silently presented as live. /api/health answers 503 when stale; read the body
+  // either way.
+  useEffect(() => {
+    let cancelled = false;
+    const poll = async () => {
+      try {
+        const r = await fetch("/api/health");
+        const j = await r.json().catch(() => null);
+        if (!cancelled) setHealth(j);
+      } catch {
+        if (!cancelled) setHealth(null);
+      }
+    };
+    void poll();
+    const id = setInterval(() => void poll(), HEALTH_POLL_MS);
+    return () => {
+      cancelled = true;
+      clearInterval(id);
+    };
+  }, []);
 
   useEffect(() => {
     void fetch("/api/watchlist")
@@ -1703,6 +1729,20 @@ export function Dashboard({ initialAddress } = {}) {
             <p className="font-mono text-[10px] text-cm-faint">
               Auto sweep <span className="text-cm-muted">{LIVE_POLL_MS / 1000}s</span>
             </p>
+            {health?.database === "turso" ? (
+              <>
+                <div className="hidden h-8 w-px bg-cm-border sm:block" />
+                <p className="font-mono text-[10px]" title={health.lastIngestAt ? `Last ingest ${health.lastIngestAt}` : "No worker heartbeat yet"}>
+                  {health.stale ? (
+                    <span className="text-cm-warn">
+                      data stale{Number.isFinite(health.staleMinutes) ? ` since ${health.staleMinutes} min` : ""}
+                    </span>
+                  ) : (
+                    <span className="text-cm-terminal">data live</span>
+                  )}
+                </p>
+              </>
+            ) : null}
           </div>
           <button
             type="button"
