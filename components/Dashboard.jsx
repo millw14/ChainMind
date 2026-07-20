@@ -1103,6 +1103,9 @@ export function Dashboard({ initialAddress } = {}) {
   // checks this ref on completion, dropping stale responses instead of letting the
   // previous scope's data render under the new scope's address.
   const focusAddressRef = useRef(focusAddress);
+  // Pending "force the analyst after score/evidence kick off" timer from runFullAnalysis —
+  // tracked so a scope switch or unmount cancels it (force bypasses all throttles).
+  const fullAnalysisGroqTimerRef = useRef(0);
 
   const [loading, setLoading] = useState({});
   const [loadingGroq, setLoadingGroq] = useState(false);
@@ -1614,7 +1617,8 @@ export function Dashboard({ initialAddress } = {}) {
       void runScore({ force });
       walletTableRef.current?.reload?.();
       // Let score/evidence start populating the snapshot, then force the analyst.
-      window.setTimeout(() => {
+      window.clearTimeout(fullAnalysisGroqTimerRef.current);
+      fullAnalysisGroqTimerRef.current = window.setTimeout(() => {
         void runGroqAuto({ force: true });
       }, 1200);
     },
@@ -1635,6 +1639,8 @@ export function Dashboard({ initialAddress } = {}) {
     setGroqAnalysis(null);
     setGroqErr(null);
     setGroqWebhookMeta(null);
+    // Cancel any pending forced-analyst timer on scope change and on unmount.
+    return () => window.clearTimeout(fullAnalysisGroqTimerRef.current);
   }, [focusAddress]);
 
   useEffect(() => {
