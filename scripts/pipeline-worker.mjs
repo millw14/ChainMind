@@ -201,7 +201,11 @@ See docs/strategic-plan-data-pipeline.md (Phase 1).
       try {
         execSync("node scripts/sync-sqlite-to-turso.mjs", { stdio: "inherit", cwd: process.cwd() });
       } catch {
+        // In --once (scheduled/CI) mode a swallowed sync failure means the run
+        // produced nothing durable — surface it via the exit code so the
+        // scheduler shows red. Continuous mode retries next round as before.
         console.error("Turso sync failed (see log above). Continuing.");
+        if (once) process.exitCode = 1;
       }
     }
 
