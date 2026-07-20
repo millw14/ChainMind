@@ -1642,6 +1642,9 @@ export function Dashboard({ initialAddress } = {}) {
         const msg = typeof j?.error === "string" ? j.error : [r.status, r.statusText].filter(Boolean).join(" ").trim();
         const err = new Error(msg || "Brief request failed");
         err.status = r.status;
+        // Distinguishes our own limiter's 429 from Groq's — they need very
+        // different backoffs and very different wording.
+        err.code = typeof j?.code === "string" ? j.code : null;
         throw err;
       }
       return j;
@@ -1690,7 +1693,11 @@ export function Dashboard({ initialAddress } = {}) {
       }
     } catch (e) {
       console.warn("[dashboard] groq auto", e);
-      if (e?.status === 429) {
+      if (e?.status === 429 && e?.code === "local_rate_limit") {
+        // Our own per-IP throttle, not Groq's — don't blame Groq and don't apply
+        // the long account-global cooldown; the next sweep can retry.
+        if (!stale()) setGroqErr("Throttled by this app's own rate limit — retrying on the next sweep");
+      } else if (e?.status === 429) {
         const backoff = parseGroqRetryMs(e.message) ?? GROQ_RATE_LIMIT_BACKOFF_MS;
         // The cooldown is account-global, so honor it even for a stale-scope response.
         groqCooldownUntilRef.current = Date.now() + backoff;
