@@ -806,6 +806,7 @@ export function GlobalIntelFeedStrip({ entries, loading, hint, meta, onPickScope
             }
 
             if (kind === "persistent_cluster") {
+              const fp = String(item.clusterFingerprint ?? "");
               const canon = item.canonicalClusterId ? String(item.canonicalClusterId) : "";
               const scopes = Array.isArray(item.scopes) ? item.scopes.filter((s) => typeof s === "string") : [];
               const mc = Number(item.memberCount) || 0;
