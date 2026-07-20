@@ -27,9 +27,11 @@ export async function GET(request) {
   if (!client) return NextResponse.json({ ok: false, error: "Turso not configured" }, { status: 503 });
   const { searchParams } = new URL(request.url);
   const limit = Math.min(50, Math.max(1, Number(searchParams.get("limit") ?? 20) || 20));
+  const offset = Math.min(10_000, Math.max(0, Number(searchParams.get("offset") ?? 0) || 0));
   try {
-    const cases = await tursoFetchRecentCases(client, limit);
-    return NextResponse.json({ ok: true, cases });
+    // Fetch one extra row past the page so hasMore is exact without a COUNT.
+    const rows = await tursoFetchRecentCases(client, limit + 1, offset);
+    return NextResponse.json({ ok: true, cases: rows.slice(0, limit), hasMore: rows.length > limit, limit, offset });
   } catch (e) {
     return NextResponse.json({ ok: false, error: String(e?.message ?? e) }, { status: 500 });
   }
