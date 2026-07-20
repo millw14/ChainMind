@@ -1116,7 +1116,17 @@ export function Dashboard({ initialAddress } = {}) {
   const [analysisStartedAt, setAnalysisStartedAt] = useState(/** @type {number | null} */ (null));
   const handleEvidenceStatus = useCallback((s) => setEvidenceStatus(s), []);
 
-  const setLoad = (key, v) => setLoading((s) => ({ ...s, [key]: v }));
+  // Loading keys are reference-counted: overlapping fetches share keys (the 42s sweep,
+  // queued re-checks and widen retries all use "score"), so only the last one to finish
+  // may clear the flag — otherwise the staged progress indicator reports completion and
+  // re-enables the Run button while work is still in flight.
+  const loadCountsRef = useRef({});
+  const setLoad = (key, v) => {
+    const counts = loadCountsRef.current;
+    counts[key] = Math.max(0, (counts[key] ?? 0) + (v ? 1 : -1));
+    const on = counts[key] > 0;
+    setLoading((s) => (Boolean(s[key]) === on ? s : { ...s, [key]: on }));
+  };
 
   const fetchJson = useCallback(async (url, key, { timeoutMs } = {}) => {
     setLoad(key, true);
@@ -1390,14 +1400,21 @@ export function Dashboard({ initialAddress } = {}) {
     const a = focusAddress.trim();
     if (!a) {
       setInspect(null);
-      setLoad("inspect", false);
       return;
     }
+    // Hold the inspect loading key through the debounce gap so the UI doesn't flash
+    // "done"; the fetch takes its own (ref-counted) hold when the timer fires.
     setLoad("inspect", true);
+    let held = true;
     const id = setTimeout(() => {
       void runInspect();
+      setLoad("inspect", false);
+      held = false;
     }, INSPECT_DEBOUNCE_MS);
-    return () => clearTimeout(id);
+    return () => {
+      clearTimeout(id);
+      if (held) setLoad("inspect", false);
+    };
   }, [focusAddress, inspectLimit, runInspect]);
 
   useEffect(() => {
