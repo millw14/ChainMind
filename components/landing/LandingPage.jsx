@@ -232,7 +232,7 @@ function ScanInput() {
 
 export function LandingPage() {
   const reduceMotion = useReducedMotion() ?? false;
-  const headlineText = "Detect and prove coordinated manipulation before it becomes visible.";
+  const headlineText = "Detect and prove coordinated manipulation as it forms on-chain.";
   const typedHeadline = useTypewriter(headlineText, 28, 200, !reduceMotion);
   const fv = fadeUp(reduceMotion);
   const fs = fadeScale(reduceMotion);
@@ -352,9 +352,9 @@ export function LandingPage() {
                 sub: "Wash rotation, Sybil-style pumps, coordination clusters—structured evidence, not a single scalar.",
               },
               {
-                k: "Pre-tape alerts",
+                k: "Threshold alerts",
                 v: "Webhook when confidence spikes",
-                sub: "Run incremental ingest + detectors; get pushed when something crosses your threshold.",
+                sub: "Run incremental ingest + detectors; a webhook you configure gets pushed when something crosses your threshold.",
               },
             ].map((item) => (
               <motion.div

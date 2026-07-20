@@ -2,12 +2,24 @@
 // - Deletes cases for known entities (USDC etc.).
 // - Keeps only the latest case per (scope, day); deletes the rest.
 // Full original set remains in data/chainmind-export.db as backup.
-import fs from "node:fs";
+// Env: TURSO_DATABASE_URL/TURSO_AUTH_TOKEN (or LIBSQL_URL/LIBSQL_TOKEN).
+import { loadEnv } from "../lib/load-env.js";
+loadEnv();
 import { createClient } from "@libsql/client/web";
+import { getTursoClient } from "../lib/turso.js";
 import { isKnownEntity } from "../lib/known-entities.js";
 
-const { token } = JSON.parse(fs.readFileSync("data/.libsql-auth.json", "utf8"));
-const c = createClient({ url: "https://libsql-production-9bc3.up.railway.app", authToken: token });
+const c =
+  process.env.LIBSQL_URL && process.env.LIBSQL_TOKEN
+    ? createClient({
+        url: process.env.LIBSQL_URL.replace(/^libsql:\/\//, "https://"),
+        authToken: process.env.LIBSQL_TOKEN,
+      })
+    : getTursoClient();
+if (!c) {
+  console.error("Set TURSO_DATABASE_URL + TURSO_AUTH_TOKEN (or LIBSQL_URL + LIBSQL_TOKEN).");
+  process.exit(1);
+}
 
 const before = Number((await c.execute("SELECT COUNT(*) c FROM investigation_cases")).rows[0].c);
 const rows = (await c.execute("SELECT id, scope_address, created_at FROM investigation_cases")).rows.map((r) => ({

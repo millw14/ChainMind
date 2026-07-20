@@ -8,9 +8,11 @@
  * bidirectional flow (wash-like round-trips), and lets you drill into a neighbor.
  */
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 const TIMEOUT_MS = 30_000;
+/** Typing in the subject input fires one request per pause, not one per keystroke. */
+const DEBOUNCE_MS = 400;
 
 function shortAddr(a) {
   if (!a || a.length < 12) return a || "—";
@@ -50,8 +52,13 @@ export function WalletNeighborhood({ address, onPickAddress }) {
     setSubject(address || "");
   }, [address]);
 
+  // Monotonic request id: a slow earlier response must not overwrite a newer one (or
+  // clear the spinner while the newest request is still running).
+  const reqSeqRef = useRef(0);
+
   const load = useCallback(async (addr) => {
     const a = String(addr ?? "").trim();
+    const reqId = ++reqSeqRef.current;
     if (!a) {
       setData(null);
       setError(null);
@@ -64,18 +71,23 @@ export function WalletNeighborhood({ address, onPickAddress }) {
         signal: AbortSignal.timeout(TIMEOUT_MS),
       });
       const j = await r.json().catch(() => ({}));
+      if (reqId !== reqSeqRef.current) return; // superseded by a newer request — drop it
       if (!r.ok || j.ok === false) throw new Error(j.error || `HTTP ${r.status}`);
       setData(j);
     } catch (e) {
+      if (reqId !== reqSeqRef.current) return;
       setError(e?.name === "TimeoutError" ? "Neighborhood query timed out." : String(e.message));
       setData(null);
     } finally {
-      setLoading(false);
+      if (reqId === reqSeqRef.current) setLoading(false);
     }
   }, []);
 
   useEffect(() => {
-    void load(subject);
+    const id = setTimeout(() => {
+      void load(subject);
+    }, DEBOUNCE_MS);
+    return () => clearTimeout(id);
   }, [subject, load]);
 
   const neighbors = data?.neighbors ?? [];
