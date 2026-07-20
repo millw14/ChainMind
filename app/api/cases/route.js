@@ -79,10 +79,13 @@ export async function POST(request) {
       ? body.groqAnalysis
       : null;
 
+  // Caller-requested autoGroq stays operator-only, but the server-side
+  // CASE_AUTO_GROQ opt-in applies to same-origin dashboard creates too — the
+  // per-IP limiter above already bounds the Groq spend, and without this every
+  // keyless dashboard case landed without a verdict.
   const autoGroq =
-    operator &&
     groqAnalysis == null &&
-    (Boolean(body.autoGroq) || String(process.env.CASE_AUTO_GROQ ?? "").trim() === "1");
+    ((operator && Boolean(body.autoGroq)) || String(process.env.CASE_AUTO_GROQ ?? "").trim() === "1");
 
   const inspectLimit = Math.min(100, Math.max(1, Number(body.inspectLimit) || 12));
 
