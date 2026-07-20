@@ -3,9 +3,9 @@
 // operator bearer check. Run with: npm test
 import { test, beforeEach, afterEach } from "node:test";
 import assert from "node:assert/strict";
-import { requireCronAuth, hasOperatorAuth, clientIp } from "../lib/api-auth.js";
+import { requireCronAuth, hasOperatorAuth, isSameOriginBrowser, clientIp } from "../lib/api-auth.js";
 
-const ENV_KEYS = ["CRON_SECRET", "CHAINMIND_OPERATOR_SECRET", "GROQ_BRIEF_SECRET"];
+const ENV_KEYS = ["CRON_SECRET", "CHAINMIND_OPERATOR_SECRET", "GROQ_BRIEF_SECRET", "NEXT_PUBLIC_APP_URL"];
 /** @type {Record<string, string | undefined>} */
 let saved = {};
 
@@ -67,6 +67,49 @@ test("hasOperatorAuth: matches CHAINMIND_OPERATOR_SECRET and legacy env keys", (
   assert.equal(hasOperatorAuth(req("Bearer legacy-secret")), false); // not passed as legacy key
   assert.equal(hasOperatorAuth(req("Bearer legacy-secret"), ["GROQ_BRIEF_SECRET"]), true);
   assert.equal(hasOperatorAuth(req("Bearer wrong"), ["GROQ_BRIEF_SECRET"]), false);
+});
+
+/** @param {Record<string, string>} headers */
+const originReq = (headers) => new Request("http://dash.example/api/groq-brief", { method: "POST", headers });
+
+test("isSameOriginBrowser: Sec-Fetch-Site same-origin is enough", () => {
+  assert.equal(isSameOriginBrowser(originReq({ "sec-fetch-site": "same-origin" })), true);
+  assert.equal(isSameOriginBrowser(originReq({ "sec-fetch-site": "cross-site" })), false);
+});
+
+test("isSameOriginBrowser: Origin matching the request's own host passes without NEXT_PUBLIC_APP_URL", () => {
+  // Browsers that omit Fetch Metadata must not be locked out of their own dashboard.
+  assert.equal(
+    isSameOriginBrowser(originReq({ origin: "https://dash.example", host: "dash.example" })),
+    true,
+  );
+  assert.equal(
+    isSameOriginBrowser(originReq({ origin: "https://preview-xyz.vercel.app", host: "preview-xyz.vercel.app" })),
+    true,
+  );
+});
+
+test("isSameOriginBrowser: honors x-forwarded-host ahead of host", () => {
+  assert.equal(
+    isSameOriginBrowser(originReq({ origin: "https://app.example", "x-forwarded-host": "app.example", host: "internal:3000" })),
+    true,
+  );
+});
+
+test("isSameOriginBrowser: a genuinely foreign Origin is rejected", () => {
+  assert.equal(isSameOriginBrowser(originReq({ origin: "https://evil.example", host: "dash.example" })), false);
+  process.env.NEXT_PUBLIC_APP_URL = "https://dash.example";
+  assert.equal(isSameOriginBrowser(originReq({ origin: "https://evil.example", host: "other.internal" })), false);
+});
+
+test("isSameOriginBrowser: falls back to NEXT_PUBLIC_APP_URL when the proxy rewrites Host", () => {
+  process.env.NEXT_PUBLIC_APP_URL = "https://dash.example";
+  assert.equal(isSameOriginBrowser(originReq({ origin: "https://dash.example", host: "internal-lb:8080" })), true);
+});
+
+test("isSameOriginBrowser: no Origin and no Fetch Metadata → false (server-to-server)", () => {
+  assert.equal(isSameOriginBrowser(originReq({})), false);
+  assert.equal(isSameOriginBrowser(originReq({ origin: "not a url", host: "dash.example" })), false);
 });
 
 test("clientIp: first x-forwarded-for hop, 'unknown' when absent", () => {
