@@ -1,0 +1,32 @@
+# CI — runs the unit tests and a production Next build on every push and PR,
+# so the ingest workflow (which executes freshly pushed code against production
+# Turso) never runs code npm test has not checked. No secrets needed: the app
+# degrades gracefully when TURSO_* env is absent.
+name: ci
+
+on:
+  push:
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      # postinstall must run — it stubs the native libsql package.
+      - run: npm ci
+
+      - run: npm test
+
+      - run: npm run build
