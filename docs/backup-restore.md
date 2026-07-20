@@ -1,9 +1,13 @@
-# Backup & restore — self-hosted libSQL
+# Backup & restore — Turso Cloud
 
-The production DB is self-hosted **libSQL** on Railway (`libsql-production-9bc3.up.railway.app`),
-data on a single Railway volume. A volume loss = data loss, so back up regularly.
+The production DB is a **Turso Cloud** database (`TURSO_DATABASE_URL` + `TURSO_AUTH_TOKEN`,
+same values on Vercel, the Railway-hosted pipeline worker, and the GitHub Actions secrets).
+The Vercel app reads it; the always-on worker on Railway (nixpacks.toml:
+`node scripts/pipeline-worker.mjs --turso-sync`) writes to it every round.
 
-Auth token + URL: `data/.libsql-auth.json` (gitignored). Keep it safe — it's the DB credential.
+> Historical note: an earlier iteration ran a self-hosted libSQL server on Railway as the
+> primary DB. That instance is retired — the restore scripts below survive from that
+> migration and work against any libSQL-protocol target, including Turso Cloud.
 
 ## What's irreplaceable vs regenerable
 - **Irreplaceable:** `investigation_cases` (saved cases), `groq_analysis_log` (verdict cache),
@@ -11,51 +15,43 @@ Auth token + URL: `data/.libsql-auth.json` (gitignored). Keep it safe — it's t
 - **Regenerable from chain:** `signatures`, `events`, `transfers`, `edges`, `signers`,
   `program_calls` — the worker rebuilds these by re-ingesting.
 
-## Backup (logical dump → portable SQLite file)
-Tested, read-only against the server. Produces a single `.db` file you can store anywhere.
+## Scheduled off-site backup (Cloudflare R2)
+`.github/workflows/backup.yml` runs weekly (Mondays 04:20 UTC, plus manual dispatch) and
+executes `node scripts/backup-and-upload.mjs`: dump the irreplaceable tables to a
+timestamped SQLite file, upload it to the R2 bucket under `backups/critical-<ts>.db`.
+It needs these repository secrets (the first step fails loudly when any is missing):
+`TURSO_DATABASE_URL`, `TURSO_AUTH_TOKEN`, `R2_ENDPOINT`, `R2_BUCKET`, `R2_ACCESS_KEY_ID`,
+`R2_SECRET_ACCESS_KEY`.
 
-```bash
-# from repo root; token from data/.libsql-auth.json
-LIBSQL_URL="https://libsql-production-9bc3.up.railway.app" \
-LIBSQL_TOKEN="<jwt from data/.libsql-auth.json>" \
-EXPORT_OUT_PATH="data/backups/libsql-$(date -u +%Y%m%dT%H%M%SZ).db" \
-EXPORT_PAGE_SIZE=800 \
-node scripts/export-turso-to-sqlite.mjs
-```
+Note GitHub auto-disables scheduled workflows after 60 days without repo activity —
+re-enable under the Actions tab if backups go quiet.
 
-**Store the resulting file off-Railway** (a volume backup that lives on the same volume is
-useless). Options: download it locally, push to object storage, or commit-LFS to a private repo.
-
-## Restore (into a fresh / replacement libSQL)
-1. Stand up a new libSQL service (Railway → Docker image `ghcr.io/tursodatabase/libsql-server:latest`,
-   volume at `/var/lib/sqld`, `SQLD_NODE=primary`, `SQLD_HTTP_LISTEN_ADDR=0.0.0.0:8080`,
-   `SQLD_AUTH_JWT_KEY=<key>`; add a public domain on port 8080).
-2. Apply schema: `LIBSQL_URL=… LIBSQL_TOKEN=… node scripts/apply-schema-libsql.mjs`
-3. Load data: point `import-sqlite-to-libsql.mjs` at the backup file and run it
-   (`LIBSQL_URL=… LIBSQL_TOKEN=… IMPORT_BATCH=500 node scripts/import-sqlite-to-libsql.mjs`,
-   with `data/chainmind-export.db` = your backup, or adjust the path).
-4. Flip `TURSO_DATABASE_URL`/`TURSO_AUTH_TOKEN` on Vercel + the Railway worker to the new instance.
-
-This is the exact path used for the original Turso→libSQL migration, so it's proven.
-
-## Recommended: continuous off-site backup (do when you can)
-The robust long-term answer is sqld's **bottomless S3 replication** — continuous backup to an
-S3-compatible bucket (e.g. Cloudflare R2, free tier). It needs a bucket + keys, then env on the
-libSQL service. Until that's set up, run the logical dump above on a schedule (e.g. daily) and
-keep the last few files off-Railway.
-
-## Interim safety net
-The original **Turso** instance still holds the migration snapshot (everything up to cutover) as a
-warm fallback. Don't decommission it until off-site backups are in place.
-
-## Off-site backup is configured (Cloudflare R2)
-R2 creds live in `.env.local` (`R2_ENDPOINT`, `R2_BUCKET`, `R2_ACCESS_KEY_ID`,
-`R2_SECRET_ACCESS_KEY`). One command dumps the critical tables and uploads them:
+## Manual backup
+Same path, by hand (R2\_\* + TURSO\_\* in `.env.local`):
 
 ```bash
 npm run backup        # critical tables only (small, fast) → R2 bucket/backups/critical-<ts>.db
 npm run backup:full   # entire DB (large, slow over a flaky link)
 ```
 
-Backups land in the `chainmindbackups` bucket under `backups/`. Schedule `npm run backup`
-(e.g. daily via Task Scheduler / cron) for hands-off off-site durability.
+To keep a local file without uploading, run the dump step directly:
+
+```bash
+EXPORT_OUT_PATH="data/backups/turso-$(date -u +%Y%m%dT%H%M%SZ).db" \
+SKIP_TABLES=signatures,events,transfers,edges,signers,program_calls \
+node scripts/export-turso-to-sqlite.mjs
+```
+
+## Restore (into a fresh / replacement Turso DB)
+1. Create a new Turso database (turso.tech) and grab its URL + auth token.
+2. Apply schema:
+   `LIBSQL_URL=libsql://<new-db>.turso.io LIBSQL_TOKEN=<token> node scripts/apply-schema-libsql.mjs`
+   (idempotent — applies `schema/turso.sql`).
+3. Load data: point `import-sqlite-to-libsql.mjs` at the backup file
+   (it reads `data/chainmind-export.db` — copy/rename your downloaded backup there):
+   `LIBSQL_URL=… LIBSQL_TOKEN=… IMPORT_BATCH=500 node scripts/import-sqlite-to-libsql.mjs`
+4. Flip `TURSO_DATABASE_URL`/`TURSO_AUTH_TOKEN` everywhere they live: Vercel env, the
+   Railway worker env, and the GitHub Actions secrets (backup + ingest workflows).
+5. Let the worker re-ingest the regenerable tables; watch `/api/health` go fresh.
+
+This is the exact script pair used for the original Turso→libSQL migration, so it's proven.
