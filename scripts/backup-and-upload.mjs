@@ -1,19 +1,24 @@
 // One-command off-site backup: dump the irreplaceable tables from the production
 // libSQL → timestamped SQLite file → upload to Cloudflare R2.
-// Run on demand or on a schedule. Env: data/.libsql-auth.json (libSQL token) + R2_* in .env.local.
+// Run on demand or on a schedule. Env: TURSO_DATABASE_URL + TURSO_AUTH_TOKEN
+// (or LIBSQL_URL + LIBSQL_TOKEN for an explicit target) + R2_* in .env.local.
 //
 //   node scripts/backup-and-upload.mjs            # critical tables only (small, fast)
 //   node scripts/backup-and-upload.mjs --full     # full DB (large; over a flaky link this is slow)
 import { execFileSync } from "node:child_process";
-import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { loadEnv } from "../lib/load-env.js";
 loadEnv();
 
 const root = resolve(import.meta.dirname ?? ".", "..");
 const full = process.argv.includes("--full");
-const { token } = JSON.parse(readFileSync(resolve(root, "data/.libsql-auth.json"), "utf8"));
-const LIBSQL_URL = "https://libsql-production-9bc3.up.railway.app";
+if (
+  !(process.env.LIBSQL_URL && process.env.LIBSQL_TOKEN) &&
+  !(process.env.TURSO_DATABASE_URL && process.env.TURSO_AUTH_TOKEN)
+) {
+  console.error("Set TURSO_DATABASE_URL + TURSO_AUTH_TOKEN (or LIBSQL_URL + LIBSQL_TOKEN).");
+  process.exit(1);
+}
 
 const ts = new Date().toISOString().replace(/[:-]|\.\d{3}/g, "");
 const kind = full ? "full" : "critical";
@@ -22,10 +27,10 @@ const outPath = resolve(root, `data/backups/${kind}-${ts}.db`);
 // Regenerable tables (the worker rebuilds these from chain) — skipped for the small backup.
 const REGENERABLE = "signatures,events,transfers,edges,signers,program_calls";
 
+// export-turso-to-sqlite.mjs resolves the target itself: LIBSQL_URL/LIBSQL_TOKEN
+// if set, else TURSO_DATABASE_URL/TURSO_AUTH_TOKEN — both inherited from process.env.
 const env = {
   ...process.env,
-  LIBSQL_URL,
-  LIBSQL_TOKEN: token,
   EXPORT_OUT_PATH: outPath,
   EXPORT_PAGE_SIZE: full ? "400" : "300",
   CHAINMIND_TURSO_RETRIES: "40",
