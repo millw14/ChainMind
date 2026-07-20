@@ -237,8 +237,17 @@ export async function POST(request) {
     const limiter = getTursoClient();
     if (limiter) {
       const rl = await tursoRateLimit(limiter, `groq-brief:${clientIp(request)}`, briefRateLimitPerMin());
-      if (!rl.allowed || rl.error) {
-        return NextResponse.json({ error: "Too many requests — slow down a moment." }, { status: 429 });
+      // Only a real limit breach blocks. A limiter *outage* (missing rate_limit
+      // table, Turso hiccup) must not 429 every request — that silently kills
+      // analyst briefs and reads as "Groq is down" in the UI. Auth + the client's
+      // 2-minute throttle still bound the spend, so log and continue.
+      if (rl.error) {
+        console.error("[groq-brief] rate limiter unavailable — allowing request");
+      } else if (!rl.allowed) {
+        return NextResponse.json(
+          { error: "Too many requests — slow down a moment.", code: "local_rate_limit" },
+          { status: 429 },
+        );
       }
     }
   }
