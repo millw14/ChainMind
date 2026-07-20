@@ -141,7 +141,12 @@ See docs/strategic-plan-data-pipeline.md (Phase 1).
     }
 
     // Merge new addresses from scan queue, capped at maxActiveScopes (the worker
-    // processes every scope each round, so total must stay bounded).
+    // processes every scope each round, so total must stay bounded). At capacity,
+    // rotate: static watchlist scopes are permanent, but queue-derived scopes yield
+    // their slot to the least-recently-picked queue row — bounded per round so each
+    // admitted scope still gets several rounds of processing before rotating out.
+    const maxRotations = 2;
+    let rotations = 0;
     try {
       const queued = await tursoHttpFetchPendingScanQueue(20);
       for (const q of queued) {
@@ -155,7 +160,13 @@ See docs/strategic-plan-data-pipeline.md (Phase 1).
           await tursoHttpMarkScanQueuePicked(q.address);
           continue;
         }
-        if (scopes.length >= maxActiveScopes) break;
+        if (scopes.length >= maxActiveScopes) {
+          const evictAt = scopes.findIndex((s) => !staticScopes.some((w) => w.address === s.address));
+          if (evictAt === -1 || rotations >= maxRotations) break;
+          const [evicted] = scopes.splice(evictAt, 1);
+          rotations++;
+          console.log(`- rotate: ${evicted.address} yields slot`);
+        }
         scopes.push({ address: q.address, note: q.note ?? "from scan queue" });
         await tursoHttpMarkScanQueuePicked(q.address);
         console.log(`+ queue: ${q.address}`);
