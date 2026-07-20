@@ -40,9 +40,17 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Investigations · ChainMind" };
 
-export default async function CasesPage() {
+/** Rows added per "Load more" click (the page re-renders with a grown ?limit=). */
+const PAGE_SIZE = 50;
+
+export default async function CasesPage({ searchParams }) {
+  const sp = await searchParams;
+  const limit = Math.min(500, Math.max(PAGE_SIZE, Number(sp?.limit) || PAGE_SIZE));
   const client = getTursoClient();
-  const cases = client ? await tursoFetchRecentCases(client, 50).catch(() => []) : [];
+  // One extra row past the page tells us whether a "Load more" link is warranted.
+  const rows = client ? await tursoFetchRecentCases(client, limit + 1).catch(() => []) : [];
+  const hasMore = rows.length > limit;
+  const cases = rows.slice(0, limit);
 
   return (
     <main className="mx-auto max-w-[88rem] px-3 py-6 sm:px-6 sm:py-8">
@@ -101,6 +109,17 @@ export default async function CasesPage() {
           })}
         </div>
       )}
+
+      {hasMore ? (
+        <div className="mt-4 text-center">
+          <Link
+            href={`/cases?limit=${limit + PAGE_SIZE}`}
+            className="inline-block rounded-md border border-cm-border bg-cm-elevated px-4 py-2 font-mono text-xs text-cm-muted transition hover:border-cm-accent/40 hover:text-cm-text"
+          >
+            Load more ↓
+          </Link>
+        </div>
+      ) : null}
     </main>
   );
 }
