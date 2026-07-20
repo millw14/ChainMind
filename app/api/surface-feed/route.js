@@ -11,6 +11,7 @@ export const runtime = "nodejs";
 export async function GET(request) {
   const { searchParams } = new URL(request.url);
   const limit = Math.min(100, Math.max(1, Number(searchParams.get("limit") ?? 24) || 24));
+  const offset = Math.min(10_000, Math.max(0, Number(searchParams.get("offset") ?? 0) || 0));
 
   const client = getTursoClient();
   if (!client) {
@@ -23,8 +24,16 @@ export async function GET(request) {
   }
 
   try {
-    const hits = await tursoFetchSurfaceHits(client, limit);
-    return NextResponse.json({ ok: true, database: "turso", hits });
+    // Fetch one extra row past the page so hasMore is exact without a COUNT.
+    const rows = await tursoFetchSurfaceHits(client, limit + 1, offset);
+    return NextResponse.json({
+      ok: true,
+      database: "turso",
+      hits: rows.slice(0, limit),
+      hasMore: rows.length > limit,
+      limit,
+      offset,
+    });
   } catch (e) {
     const msg = String(e?.message ?? e);
     if (/no such table/i.test(msg)) {
