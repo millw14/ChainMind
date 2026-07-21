@@ -585,6 +585,7 @@ const surfaceSeverityBar = {
  */
 export function SurfaceFeedStrip({ hits, loading, hint, onPickScope, onPinCompare }) {
   const reduce = useReducedMotion() ?? false;
+  const [showAllMobile, setShowAllMobile] = useState(false);
   return (
     <motion.div
       id="autonomous-surfaces"
@@ -615,7 +616,11 @@ export function SurfaceFeedStrip({ hits, loading, hint, onPickScope, onPinCompar
         </p>
       ) : null}
       {hits && hits.length > 0 ? (
-        <ul className="max-h-64 space-y-2 overflow-y-auto pr-1">
+        <ul
+          className={`space-y-2 pr-1 sm:max-h-64 sm:overflow-y-auto ${
+            showAllMobile ? "" : "[&>li:nth-child(n+5)]:hidden sm:[&>li:nth-child(n+5)]:block"
+          }`}
+        >
           {hits.map((row) => {
             const sev = surfaceSeverityBar[row.severity] ?? surfaceSeverityBar.low;
             return (
@@ -658,6 +663,15 @@ export function SurfaceFeedStrip({ hits, loading, hint, onPickScope, onPinCompar
           })}
         </ul>
       ) : null}
+      {!showAllMobile && hits && hits.length > 4 ? (
+        <button
+          type="button"
+          onClick={() => setShowAllMobile(true)}
+          className="mt-2 w-full rounded-md border border-cm-border-subtle py-2 font-mono text-[11px] text-cm-faint transition-colors hover:text-cm-muted sm:hidden"
+        >
+          ＋{hits.length - 4} more
+        </button>
+      ) : null}
     </motion.div>
   );
 }
@@ -681,6 +695,7 @@ const globalKindLabel = {
  */
 export function GlobalIntelFeedStrip({ entries, loading, hint, meta, onPickScope, onPinCompare }) {
   const reduce = useReducedMotion() ?? false;
+  const [showAllMobile, setShowAllMobile] = useState(false);
   const list = entries ?? [];
   return (
     <motion.div
@@ -727,7 +742,11 @@ export function GlobalIntelFeedStrip({ entries, loading, hint, meta, onPickScope
         </p>
       ) : null}
       {list.length > 0 ? (
-        <ul className="max-h-64 space-y-2 overflow-y-auto pr-1">
+        <ul
+          className={`space-y-2 pr-1 sm:max-h-64 sm:overflow-y-auto ${
+            showAllMobile ? "" : "[&>li:nth-child(n+5)]:hidden sm:[&>li:nth-child(n+5)]:block"
+          }`}
+        >
           {list.map((row, idx) => {
             const kind = String(row.kind ?? "");
             const item = row.item && typeof row.item === "object" ? row.item : {};
@@ -918,6 +937,15 @@ export function GlobalIntelFeedStrip({ entries, loading, hint, meta, onPickScope
             );
           })}
         </ul>
+      ) : null}
+      {!showAllMobile && list.length > 4 ? (
+        <button
+          type="button"
+          onClick={() => setShowAllMobile(true)}
+          className="mt-2 w-full rounded-md border border-cm-border-subtle py-2 font-mono text-[11px] text-cm-faint transition-colors hover:text-cm-muted sm:hidden"
+        >
+          ＋{list.length - 4} more
+        </button>
       ) : null}
     </motion.div>
   );
