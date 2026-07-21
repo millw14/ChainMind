@@ -118,6 +118,32 @@ function Panel({ kicker, title, subtitle, children, actions }) {
   );
 }
 
+// Collapses a secondary panel on mobile only. On lg+ the toggle is hidden and
+// children render normally (the wrapped Panel supplies its own header); below lg
+// the panel is hidden until expanded, with a compact toggle standing in for it.
+function MobileCollapse({ kicker, title, children }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div>
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        aria-expanded={open}
+        className="flex w-full min-h-[48px] items-center justify-between gap-3 rounded-xl border border-cm-border bg-cm-surface/40 px-4 py-3 text-left transition-colors active:bg-cm-row-hover hover:bg-cm-row-hover lg:hidden"
+      >
+        <span className="min-w-0">
+          {kicker ? (
+            <span className="block font-mono text-[10px] font-semibold uppercase tracking-[0.22em] text-cm-faint">{kicker}</span>
+          ) : null}
+          <span className="mt-0.5 block truncate text-sm font-semibold text-cm-text">{title}</span>
+        </span>
+        <span className="shrink-0 font-mono text-xs text-cm-faint select-none">{open ? "▲ collapse" : "▼ expand"}</span>
+      </button>
+      <div className={`${open ? "mt-2" : "hidden"} lg:mt-0 lg:block`}>{children}</div>
+    </div>
+  );
+}
+
 function ExpandableRaw({ label = "Technical details (JSON)", data }) {
   if (data == null) return null;
   return (
@@ -1828,7 +1854,7 @@ export function Dashboard({ initialAddress } = {}) {
       </div>
 
       <motion.main
-        className="mx-auto max-w-[88rem] space-y-6 px-3 py-6 sm:px-6 sm:py-8"
+        className="mx-auto max-w-[88rem] space-y-4 px-3 py-6 sm:space-y-6 sm:px-6 sm:py-8"
         initial="hidden"
         animate="show"
         variants={mainStagger}
@@ -2012,36 +2038,44 @@ export function Dashboard({ initialAddress } = {}) {
             </Panel>
           </div>
 
-          <div className="min-w-0 space-y-6 lg:col-span-4">
+          <div className="order-first min-w-0 space-y-6 lg:order-none lg:col-span-4">
             <RiskHero profile={risk} scopeLabel={focusAddress.trim() ? shortSig(focusAddress.trim()) : "—"} />
 
-            <Panel kicker="Topology" title="Scope graph" subtitle="Fee payers from ingest · RPC satellites fallback">
-              <WalletGraphForce graph={walletGraphVisual} onNodeClick={(addr) => setFocusAddress(addr)} />
-              <IntelDocsHint />
-            </Panel>
+            <MobileCollapse kicker="Topology" title="Scope graph">
+              <Panel kicker="Topology" title="Scope graph" subtitle="Fee payers from ingest · RPC satellites fallback">
+                <WalletGraphForce graph={walletGraphVisual} onNodeClick={(addr) => setFocusAddress(addr)} />
+                <IntelDocsHint />
+              </Panel>
+            </MobileCollapse>
 
-            <Panel kicker="Temporal" title="Activity density" subtitle="Ingest buckets or RPC confirmation density">
-              {score?.timelineBuckets?.length ? (
-                <CoordinationTimeline buckets={score.timelineBuckets} />
-              ) : (
-                <RpcActivityTimeline signatures={inspect?.signatures} />
-              )}
-            </Panel>
+            <MobileCollapse kicker="Temporal" title="Activity density">
+              <Panel kicker="Temporal" title="Activity density" subtitle="Ingest buckets or RPC confirmation density">
+                {score?.timelineBuckets?.length ? (
+                  <CoordinationTimeline buckets={score.timelineBuckets} />
+                ) : (
+                  <RpcActivityTimeline signatures={inspect?.signatures} />
+                )}
+              </Panel>
+            </MobileCollapse>
 
-            <Panel kicker="Signals" title="Coordination decomposition" subtitle="Driver lines from scored windows">
-              <CollectedSignalStrip stats={watchedScopeStats} loadingScore={loading.score} />
-              <ScoreBody data={score} loading={loading.score} hideMainScore />
-            </Panel>
+            <MobileCollapse kicker="Signals" title="Coordination decomposition">
+              <Panel kicker="Signals" title="Coordination decomposition" subtitle="Driver lines from scored windows">
+                <CollectedSignalStrip stats={watchedScopeStats} loadingScore={loading.score} />
+                <ScoreBody data={score} loading={loading.score} hideMainScore />
+              </Panel>
+            </MobileCollapse>
           </div>
         </motion.div>
 
         <motion.div variants={panelV} className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-          <Panel kicker="Corpus" title="Synced datastore" subtitle="Signatures & parsed events mirrored for analysis">
-            <DbBody data={dbStats} loading={loading.db && dbStats == null} watchScope={focusAddress} />
-            {dbStats != null && loading.db ? (
-              <p className="mt-3 text-center font-mono text-[10px] text-cm-faint">Refreshing counts…</p>
-            ) : null}
-          </Panel>
+          <MobileCollapse kicker="Corpus" title="Synced datastore">
+            <Panel kicker="Corpus" title="Synced datastore" subtitle="Signatures & parsed events mirrored for analysis">
+              <DbBody data={dbStats} loading={loading.db && dbStats == null} watchScope={focusAddress} />
+              {dbStats != null && loading.db ? (
+                <p className="mt-3 text-center font-mono text-[10px] text-cm-faint">Refreshing counts…</p>
+              ) : null}
+            </Panel>
+          </MobileCollapse>
 
           <Panel
             kicker="Synthesis"
@@ -2092,13 +2126,15 @@ export function Dashboard({ initialAddress } = {}) {
         </motion.div>
 
         <motion.div variants={panelV}>
-          <Panel
-            kicker="Graph"
-            title="Wallet connections"
-            subtitle="Counterparties in the edge graph · click a wallet to explore · balanced two-way flow flagged as round-trip"
-          >
-            <WalletNeighborhood address={focusAddress.trim()} onPickAddress={(addr) => setFocusAddress(addr)} />
-          </Panel>
+          <MobileCollapse kicker="Graph" title="Wallet connections">
+            <Panel
+              kicker="Graph"
+              title="Wallet connections"
+              subtitle="Counterparties in the edge graph · click a wallet to explore · balanced two-way flow flagged as round-trip"
+            >
+              <WalletNeighborhood address={focusAddress.trim()} onPickAddress={(addr) => setFocusAddress(addr)} />
+            </Panel>
+          </MobileCollapse>
         </motion.div>
       </motion.main>
     </div>
