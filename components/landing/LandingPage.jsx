@@ -247,7 +247,7 @@ export function LandingPage() {
         <HeroGraphDecor reduce={reduceMotion} />
         <div className={`relative ${shell} pb-20 pt-14 sm:pb-24 sm:pt-20`}>
           <motion.div
-            className="relative grid gap-12 lg:grid-cols-[1fr,minmax(0,22rem)] lg:items-center lg:gap-16"
+            className="relative grid grid-cols-1 gap-12 lg:grid-cols-[1fr,minmax(0,22rem)] lg:items-center lg:gap-16"
             initial="hidden"
             animate="show"
             variants={scFast}
@@ -334,7 +334,7 @@ export function LandingPage() {
           </motion.div>
 
           <motion.div
-            className="relative mt-16 grid gap-3 sm:mt-20 sm:grid-cols-3 sm:gap-4"
+            className="relative mt-16 grid grid-cols-1 gap-3 sm:mt-20 sm:grid-cols-3 sm:gap-4"
             initial="hidden"
             whileInView="show"
             viewport={inViewOpts}
@@ -404,7 +404,7 @@ export function LandingPage() {
           </motion.div>
 
           <motion.ol
-            className="mt-12 grid list-none gap-3 p-0 sm:grid-cols-2 lg:grid-cols-4 lg:gap-4"
+            className="mt-12 grid grid-cols-1 list-none gap-3 p-0 sm:grid-cols-2 lg:grid-cols-4 lg:gap-4"
             initial="hidden"
             whileInView="show"
             viewport={inViewOpts}
@@ -469,7 +469,7 @@ export function LandingPage() {
             </motion.p>
           </motion.div>
           <motion.div
-            className="mt-10 grid gap-4 md:grid-cols-3 md:gap-5"
+            className="mt-10 grid grid-cols-1 gap-4 md:grid-cols-3 md:gap-5"
             initial="hidden"
             whileInView="show"
             viewport={inViewOpts}
