@@ -1837,7 +1837,7 @@ export function Dashboard({ initialAddress } = {}) {
           <AlertStrip alerts={intelAlerts} />
         </motion.div>
 
-        <motion.div variants={panelV} className="grid gap-4 lg:grid-cols-2">
+        <motion.div variants={panelV} className="grid grid-cols-1 gap-4 lg:grid-cols-2">
           <SurfaceFeedStrip
             hits={surfaceFeed ?? []}
             loading={loadingSurfaceFeed}
@@ -1875,7 +1875,7 @@ export function Dashboard({ initialAddress } = {}) {
           title="Watch target & scan parameters"
           subtitle="Everything downstream keys off this pubkey — mint, wallet, or program."
         >
-          <div className="grid gap-4 lg:grid-cols-12 lg:gap-6">
+          <div className="grid grid-cols-1 gap-4 lg:grid-cols-12 lg:gap-6">
             <div className="min-w-0 lg:col-span-6">
               <label className="mb-1.5 block font-mono text-[10px] font-semibold uppercase tracking-wider text-cm-faint">
                 Solana address (base58)
@@ -1947,7 +1947,7 @@ export function Dashboard({ initialAddress } = {}) {
               </div>
             </div>
           </div>
-          <div className="mt-4 grid gap-4 border-t border-cm-border-subtle pt-4 lg:grid-cols-12">
+          <div className="mt-4 grid grid-cols-1 gap-4 border-t border-cm-border-subtle pt-4 lg:grid-cols-12">
             <div className="lg:col-span-5">
               <AnalysisControls
                 disabled={!focusAddress.trim()}
@@ -1996,8 +1996,8 @@ export function Dashboard({ initialAddress } = {}) {
         </Panel>
         </motion.div>
 
-        <motion.div variants={panelV} className="grid gap-6 lg:grid-cols-12">
-          <div className="space-y-6 lg:col-span-8">
+        <motion.div variants={panelV} className="grid grid-cols-1 gap-6 lg:grid-cols-12">
+          <div className="min-w-0 space-y-6 lg:col-span-8">
             <Panel
               kicker="Telemetry"
               title="Signature stream"
@@ -2012,7 +2012,7 @@ export function Dashboard({ initialAddress } = {}) {
             </Panel>
           </div>
 
-          <div className="space-y-6 lg:col-span-4">
+          <div className="min-w-0 space-y-6 lg:col-span-4">
             <RiskHero profile={risk} scopeLabel={focusAddress.trim() ? shortSig(focusAddress.trim()) : "—"} />
 
             <Panel kicker="Topology" title="Scope graph" subtitle="Fee payers from ingest · RPC satellites fallback">
@@ -2035,7 +2035,7 @@ export function Dashboard({ initialAddress } = {}) {
           </div>
         </motion.div>
 
-        <motion.div variants={panelV} className="grid gap-6 lg:grid-cols-2">
+        <motion.div variants={panelV} className="grid grid-cols-1 gap-6 lg:grid-cols-2">
           <Panel kicker="Corpus" title="Synced datastore" subtitle="Signatures & parsed events mirrored for analysis">
             <DbBody data={dbStats} loading={loading.db && dbStats == null} watchScope={focusAddress} />
             {dbStats != null && loading.db ? (

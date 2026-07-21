@@ -188,7 +188,7 @@ export function WalletGraphForce({ graph, onNodeClick }) {
 
   return (
     <div className="relative overflow-hidden rounded-md border border-cm-border" style={{ background: "#080612" }}>
-      <canvas ref={canvasRef} onClick={handleClick} style={{ display: "block", width: "100%", cursor: "crosshair" }} />
+      <canvas ref={canvasRef} onClick={handleClick} style={{ display: "block", width: "100%", maxWidth: "100%", cursor: "crosshair" }} />
       <div style={{ position: "absolute", bottom: 8, left: 8, right: 8, display: "flex", justifyContent: "space-between", fontFamily: "monospace", fontSize: 8, color: "rgba(139,92,246,0.45)" }}>
         <span>
           <span style={{color:"rgba(239,68,68,0.7)"}}>● high</span>
