@@ -76,76 +76,89 @@ function TerminalCard({ reduce }) {
 
 const shell = "mx-auto w-full max-w-6xl px-3 sm:px-6";
 
+/** Points of the rising market line, in the 200x200 viewBox. */
+const MARKET_PTS = [
+  [8, 168],
+  [38, 150],
+  [64, 160],
+  [92, 112],
+  [118, 126],
+  [148, 72],
+  [174, 88],
+  [194, 38],
+];
+
 function HeroGraphDecor({ reduce }) {
+  const line = MARKET_PTS.map((p, i) => `${i === 0 ? "M" : "L"}${p[0]},${p[1]}`).join(" ");
+  const area = `${line} L194,196 L8,196 Z`;
+  const cx = MARKET_PTS.map((p) => p[0]);
+  const cy = MARKET_PTS.map((p) => p[1]);
+  const [endX, endY] = MARKET_PTS[MARKET_PTS.length - 1];
+
   return (
-    <div className="pointer-events-none absolute inset-0 overflow-hidden opacity-[0.65]" aria-hidden>
+    <div className="pointer-events-none absolute inset-0 overflow-hidden opacity-[0.7]" aria-hidden>
       <motion.svg
-        className="absolute -right-8 top-8 h-72 w-72 text-cm-accent sm:right-12 sm:top-12 sm:h-96 sm:w-96"
+        className="absolute -right-6 top-10 h-72 w-80 text-cm-accent sm:right-10 sm:top-14 sm:h-96 sm:w-[26rem]"
         viewBox="0 0 200 200"
-        animate={
-          reduce
-            ? {}
-            : {
-                y: [0, -10, 4, 0],
-                rotate: [0, -1.5, 1.2, 0],
-                scale: [1, 1.03, 1],
-              }
-        }
+        animate={reduce ? {} : { y: [0, -8, 0] }}
         transition={graphFloatTransition(reduce)}
       >
         <defs>
-          <radialGradient id="hg" cx="50%" cy="50%" r="50%">
-            <stop offset="0%" stopColor="rgba(16, 185, 129, 0.35)" />
+          <linearGradient id="marketArea" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="rgba(16, 185, 129, 0.28)" />
             <stop offset="100%" stopColor="rgba(16, 185, 129, 0)" />
+          </linearGradient>
+          <radialGradient id="dotGlow" cx="50%" cy="50%" r="50%">
+            <stop offset="0%" stopColor="rgba(110, 231, 183, 0.5)" />
+            <stop offset="100%" stopColor="rgba(110, 231, 183, 0)" />
           </radialGradient>
         </defs>
-        <motion.circle
-          cx="100"
-          cy="100"
-          r="88"
-          fill="url(#hg)"
-          animate={reduce ? {} : { opacity: [0.85, 1, 0.9, 1] }}
-          transition={{ duration: 6, repeat: Infinity, ease: "easeInOut" }}
+
+        {/* soft area fill beneath the line */}
+        <motion.path
+          d={area}
+          fill="url(#marketArea)"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ duration: 1.6, delay: reduce ? 0 : 0.5 }}
         />
-        {[0, 45, 90, 135, 180, 225, 270, 315].map((deg, i) => {
-          const r = 72;
-          const rad = (deg * Math.PI) / 180;
-          const x = 100 + r * Math.cos(rad - Math.PI / 2);
-          const y = 100 + r * Math.sin(rad - Math.PI / 2);
-          return (
-            <g key={deg}>
-              <motion.line
-                x1="100"
-                y1="100"
-                x2={x}
-                y2={y}
-                stroke="rgba(16, 185, 129, 0.28)"
-                strokeWidth="0.75"
-                animate={reduce ? {} : { opacity: [0.35, 0.85, 0.45] }}
-                transition={{ duration: 3.2 + i * 0.25, repeat: Infinity, ease: "easeInOut", delay: i * 0.08 }}
-              />
-              <circle cx={x} cy={y} r={i % 2 === 0 ? 4 : 3} fill="rgba(244, 242, 248, 0.12)" stroke="rgba(16, 185, 129, 0.45)" strokeWidth="0.5" />
-            </g>
-          );
-        })}
-        <motion.circle
-          cx="100"
-          cy="100"
-          r="10"
-          fill="#10b981"
-          animate={reduce ? {} : { scale: [1, 1.08, 1], opacity: [0.9, 1, 0.92] }}
-          transition={{ duration: 2.8, repeat: Infinity, ease: "easeInOut" }}
-        />
-        <motion.circle
-          cx="100"
-          cy="100"
-          r="16"
+
+        {/* the rising line, drawn in */}
+        <motion.path
+          d={line}
           fill="none"
-          stroke="rgba(110, 231, 183, 0.4)"
-          strokeWidth="0.75"
-          animate={reduce ? {} : { scale: [1, 1.12, 1], opacity: [0.5, 0.95, 0.55] }}
-          transition={{ duration: 3.5, repeat: Infinity, ease: "easeInOut", delay: 0.4 }}
+          stroke="#10b981"
+          strokeWidth="2.5"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          initial={{ pathLength: reduce ? 1 : 0 }}
+          animate={{ pathLength: 1 }}
+          transition={{ duration: 2.2, ease: "easeInOut" }}
+          style={{ filter: "drop-shadow(0 0 6px rgba(16, 185, 129, 0.45))" }}
         />
+
+        {/* dot tracing along the path */}
+        {!reduce && (
+          <>
+            <motion.circle
+              r="9"
+              fill="url(#dotGlow)"
+              initial={{ cx: cx[0], cy: cy[0] }}
+              animate={{ cx, cy }}
+              transition={{ duration: 5, ease: "linear", repeat: Infinity, repeatDelay: 0.6 }}
+            />
+            <motion.circle
+              r="3.5"
+              fill="#6ee7b7"
+              initial={{ cx: cx[0], cy: cy[0] }}
+              animate={{ cx, cy }}
+              transition={{ duration: 5, ease: "linear", repeat: Infinity, repeatDelay: 0.6 }}
+            />
+          </>
+        )}
+
+        {/* resting endpoint marker (also the static state for reduced motion) */}
+        <circle cx={endX} cy={endY} r="3.5" fill="#10b981" />
       </motion.svg>
     </div>
   );
