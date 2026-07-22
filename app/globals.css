@@ -3,35 +3,35 @@
 @tailwind utilities;
 
 /*
- * ChainMind theme — warm neutral surfaces + violet accent (no blue/cyan stack)
- * Accents and borders pull from purple/violet so it reads clearly different from zinc/sky or slate/cyan.
+ * ChainMind theme — neutral near-black surfaces + Robinhood green accent.
+ * Accent pulls from Robinhood's brand green so it reads instantly as Robinhood Chain.
  */
 :root {
   color-scheme: dark;
 
-  --cm-bg: #0a090c;
-  --cm-surface: #121016;
-  --cm-elevated: #1a1620;
-  --cm-card: #221c2a;
-  --cm-row: #141118;
-  --cm-row-hover: #2a2234;
+  --cm-bg: #080a09;
+  --cm-surface: #101311;
+  --cm-elevated: #171b18;
+  --cm-card: #1c211e;
+  --cm-row: #10130f;
+  --cm-row-hover: #232a25;
 
   --cm-border: rgba(255, 255, 255, 0.08);
   --cm-border-subtle: rgba(255, 255, 255, 0.04);
 
-  --cm-text: #f4f2f8;
-  --cm-subtle: #ddd7e8;
-  --cm-muted: #9c93b0;
-  --cm-faint: #6b6278;
+  --cm-text: #f2f5f3;
+  --cm-subtle: #d7ddd9;
+  --cm-muted: #93a099;
+  --cm-faint: #626b66;
 
-  --cm-accent: #8b5cf6;
-  --cm-accent-bright: #c4b5fd;
-  --cm-accent-dim: #6d28d9;
-  --cm-on-accent: #0a090c;
+  --cm-accent: #00c805;
+  --cm-accent-bright: #4ade80;
+  --cm-accent-dim: #15803d;
+  --cm-on-accent: #04140a;
 
-  --cm-accent-ring: rgba(139, 92, 246, 0.42);
-  --cm-hero-glow: rgba(196, 181, 253, 0.06);
-  --cm-footer-glow: rgba(139, 92, 246, 0.04);
+  --cm-accent-ring: rgba(0, 200, 5, 0.42);
+  --cm-hero-glow: rgba(74, 222, 128, 0.06);
+  --cm-footer-glow: rgba(0, 200, 5, 0.04);
 
   --cm-ok: #34d399;
   --cm-warn: #fbbf24;
@@ -41,7 +41,7 @@
   --cm-terminal: #4ade80;
   --cm-scanline: rgba(255, 255, 255, 0.03);
 
-  --cm-grid-major: rgba(139, 92, 246, 0.06);
+  --cm-grid-major: rgba(0, 200, 5, 0.06);
   --cm-grid-minor: rgba(255, 255, 255, 0.04);
 }
 
@@ -127,13 +127,13 @@ html {
   0%,
   100% {
     box-shadow:
-      0 0 0 0 rgba(139, 92, 246, 0.25),
+      0 0 0 0 rgba(0, 200, 5, 0.25),
       inset 0 0 0 0 rgba(244, 63, 94, 0);
   }
   50% {
     box-shadow:
-      0 0 32px -4px rgba(139, 92, 246, 0.45),
-      inset 0 1px 0 0 rgba(196, 181, 253, 0.08);
+      0 0 32px -4px rgba(0, 200, 5, 0.45),
+      inset 0 1px 0 0 rgba(74, 222, 128, 0.08);
   }
 }
 
