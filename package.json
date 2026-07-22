@@ -47,7 +47,8 @@
     "framer-motion": "^12.38.0",
     "next": "^15.5.6",
     "react": "^19.0.0",
-    "react-dom": "^19.0.0"
+    "react-dom": "^19.0.0",
+    "viem": "^2.55.5"
   },
   "devDependencies": {
     "autoprefixer": "^10.4.20",
