@@ -13,7 +13,7 @@ export function SiteHeader() {
     <header className="sticky top-0 z-50 border-b border-cm-border bg-cm-card/90 pt-[env(safe-area-inset-top,0px)] backdrop-blur-md">
       <div className="mx-auto flex min-h-12 max-w-[88rem] items-center justify-between gap-2 px-3 sm:min-h-14 sm:gap-3 sm:px-6">
         <Link href="/" className="flex min-w-0 items-center gap-2.5 text-sm font-semibold tracking-tight text-cm-text">
-          <span className="relative flex h-8 w-8 shrink-0 items-center justify-center rounded border border-cm-accent/20 bg-cm-card shadow-[0_0_20px_-6px_rgba(139,92,246,0.75)]">
+          <span className="relative flex h-8 w-8 shrink-0 items-center justify-center rounded border border-cm-accent/20 bg-cm-card shadow-[0_0_20px_-6px_rgba(0,200,5,0.75)]">
             <ChainMindLogo size={22} />
             <span className="absolute -right-0.5 -top-0.5 h-2 w-2 rounded-full bg-cm-terminal shadow-[0_0_8px_rgba(74,222,128,0.6)]" />
           </span>
