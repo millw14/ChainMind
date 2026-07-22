@@ -1,7 +1,7 @@
 import { ConsoleHeader } from "@/components/console/ConsoleHeader";
 
 export const metadata = {
-  title: "Coordination investigation",
+  title: "Robinhood Chain — AI explorer",
 };
 
 export default function AppShellLayout({ children }) {

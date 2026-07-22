@@ -17,7 +17,7 @@ export function SiteFooter() {
               <p className="text-xs font-semibold uppercase tracking-wide text-cm-faint">Product</p>
               <ul className="mt-2 space-y-1.5 text-cm-muted">
                 <li>
-                  <Link href="/dashboard" className="hover:text-cm-text">
+                  <Link href="/ask" className="hover:text-cm-text">
                     Solana dashboard
                   </Link>
                 </li>

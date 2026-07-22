@@ -20,7 +20,7 @@ export default function HowItWorksPage() {
             <h2 className="text-lg font-semibold text-cm-text">1. Solana dashboard</h2>
             <p className="mt-2 text-sm leading-relaxed text-cm-muted">
               The{" "}
-              <Link href="/dashboard" className="font-medium text-cm-text underline-offset-4 hover:underline">
+              <Link href="/ask" className="font-medium text-cm-text underline-offset-4 hover:underline">
                 dashboard
               </Link>{" "}
               validates RPC health, pulls recent signatures for any base58, and renders scored coordination windows
@@ -130,7 +130,7 @@ export default function HowItWorksPage() {
 
         <div className="mt-14 flex flex-col gap-3 sm:flex-row sm:items-center">
           <Link
-            href="/dashboard"
+            href="/ask"
             className="inline-flex h-12 items-center justify-center rounded-xl bg-cm-accent px-6 text-sm font-semibold text-cm-on-accent transition hover:bg-cm-accent-bright sm:min-w-[10.5rem]"
           >
             Open dashboard
