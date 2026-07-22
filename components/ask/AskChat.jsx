@@ -2,6 +2,8 @@
 import { useEffect, useRef, useState } from "react";
 import { motion, useReducedMotion } from "framer-motion";
 
+const EXPLORER = "https://robinhoodchain.blockscout.com";
+
 const THINKING_PHASES = ["reading chain", "gathering evidence", "asking the model"];
 
 function ThinkingIndicator() {
@@ -52,10 +54,28 @@ function shortHex(v) {
   return `${v.slice(0, 6)}…${v.slice(-4)}`;
 }
 
+function explorerUrl(target, kind) {
+  if (!target) return EXPLORER;
+  return kind === "tx" ? `${EXPLORER}/tx/${target}` : `${EXPLORER}/address/${target}`;
+}
+
+/** Real, working example prompts — clicking one runs it. */
 const EXAMPLES = [
-  { label: "Explain a transaction", hint: "What happened in 0x<tx hash>?" },
-  { label: "Analyze a wallet", hint: "What is 0x<address> and what has it been doing?" },
-  { label: "Look up a token", hint: "Tell me about the token at 0x<address>." },
+  {
+    label: "Explain a token",
+    query: "Tell me about the token at 0xda80bc8f014cfd7e564a3f8cd0c31417cc751111",
+    hint: "PUMP · 0xda80…1111",
+  },
+  {
+    label: "Analyze a wallet",
+    query: "What is 0x966C2F237b3C6e2e29D8be0e2D50DdB036b8Ca79 doing?",
+    hint: "wallet · 0x966C…Ca79",
+  },
+  {
+    label: "Explain a transaction",
+    query: "What happened in 0x49ffc3bb77fe638d72d64e2f30880c86319bbc20c18a47160d2d8c717428e09b?",
+    hint: "tx · 0x49ff…e09b",
+  },
 ];
 
 export function AskChat() {
@@ -63,23 +83,16 @@ export function AskChat() {
   const [messages, setMessages] = useState([]);
   const [busy, setBusy] = useState(false);
   const endRef = useRef(null);
-  const didPrefill = useRef(false);
-
-  // Prefill from a ?q= param (e.g. the landing-page hero input) once on mount.
-  useEffect(() => {
-    if (didPrefill.current) return;
-    didPrefill.current = true;
-    const q = new URLSearchParams(window.location.search).get("q");
-    if (q) setInput(q);
-  }, []);
+  const busyRef = useRef(false);
+  const didInit = useRef(false);
 
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, busy]);
 
-  async function send() {
-    const text = input.trim();
-    if (!text || busy) return;
+  async function send(override) {
+    const text = (typeof override === "string" ? override : input).trim();
+    if (!text || busyRef.current) return;
 
     const target = extractTarget(text);
     setMessages((m) => [...m, { role: "user", content: text }]);
@@ -96,6 +109,7 @@ export function AskChat() {
       return;
     }
 
+    busyRef.current = true;
     setBusy(true);
     try {
       const res = await fetch("/api/ask", {
@@ -118,9 +132,19 @@ export function AskChat() {
     } catch (e) {
       setMessages((m) => [...m, { role: "assistant", error: String(e?.message ?? e) }]);
     } finally {
+      busyRef.current = false;
       setBusy(false);
     }
   }
+
+  // Auto-run a ?q= param once on mount (landing-page handoff / shared links).
+  useEffect(() => {
+    if (didInit.current) return;
+    didInit.current = true;
+    const q = new URLSearchParams(window.location.search).get("q");
+    if (q) send(q);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   function onKeyDown(e) {
     if (e.key === "Enter" && !e.shiftKey) {
@@ -147,18 +171,21 @@ export function AskChat() {
       {/* Conversation */}
       <div className="flex-1 space-y-4 pb-4">
         {empty && (
-          <div className="grid gap-2 sm:grid-cols-3">
-            {EXAMPLES.map((ex) => (
-              <button
-                key={ex.label}
-                type="button"
-                onClick={() => setInput(ex.hint)}
-                className="rounded-lg border border-cm-border bg-cm-card px-3 py-3 text-left text-sm text-cm-subtle transition hover:border-cm-accent/40 hover:bg-cm-row-hover"
-              >
-                <span className="block font-medium text-cm-text">{ex.label}</span>
-                <span className="mt-1 block font-mono text-[11px] text-cm-faint">{ex.hint}</span>
-              </button>
-            ))}
+          <div>
+            <p className="mb-2 font-mono text-[11px] uppercase tracking-wider text-cm-faint">Try one</p>
+            <div className="grid gap-2 sm:grid-cols-3">
+              {EXAMPLES.map((ex) => (
+                <button
+                  key={ex.label}
+                  type="button"
+                  onClick={() => send(ex.query)}
+                  className="group rounded-lg border border-cm-border bg-cm-card px-3 py-3 text-left text-sm text-cm-subtle transition hover:border-cm-accent/50 hover:bg-cm-row-hover"
+                >
+                  <span className="block font-medium text-cm-text group-hover:text-cm-accent-bright">{ex.label}</span>
+                  <span className="mt-1 block font-mono text-[11px] text-cm-faint">{ex.hint}</span>
+                </button>
+              ))}
+            </div>
           </div>
         )}
 
@@ -183,7 +210,7 @@ export function AskChat() {
           />
           <button
             type="button"
-            onClick={send}
+            onClick={() => send()}
             disabled={busy || !input.trim()}
             className="shrink-0 rounded-lg bg-cm-accent px-4 py-2 text-sm font-semibold text-cm-on-accent transition hover:bg-cm-accent-bright disabled:cursor-not-allowed disabled:opacity-40"
           >
@@ -220,10 +247,19 @@ function Message({ m }) {
       {(m.kind || m.target) && (
         <div className="mb-1.5 flex items-center gap-2 font-mono text-[10px] uppercase tracking-wider text-cm-faint">
           {m.kind && <span className="rounded bg-cm-row px-1.5 py-0.5 text-cm-terminal">{m.kind}</span>}
-          {m.target && <span>{shortHex(m.target)}</span>}
+          {m.target && (
+            <a
+              href={explorerUrl(m.target, m.kind)}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="hover:text-cm-accent-bright hover:underline"
+            >
+              {shortHex(m.target)} ↗
+            </a>
+          )}
         </div>
       )}
-      <p className="whitespace-pre-wrap text-sm leading-relaxed text-cm-text">{m.content}</p>
+      <Markdown text={m.content} />
       {m.evidence && (
         <details className="mt-2 rounded border border-cm-border-subtle bg-cm-card/60 px-2 py-1">
           <summary className="cursor-pointer select-none font-mono text-[11px] text-cm-faint">Evidence</summary>
@@ -232,9 +268,114 @@ function Message({ m }) {
           </pre>
         </details>
       )}
-      {m.model && (
-        <p className="mt-1.5 font-mono text-[9px] text-cm-faint">{m.model}</p>
-      )}
+      <div className="mt-2 flex items-center gap-3">
+        <CopyButton text={m.content} />
+        {m.model && <span className="font-mono text-[9px] text-cm-faint">{m.model}</span>}
+      </div>
+    </div>
+  );
+}
+
+function CopyButton({ text }) {
+  const [copied, setCopied] = useState(false);
+  return (
+    <button
+      type="button"
+      onClick={async () => {
+        try {
+          await navigator.clipboard.writeText(String(text ?? ""));
+          setCopied(true);
+          setTimeout(() => setCopied(false), 1500);
+        } catch {
+          /* clipboard unavailable */
+        }
+      }}
+      className="font-mono text-[10px] text-cm-faint transition hover:text-cm-subtle"
+    >
+      {copied ? "copied ✓" : "copy"}
+    </button>
+  );
+}
+
+/* --------- tiny markdown renderer (bold, inline code, bullet/number lists) --------- */
+
+function renderInline(text) {
+  const nodes = [];
+  const regex = /(\*\*([^*]+)\*\*|`([^`]+)`)/g;
+  let last = 0;
+  let match;
+  let key = 0;
+  while ((match = regex.exec(text)) !== null) {
+    if (match.index > last) nodes.push(text.slice(last, match.index));
+    if (match[2] != null) {
+      nodes.push(
+        <strong key={key++} className="font-semibold text-cm-text">
+          {match[2]}
+        </strong>,
+      );
+    } else if (match[3] != null) {
+      nodes.push(
+        <code key={key++} className="rounded bg-cm-row px-1 py-0.5 font-mono text-[0.85em] text-cm-subtle">
+          {match[3]}
+        </code>,
+      );
+    }
+    last = match.index + match[0].length;
+  }
+  if (last < text.length) nodes.push(text.slice(last));
+  return nodes;
+}
+
+function Markdown({ text }) {
+  const lines = String(text ?? "").split("\n");
+  const blocks = [];
+  let list = null;
+  const flush = () => {
+    if (list) {
+      blocks.push(list);
+      list = null;
+    }
+  };
+  for (const raw of lines) {
+    const line = raw.replace(/\s+$/, "");
+    const bullet = line.match(/^\s*[-*]\s+(.*)$/);
+    const numbered = line.match(/^\s*\d+\.\s+(.*)$/);
+    if (bullet) {
+      if (!list || list.type !== "ul") {
+        flush();
+        list = { type: "ul", items: [] };
+      }
+      list.items.push(bullet[1]);
+    } else if (numbered) {
+      if (!list || list.type !== "ol") {
+        flush();
+        list = { type: "ol", items: [] };
+      }
+      list.items.push(numbered[1]);
+    } else if (line.trim() === "") {
+      flush();
+    } else {
+      flush();
+      blocks.push({ type: "p", text: line });
+    }
+  }
+  flush();
+
+  return (
+    <div className="space-y-2 text-sm leading-relaxed text-cm-text">
+      {blocks.map((b, i) => {
+        if (b.type === "p") return <p key={i}>{renderInline(b.text)}</p>;
+        const items = b.items.map((it, j) => <li key={j}>{renderInline(it)}</li>);
+        return b.type === "ul" ? (
+          <ul key={i} className="list-disc space-y-1 pl-5 marker:text-cm-accent">
+            {items}
+          </ul>
+        ) : (
+          <ol key={i} className="list-decimal space-y-1 pl-5 marker:text-cm-faint">
+            {items}
+          </ol>
+        );
+      })}
     </div>
   );
 }
