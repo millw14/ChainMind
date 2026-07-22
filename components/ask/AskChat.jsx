@@ -1,5 +1,42 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
+import { motion, useReducedMotion } from "framer-motion";
+
+const THINKING_PHASES = ["reading chain", "gathering evidence", "asking the model"];
+
+function ThinkingIndicator() {
+  const reduce = useReducedMotion() ?? false;
+  const [phase, setPhase] = useState(0);
+
+  useEffect(() => {
+    if (reduce) return;
+    const id = setInterval(() => setPhase((p) => (p + 1) % THINKING_PHASES.length), 1500);
+    return () => clearInterval(id);
+  }, [reduce]);
+
+  return (
+    <div className="flex items-center gap-2.5 font-mono text-xs text-cm-terminal">
+      <span className="flex h-4 items-end gap-[3px]">
+        {[0, 1, 2, 3, 4].map((i) => (
+          <motion.span
+            key={i}
+            className="w-[3px] rounded-full bg-cm-terminal"
+            style={{ height: 5 }}
+            animate={reduce ? {} : { height: [5, 15, 5] }}
+            transition={{ duration: 0.9, repeat: Infinity, ease: "easeInOut", delay: i * 0.12 }}
+          />
+        ))}
+      </span>
+      {reduce ? (
+        <span>reading chain…</span>
+      ) : (
+        <motion.span key={phase} initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3 }}>
+          {THINKING_PHASES[phase]}…
+        </motion.span>
+      )}
+    </div>
+  );
+}
 
 /** Pull the first tx hash (0x + 64 hex) or address (0x + 40 hex) out of free text. */
 function extractTarget(text) {
@@ -129,12 +166,7 @@ export function AskChat() {
           <Message key={i} m={m} />
         ))}
 
-        {busy && (
-          <div className="flex items-center gap-2 font-mono text-xs text-cm-terminal">
-            <span className="inline-block h-2 w-2 animate-pulse-slow rounded-full bg-cm-terminal" />
-            reading chain…
-          </div>
-        )}
+        {busy && <ThinkingIndicator />}
         <div ref={endRef} />
       </div>
 
