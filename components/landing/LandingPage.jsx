@@ -1,7 +1,6 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { useState, useEffect } from "react";
 import { motion, useReducedMotion } from "framer-motion";
 import {
@@ -168,53 +167,6 @@ function CtaLink({ href, className, children }) {
   );
 }
 
-function AskInput() {
-  const router = useRouter();
-  const [value, setValue] = useState("");
-  const [error, setError] = useState("");
-
-  function handleSubmit(e) {
-    e.preventDefault();
-    const val = value.trim();
-    if (!val) return;
-    const hasTarget = /0x[0-9a-fA-F]{40}(?:[0-9a-fA-F]{24})?/.test(val);
-    if (!hasTarget) {
-      setError("Include a Robinhood Chain address (0x…) or transaction hash");
-      return;
-    }
-    setError("");
-    router.push(`/ask?q=${encodeURIComponent(val)}`);
-  }
-
-  return (
-    <form onSubmit={handleSubmit} className="flex w-full min-w-0 max-w-full flex-col gap-2">
-      <div className="flex w-full min-w-0 flex-col gap-2 md:flex-row md:items-stretch md:gap-2">
-        <input
-          type="text"
-          value={value}
-          onChange={(e) => {
-            setValue(e.target.value);
-            setError("");
-          }}
-          placeholder="Paste a 0x address or transaction hash"
-          className="min-h-[44px] w-full min-w-0 flex-1 rounded-md border border-cm-border bg-cm-elevated px-3 font-mono text-sm text-cm-text placeholder:text-cm-faint focus:border-cm-accent focus:outline-none focus:ring-2 focus:ring-cm-accent/30 focus:shadow-[0_0_20px_-4px_rgba(16,185,129,0.4)] sm:px-4"
-          spellCheck={false}
-          autoComplete="off"
-          enterKeyHint="go"
-        />
-        <button
-          type="submit"
-          className="min-h-[44px] w-full shrink-0 rounded-md bg-cm-accent px-5 text-sm font-semibold text-cm-on-accent transition-colors hover:bg-cm-accent-bright active:bg-cm-accent-dim md:w-auto md:min-w-[6.5rem]"
-        >
-          Ask
-        </button>
-      </div>
-      {error ? <p className="text-xs text-red-400">{error}</p> : null}
-      <p className="text-xs text-cm-faint">No signup needed — paste any address or transaction to ask a question.</p>
-    </form>
-  );
-}
-
 export function LandingPage() {
   const reduceMotion = useReducedMotion() ?? false;
   const headlineText = "Ask anything on Robinhood Chain, get answers in plain English.";
@@ -274,7 +226,15 @@ export function LandingPage() {
                 transition={{ duration: 0.7, delay: reduceMotion ? 0.3 : 2.8 }}
                 className="mt-8 w-full min-w-0 max-w-full flex flex-col gap-3 md:max-w-xl"
               >
-                <AskInput />
+                <div className="flex flex-col gap-2">
+                  <CtaLink
+                    href="/ask"
+                    className="inline-flex h-12 w-full items-center justify-center rounded-md bg-cm-accent px-8 text-base font-semibold text-cm-on-accent transition-colors hover:bg-cm-accent-bright active:bg-cm-accent-dim sm:w-auto sm:self-start"
+                  >
+                    Ask
+                  </CtaLink>
+                  <p className="text-xs text-cm-faint">No signup needed — start exploring Robinhood Chain.</p>
+                </div>
                 <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
                   <CtaLink
                     href="/#how-it-works"
