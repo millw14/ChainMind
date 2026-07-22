@@ -96,8 +96,8 @@ function HeroGraphDecor({ reduce }) {
       >
         <defs>
           <radialGradient id="hg" cx="50%" cy="50%" r="50%">
-            <stop offset="0%" stopColor="rgba(0, 200, 5, 0.35)" />
-            <stop offset="100%" stopColor="rgba(0, 200, 5, 0)" />
+            <stop offset="0%" stopColor="rgba(16, 185, 129, 0.35)" />
+            <stop offset="100%" stopColor="rgba(16, 185, 129, 0)" />
           </radialGradient>
         </defs>
         <motion.circle
@@ -120,12 +120,12 @@ function HeroGraphDecor({ reduce }) {
                 y1="100"
                 x2={x}
                 y2={y}
-                stroke="rgba(0, 200, 5, 0.28)"
+                stroke="rgba(16, 185, 129, 0.28)"
                 strokeWidth="0.75"
                 animate={reduce ? {} : { opacity: [0.35, 0.85, 0.45] }}
                 transition={{ duration: 3.2 + i * 0.25, repeat: Infinity, ease: "easeInOut", delay: i * 0.08 }}
               />
-              <circle cx={x} cy={y} r={i % 2 === 0 ? 4 : 3} fill="rgba(244, 242, 248, 0.12)" stroke="rgba(0, 200, 5, 0.45)" strokeWidth="0.5" />
+              <circle cx={x} cy={y} r={i % 2 === 0 ? 4 : 3} fill="rgba(244, 242, 248, 0.12)" stroke="rgba(16, 185, 129, 0.45)" strokeWidth="0.5" />
             </g>
           );
         })}
@@ -133,7 +133,7 @@ function HeroGraphDecor({ reduce }) {
           cx="100"
           cy="100"
           r="10"
-          fill="#00c805"
+          fill="#10b981"
           animate={reduce ? {} : { scale: [1, 1.08, 1], opacity: [0.9, 1, 0.92] }}
           transition={{ duration: 2.8, repeat: Infinity, ease: "easeInOut" }}
         />
@@ -142,7 +142,7 @@ function HeroGraphDecor({ reduce }) {
           cy="100"
           r="16"
           fill="none"
-          stroke="rgba(74, 222, 128, 0.4)"
+          stroke="rgba(110, 231, 183, 0.4)"
           strokeWidth="0.75"
           animate={reduce ? {} : { scale: [1, 1.12, 1], opacity: [0.5, 0.95, 0.55] }}
           transition={{ duration: 3.5, repeat: Infinity, ease: "easeInOut", delay: 0.4 }}
@@ -197,7 +197,7 @@ function AskInput() {
             setError("");
           }}
           placeholder="Paste a 0x address or transaction hash"
-          className="min-h-[44px] w-full min-w-0 flex-1 rounded-md border border-cm-border bg-cm-elevated px-3 font-mono text-sm text-cm-text placeholder:text-cm-faint focus:border-cm-accent focus:outline-none focus:ring-2 focus:ring-cm-accent/30 focus:shadow-[0_0_20px_-4px_rgba(0,200,5,0.4)] sm:px-4"
+          className="min-h-[44px] w-full min-w-0 flex-1 rounded-md border border-cm-border bg-cm-elevated px-3 font-mono text-sm text-cm-text placeholder:text-cm-faint focus:border-cm-accent focus:outline-none focus:ring-2 focus:ring-cm-accent/30 focus:shadow-[0_0_20px_-4px_rgba(16,185,129,0.4)] sm:px-4"
           spellCheck={false}
           autoComplete="off"
           enterKeyHint="go"
@@ -348,7 +348,7 @@ export function LandingPage() {
                     : {
                         y: -6,
                         boxShadow:
-                          "0 0 0 1px rgba(0,200,5,0.4), 0 8px 32px -8px rgba(0,200,5,0.3)",
+                          "0 0 0 1px rgba(16,185,129,0.4), 0 8px 32px -8px rgba(16,185,129,0.3)",
                         transition: springGentle,
                       }
                 }
@@ -506,9 +506,9 @@ export function LandingPage() {
                     ? {}
                     : {
                         boxShadow: [
-                          "0 0 20px -4px rgba(0,200,5,0.4)",
-                          "0 0 36px -2px rgba(0,200,5,0.7)",
-                          "0 0 20px -4px rgba(0,200,5,0.4)",
+                          "0 0 20px -4px rgba(16,185,129,0.4)",
+                          "0 0 36px -2px rgba(16,185,129,0.7)",
+                          "0 0 20px -4px rgba(16,185,129,0.4)",
                         ],
                       }
                 }
