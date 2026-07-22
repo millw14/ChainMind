@@ -218,7 +218,7 @@ export function LandingPage() {
                 className="mt-5 max-w-2xl text-base leading-relaxed text-cm-muted sm:text-lg"
               >
                 ChainMind reads wallets, tokens, and transactions straight from the chain and explains what&apos;s
-                happening—no block-explorer spelunking, no jargon. Just ask.
+                happening. Just ask.
               </motion.p>
               <motion.div
                 initial={{ opacity: 0, y: 8 }}
