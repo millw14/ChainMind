@@ -1,12 +1,1 @@
-{
-  "crons": [
-    {
-      "path": "/api/cron/analyst-sweep",
-      "schedule": "0 0 * * *"
-    },
-    {
-      "path": "/api/cron/surface-scan",
-      "schedule": "15 2 * * *"
-    }
-  ]
-}
+{}

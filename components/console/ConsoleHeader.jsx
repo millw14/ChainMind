@@ -19,8 +19,8 @@ export function ConsoleHeader() {
           </Link>
           <span className="hidden h-4 w-px bg-cm-border sm:block" />
           <div className="hidden sm:block min-w-0">
-            <p className="font-mono text-[9px] font-semibold uppercase tracking-[0.2em] text-cm-faint">Investigation</p>
-            <p className="truncate font-mono text-[11px] text-cm-terminal">War room · live</p>
+            <p className="font-mono text-[9px] font-semibold uppercase tracking-[0.2em] text-cm-faint">Robinhood Chain</p>
+            <p className="truncate font-mono text-[11px] text-cm-terminal">AI explorer · live</p>
           </div>
         </div>
 
@@ -29,17 +29,11 @@ export function ConsoleHeader() {
           <Link href="/ask" className="rounded-md px-3 py-2 font-medium text-cm-accent-bright hover:bg-cm-row-hover hover:text-cm-text">
             Ask AI
           </Link>
-          <Link href="/dashboard" className="rounded-md px-3 py-2 text-cm-muted hover:bg-cm-row-hover hover:text-cm-text">
-            Dashboard
-          </Link>
-          <Link href="/cases" className="rounded-md px-3 py-2 text-cm-muted hover:bg-cm-row-hover hover:text-cm-text">
-            Cases
-          </Link>
           <Link href="/docs" className="rounded-md px-3 py-2 text-cm-muted hover:bg-cm-row-hover hover:text-cm-text">
             Docs
           </Link>
           <Link href="/" className="rounded-md px-3 py-2 text-cm-muted hover:bg-cm-row-hover hover:text-cm-text">
-            Intel
+            Home
           </Link>
         </nav>
 
@@ -69,20 +63,11 @@ export function ConsoleHeader() {
             <Link href="/ask" onClick={() => setOpen(false)} className="rounded-md px-3 py-3 font-medium text-cm-accent-bright hover:bg-cm-row-hover">
               Ask AI
             </Link>
-            <Link href="/dashboard" onClick={() => setOpen(false)} className="rounded-md px-3 py-3 text-cm-muted hover:bg-cm-row-hover hover:text-cm-text">
-              Dashboard
-            </Link>
-            <Link href="/cases" onClick={() => setOpen(false)} className="rounded-md px-3 py-3 text-cm-muted hover:bg-cm-row-hover hover:text-cm-text">
-              Cases
-            </Link>
-            <Link href="/investigation" onClick={() => setOpen(false)} className="rounded-md px-3 py-3 text-cm-muted hover:bg-cm-row-hover hover:text-cm-text">
-              Investigation
-            </Link>
             <Link href="/docs" onClick={() => setOpen(false)} className="rounded-md px-3 py-3 text-cm-muted hover:bg-cm-row-hover hover:text-cm-text">
               Docs
             </Link>
             <Link href="/" onClick={() => setOpen(false)} className="rounded-md px-3 py-3 text-cm-muted hover:bg-cm-row-hover hover:text-cm-text">
-              Intel
+              Home
             </Link>
           </nav>
         </div>

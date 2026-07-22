@@ -162,7 +162,7 @@ export default function DocsPage() {
 
         <div className="mt-12 flex flex-wrap gap-3 border-t border-cm-border-subtle pt-8">
           <Link
-            href="/dashboard"
+            href="/ask"
             className="inline-flex h-9 items-center rounded-md bg-cm-accent px-4 text-sm font-semibold text-cm-on-accent hover:bg-cm-accent-bright"
           >
             Dashboard

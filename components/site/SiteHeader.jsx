@@ -33,7 +33,7 @@ export function SiteHeader() {
           ))}
         </nav>
         <Link
-          href="/dashboard"
+          href="/ask"
           className="inline-flex min-h-[40px] shrink-0 items-center rounded-md border border-cm-accent/30 bg-cm-accent px-3 py-2 font-mono text-xs font-bold uppercase tracking-wide text-cm-on-accent hover:bg-cm-accent-bright sm:py-2"
         >
           Console
