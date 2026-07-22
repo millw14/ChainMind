@@ -26,7 +26,10 @@ export function ConsoleHeader() {
 
         {/* Desktop nav */}
         <nav className="hidden sm:flex shrink-0 items-center gap-1 font-mono text-xs sm:gap-3">
-          <Link href="/dashboard" className="rounded-md px-3 py-2 font-medium text-cm-accent-bright hover:bg-cm-row-hover hover:text-cm-text">
+          <Link href="/ask" className="rounded-md px-3 py-2 font-medium text-cm-accent-bright hover:bg-cm-row-hover hover:text-cm-text">
+            Ask AI
+          </Link>
+          <Link href="/dashboard" className="rounded-md px-3 py-2 text-cm-muted hover:bg-cm-row-hover hover:text-cm-text">
             Dashboard
           </Link>
           <Link href="/cases" className="rounded-md px-3 py-2 text-cm-muted hover:bg-cm-row-hover hover:text-cm-text">
@@ -63,7 +66,10 @@ export function ConsoleHeader() {
       {open && (
         <div className="sm:hidden border-t border-cm-border bg-cm-card/98 px-3 py-2">
           <nav className="flex flex-col font-mono text-sm">
-            <Link href="/dashboard" onClick={() => setOpen(false)} className="rounded-md px-3 py-3 font-medium text-cm-accent-bright hover:bg-cm-row-hover">
+            <Link href="/ask" onClick={() => setOpen(false)} className="rounded-md px-3 py-3 font-medium text-cm-accent-bright hover:bg-cm-row-hover">
+              Ask AI
+            </Link>
+            <Link href="/dashboard" onClick={() => setOpen(false)} className="rounded-md px-3 py-3 text-cm-muted hover:bg-cm-row-hover hover:text-cm-text">
               Dashboard
             </Link>
             <Link href="/cases" onClick={() => setOpen(false)} className="rounded-md px-3 py-3 text-cm-muted hover:bg-cm-row-hover hover:text-cm-text">
