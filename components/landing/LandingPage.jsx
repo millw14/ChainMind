@@ -11,6 +11,10 @@ import {
   staggerParent,
   springGentle,
 } from "@/components/motion/presets";
+import { Reveal, Parallax } from "@/components/motion/scroll";
+import GrainOverlay from "@/components/landing/GrainOverlay";
+import HeroGridCanvas from "@/components/landing/HeroGridCanvas";
+import FeatureStack from "@/components/landing/FeatureStack";
 
 function useTypewriter(text, speed = 18, startDelay = 400, enabled = true) {
   const [displayed, setDisplayed] = useState(() => (enabled ? "" : text));
@@ -193,7 +197,11 @@ export function LandingPage() {
 
   return (
     <>
+      <GrainOverlay opacity={0.05} />
       <section className="relative overflow-x-clip border-b border-cm-border-subtle bg-cm-bg bg-cm-hero cm-war-grid cm-war-grid-motion">
+        <HeroGridCanvas speed={1} density={1} />
+        <div aria-hidden className="cm-ambient-orb cm-ambient-orb--breathe left-[-6rem] top-[-4rem] h-72 w-72 bg-cm-accent/20" />
+        <div aria-hidden className="cm-ambient-orb cm-ambient-orb--slow right-[-8rem] top-24 h-80 w-80 bg-cm-accent-bright/10" />
         <HeroGraphDecor reduce={reduceMotion} />
         <div className={`relative ${shell} pb-20 pt-14 sm:pb-24 sm:pt-20`}>
           <motion.div
@@ -333,6 +341,26 @@ export function LandingPage() {
               </motion.div>
             ))}
           </motion.div>
+        </div>
+      </section>
+
+      <section className="relative overflow-hidden border-b border-cm-border-subtle py-20 sm:py-28">
+        <Parallax speed={-0.15} className="pointer-events-none absolute inset-0">
+          <div aria-hidden className="cm-ambient-orb cm-ambient-orb--slow left-1/2 top-1/3 h-96 w-96 -translate-x-1/2 bg-cm-accent/10" />
+        </Parallax>
+        <div className={`relative ${shell}`}>
+          <Reveal className="mx-auto max-w-3xl px-4 text-center">
+            <p className="font-mono text-[10px] uppercase tracking-[0.22em] text-cm-terminal">What you can do</p>
+            <h2 className="mt-3 text-2xl font-semibold tracking-tight text-cm-text sm:text-3xl">
+              One question away from the whole chain
+            </h2>
+            <p className="mt-3 text-sm leading-relaxed text-cm-muted sm:text-base">
+              Every capability, in plain English — scroll through the stack.
+            </p>
+          </Reveal>
+          <div className="mt-12 sm:mt-16">
+            <FeatureStack />
+          </div>
         </div>
       </section>
 
