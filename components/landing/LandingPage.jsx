@@ -43,50 +43,34 @@ function useTypewriter(text, speed = 18, startDelay = 400, enabled = true) {
 }
 
 function TerminalCard({ reduce }) {
-  const [confidence, setConfidence] = useState(0);
   const [visible, setVisible] = useState(false);
+  const answer =
+    "Active wallet holding 0.11 ETH. It recently sent WETH and several tokens to 8 different addresses — looks like a distribution wallet.";
+  const typed = useTypewriter(answer, 16, 2600, !reduce);
 
   useEffect(() => {
     if (reduce) {
-      setConfidence(0.84);
       setVisible(true);
       return;
     }
     const fadeTimer = setTimeout(() => setVisible(true), 2000);
-    let intervalId;
-    const countTimer = setTimeout(() => {
-      let v = 0;
-      intervalId = setInterval(() => {
-        v = Math.min(0.84, v + 0.02);
-        setConfidence(Math.round(v * 100) / 100);
-        if (v >= 0.84) clearInterval(intervalId);
-      }, 30);
-    }, 2400);
-    return () => {
-      clearTimeout(fadeTimer);
-      clearTimeout(countTimer);
-      clearInterval(intervalId);
-    };
+    return () => clearTimeout(fadeTimer);
   }, [reduce]);
-
-  const json = `{
-  "flag": "coordinated-accumulation",
-  "confidence": ${confidence.toFixed(2)},
-  "scope": "TOKEN_MINT…",
-  "triggered_at": "2026-05-12T10:22:00Z",
-  "evidence": [
-    { "action": "3 linked wallets bought …", "slot": 123461 }
-  ]
-}`;
 
   return (
     <motion.div
-      className="mt-3 max-h-[14rem] overflow-hidden font-mono text-[10px] leading-relaxed text-cm-terminal/90 sm:text-[11px]"
+      className="mt-3 max-h-[14rem] overflow-hidden text-[11px] leading-relaxed sm:text-xs"
       initial={{ opacity: 0 }}
       animate={{ opacity: visible ? 1 : 0 }}
       transition={{ duration: 0.8 }}
     >
-      <pre className="whitespace-pre-wrap">{json}</pre>
+      <p className="font-mono text-[10px] uppercase tracking-wider text-cm-faint">You</p>
+      <p className="mt-1 text-cm-subtle">What is 0x966C2F…8Ca79 doing?</p>
+      <p className="mt-3 font-mono text-[10px] uppercase tracking-wider text-cm-terminal">ChainMind</p>
+      <p className="mt-1 text-cm-text">
+        {reduce ? answer : typed}
+        {!reduce && typed.length < answer.length && <span className="text-cm-accent">▋</span>}
+      </p>
     </motion.div>
   );
 }
@@ -184,21 +168,22 @@ function CtaLink({ href, className, children }) {
   );
 }
 
-function ScanInput() {
+function AskInput() {
   const router = useRouter();
-  const [address, setAddress] = useState("");
+  const [value, setValue] = useState("");
   const [error, setError] = useState("");
 
   function handleSubmit(e) {
     e.preventDefault();
-    const val = address.trim();
+    const val = value.trim();
     if (!val) return;
-    if (val.length < 32 || val.length > 44) {
-      setError("Enter a valid Solana address");
+    const hasTarget = /0x[0-9a-fA-F]{40}(?:[0-9a-fA-F]{24})?/.test(val);
+    if (!hasTarget) {
+      setError("Include a Robinhood Chain address (0x…) or transaction hash");
       return;
     }
     setError("");
-    router.push(`/dashboard?address=${encodeURIComponent(val)}`);
+    router.push(`/ask?q=${encodeURIComponent(val)}`);
   }
 
   return (
@@ -206,12 +191,12 @@ function ScanInput() {
       <div className="flex w-full min-w-0 flex-col gap-2 md:flex-row md:items-stretch md:gap-2">
         <input
           type="text"
-          value={address}
+          value={value}
           onChange={(e) => {
-            setAddress(e.target.value);
+            setValue(e.target.value);
             setError("");
           }}
-          placeholder="Wallet or mint (base58)"
+          placeholder="Paste a 0x address or transaction hash"
           className="min-h-[44px] w-full min-w-0 flex-1 rounded-md border border-cm-border bg-cm-elevated px-3 font-mono text-sm text-cm-text placeholder:text-cm-faint focus:border-cm-accent focus:outline-none focus:ring-2 focus:ring-cm-accent/30 focus:shadow-[0_0_20px_-4px_rgba(139,92,246,0.4)] sm:px-4"
           spellCheck={false}
           autoComplete="off"
@@ -221,18 +206,18 @@ function ScanInput() {
           type="submit"
           className="min-h-[44px] w-full shrink-0 rounded-md bg-cm-accent px-5 text-sm font-semibold text-cm-on-accent transition-colors hover:bg-cm-accent-bright active:bg-cm-accent-dim md:w-auto md:min-w-[6.5rem]"
         >
-          Scan
+          Ask
         </button>
       </div>
       {error ? <p className="text-xs text-red-400">{error}</p> : null}
-      <p className="text-xs text-cm-faint">No signup needed — paste any mint or wallet to run a free scan.</p>
+      <p className="text-xs text-cm-faint">No signup needed — paste any address or transaction to ask a question.</p>
     </form>
   );
 }
 
 export function LandingPage() {
   const reduceMotion = useReducedMotion() ?? false;
-  const headlineText = "Detect and prove coordinated manipulation as it forms on-chain.";
+  const headlineText = "Ask anything on Robinhood Chain, get answers in plain English.";
   const typedHeadline = useTypewriter(headlineText, 28, 200, !reduceMotion);
   const fv = fadeUp(reduceMotion);
   const fs = fadeScale(reduceMotion);
@@ -255,7 +240,7 @@ export function LandingPage() {
             <motion.div className="min-w-0" variants={staggerParent(reduceMotion, { stagger: 0.08, delayChildren: 0.02 })}>
               <motion.div variants={fv} className="inline-flex items-center gap-2 rounded border border-cm-border bg-cm-surface/80 px-2.5 py-1 font-mono text-[10px] font-medium uppercase tracking-[0.2em] text-cm-terminal">
                 <span className="cm-pulse-live inline-block h-1.5 w-1.5 rounded-full bg-cm-ok" />
-                Solana threat console
+                Robinhood Chain · AI explorer
               </motion.div>
               <motion.h1
                 variants={fv}
@@ -280,8 +265,8 @@ export function LandingPage() {
                 transition={{ duration: 0.7, delay: reduceMotion ? 0.2 : 2.2 }}
                 className="mt-5 max-w-2xl text-base leading-relaxed text-cm-muted sm:text-lg"
               >
-                ChainMind watches funding graphs, fee-payer concentration, and time-clustered activity—so you see
-                coordination forming while others are still reading the tape.
+                ChainMind reads wallets, tokens, and transactions straight from the chain and explains what&apos;s
+                happening—no block-explorer spelunking, no jargon. Just ask.
               </motion.p>
               <motion.div
                 initial={{ opacity: 0, y: 8 }}
@@ -289,20 +274,20 @@ export function LandingPage() {
                 transition={{ duration: 0.7, delay: reduceMotion ? 0.3 : 2.8 }}
                 className="mt-8 w-full min-w-0 max-w-full flex flex-col gap-3 md:max-w-xl"
               >
-                <ScanInput />
+                <AskInput />
                 <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
                   <CtaLink
                     href="/#how-it-works"
                     className="inline-flex h-9 items-center justify-center rounded-md border border-cm-border bg-cm-elevated/90 px-5 text-sm font-medium text-cm-text backdrop-blur-sm transition-colors hover:border-cm-accent/40 hover:bg-cm-row-hover"
                   >
-                    How signals are produced
+                    How it works
                   </CtaLink>
                   <motion.div whileHover={{ x: 3 }} transition={springGentle}>
                     <Link
                       href="/docs"
                       className="inline-flex px-2 text-sm font-medium text-cm-muted underline-offset-4 hover:text-cm-text hover:underline sm:px-4"
                     >
-                      Operator setup →
+                      Read the docs →
                     </Link>
                   </motion.div>
                 </div>
@@ -317,17 +302,14 @@ export function LandingPage() {
               >
                 <div className="flex items-center justify-between border-b border-cm-border-subtle pb-3 font-mono text-[10px] uppercase tracking-wider text-cm-faint">
                   <motion.span animate={reduceMotion ? {} : { opacity: [0.7, 1, 0.75] }} transition={{ duration: 2.2, repeat: Infinity }}>
-                    Live alert · preview
+                    Ask · preview
                   </motion.span>
-                  <span className="text-cm-threat">SEV-2</span>
+                  <span className="text-cm-terminal">wallet</span>
                 </div>
                 <TerminalCard reduce={reduceMotion} />
                 <p className="mt-3 border-t border-cm-border-subtle pt-3 text-[11px] leading-snug text-cm-muted">
-                  Push the same structure to Discord, Slack, or your stack via webhook—
-                  <span className="text-cm-subtle">
-                    {" "}
-                    the <code className="text-cm-accent-bright">watch</code> CLI.
-                  </span>
+                  Every answer is grounded in live chain data—
+                  <span className="text-cm-subtle"> open the evidence to see the exact rows behind it.</span>
                 </p>
               </motion.div>
             </motion.div>
@@ -342,19 +324,19 @@ export function LandingPage() {
           >
             {[
               {
-                k: "Graph + chain truth",
-                v: "Funding trees & payers",
-                sub: "Adjacency over ingested edges—not a toy table. RPC health checks before you trust reads.",
+                k: "Plain English",
+                v: "Answers, not raw hex",
+                sub: "Paste any address or transaction and get a human-readable explanation—balances, tokens, and what actually happened.",
               },
               {
-                k: "Pattern detectors",
-                v: "Named manipulation signals",
-                sub: "Wash rotation, Sybil-style pumps, coordination clusters—structured evidence, not a single scalar.",
+                k: "Grounded in chain truth",
+                v: "Live Blockscout data",
+                sub: "Every answer is built from real on-chain reads, with the underlying evidence one click away. No made-up numbers.",
               },
               {
-                k: "Threshold alerts",
-                v: "Webhook when confidence spikes",
-                sub: "Run incremental ingest + detectors; a webhook you configure gets pushed when something crosses your threshold.",
+                k: "Anything on-chain",
+                v: "Wallets · tokens · txns",
+                sub: "Ask about a wallet's activity, a token's details, or exactly what a transaction did—all from one place.",
               },
             ].map((item) => (
               <motion.div
@@ -391,11 +373,10 @@ export function LandingPage() {
             variants={staggerContainer(reduceMotion, { stagger: 0.09 })}
           >
             <motion.h2 variants={fadeUp(reduceMotion)} className="text-xl font-semibold tracking-tight text-cm-text sm:text-2xl">
-              From chain noise to case file
+              From 0x to plain English
             </motion.h2>
             <motion.p variants={fadeUp(reduceMotion)} className="mt-2 text-sm leading-relaxed text-cm-muted sm:text-base">
-              Four phases: connect, capture signatures, parse events into a graph, run detectors and scoring. Technical
-              runbook:{" "}
+              Three steps: paste a target, ChainMind reads it from the chain, and the AI explains it. More detail in the{" "}
               <Link href="/docs" className="font-medium text-cm-accent-bright underline-offset-4 hover:underline">
                 Docs
               </Link>
@@ -404,17 +385,16 @@ export function LandingPage() {
           </motion.div>
 
           <motion.ol
-            className="mt-12 grid grid-cols-1 list-none gap-3 p-0 sm:grid-cols-2 lg:grid-cols-4 lg:gap-4"
+            className="mt-12 grid grid-cols-1 list-none gap-3 p-0 sm:grid-cols-3 lg:gap-4"
             initial="hidden"
             whileInView="show"
             viewport={inViewOpts}
             variants={staggerContainer(reduceMotion, { stagger: 0.11, delayChildren: 0.05 })}
           >
             {[
-              { step: "01", title: "Link RPC", body: "Your endpoint. Confirm slot, version, and cluster before analysis." },
-              { step: "02", title: "Capture flow", body: "Signatures for the mint or wallet under watch—fast reconstruct." },
-              { step: "03", title: "Ingest & graph", body: "Parse txs into transfers, payers, edges; mirror to Turso if needed." },
-              { step: "04", title: "Detect & alert", body: "Run coordination metrics + detectors; webhook on high confidence." },
+              { step: "01", title: "Paste a target", body: "Any Robinhood Chain address or transaction hash—no signup, no setup." },
+              { step: "02", title: "We read the chain", body: "ChainMind pulls balances, tokens, transfers, and decoded activity live from Blockscout." },
+              { step: "03", title: "AI explains it", body: "A grounded, plain-English answer to your question—with the raw evidence one click away." },
             ].map((item) => (
               <motion.li
                 key={item.step}
@@ -444,9 +424,9 @@ export function LandingPage() {
 
           <motion.p initial={{ opacity: 0 }} whileInView={{ opacity: 1 }} viewport={inViewOpts} className="mt-10 text-xs text-cm-faint">
             <Link href="/how-it-works" className="font-medium text-cm-text underline-offset-4 hover:underline">
-              Architecture & limits
+              How it fits together
             </Link>{" "}
-            · Data pipeline depth.
+            · What ChainMind can and can&apos;t answer.
           </motion.p>
         </div>
       </section>
@@ -461,11 +441,11 @@ export function LandingPage() {
             variants={staggerContainer(reduceMotion, { stagger: 0.08 })}
           >
             <motion.h2 variants={fadeUp(reduceMotion)} className="text-xl font-semibold tracking-tight text-cm-text sm:text-2xl">
-              Built for investigations
+              Built for people, not parsers
             </motion.h2>
             <motion.p variants={fadeUp(reduceMotion)} className="mt-3 text-sm leading-relaxed text-cm-muted sm:text-base">
-              Dense dashboards, graph previews, and threat-weighted alerts—the product shape matches what you are actually
-              selling: early manipulation visibility.
+              Robinhood Chain brings tokenized stocks and real-world assets on-chain. ChainMind makes that activity
+              legible to anyone—no need to read raw logs or decode calldata.
             </motion.p>
           </motion.div>
           <motion.div
@@ -477,16 +457,16 @@ export function LandingPage() {
           >
             {[
               {
-                t: "Operator-grade RPC",
-                d: "Know the cluster and block height you are reasoning over before you trust downstream panels.",
+                t: "Conversational",
+                d: "Ask follow-up questions in plain language. No query syntax, no filters to configure—just a chat.",
               },
               {
-                t: "Evidence-shaped outputs",
-                d: "Every flag returns confidence plus rows you can paste into a memo—not just a number in isolation.",
+                t: "Evidence you can check",
+                d: "Every answer ships with the exact on-chain rows it used, so you can verify instead of trust.",
               },
               {
-                t: "Watch mode",
-                d: "Incremental ingest + detector pass + webhook when signals cross your risk line—without babysitting refresh buttons.",
+                t: "Zero setup",
+                d: "Open the explorer and paste an address. No wallet connection, no account, no install.",
               },
             ].map((x) => (
               <motion.article
@@ -514,10 +494,9 @@ export function LandingPage() {
             variants={staggerContainer(reduceMotion, { stagger: 0.07 })}
           >
             <motion.div variants={fadeUp(reduceMotion)} className="max-w-xl">
-              <h2 className="text-lg font-semibold text-cm-text sm:text-xl">Run your next investigation in the console</h2>
+              <h2 className="text-lg font-semibold text-cm-text sm:text-xl">Explore Robinhood Chain in plain English</h2>
               <p className="mt-2 text-sm leading-relaxed text-cm-muted">
-                Same engine as the CLI and webhooks—optimized for analysts who live in graphs and timestamps, not README
-                pages.
+                Paste any address or transaction and ask. Answers are grounded in live chain data—no signup required.
               </p>
             </motion.div>
             <motion.div variants={fadeUp(reduceMotion)} className="flex flex-shrink-0 flex-wrap gap-3">
@@ -540,14 +519,14 @@ export function LandingPage() {
                   href="/ask"
                   className="inline-flex h-10 items-center justify-center rounded-md bg-cm-accent px-5 text-sm font-semibold text-cm-on-accent hover:bg-cm-accent-bright"
                 >
-                  Launch console
+                  Open the explorer
                 </CtaLink>
               </motion.div>
               <CtaLink
                 href="/docs"
                 className="inline-flex h-10 items-center justify-center rounded-md border border-cm-border bg-cm-surface px-5 text-sm font-medium text-cm-text hover:bg-cm-row-hover"
               >
-                Deploy checklist
+                Read the docs
               </CtaLink>
             </motion.div>
           </motion.div>

@@ -2,10 +2,10 @@ import Link from "next/link";
 import { ChainMindLogo } from "@/components/ChainMindLogo";
 
 const nav = [
-  { href: "/#how-it-works", label: "Signal flow" },
-  { href: "/#capabilities", label: "Capabilities" },
+  { href: "/#how-it-works", label: "How it works" },
+  { href: "/#capabilities", label: "Features" },
   { href: "/docs", label: "Docs" },
-  { href: "/dashboard", label: "Console" },
+  { href: "/ask", label: "Ask AI" },
 ];
 
 export function SiteHeader() {
@@ -18,7 +18,7 @@ export function SiteHeader() {
             <span className="absolute -right-0.5 -top-0.5 h-2 w-2 rounded-full bg-cm-terminal shadow-[0_0_8px_rgba(74,222,128,0.6)]" />
           </span>
           <span className="truncate">
-            ChainMind <span className="hidden font-normal text-cm-faint sm:inline">· manipulation intelligence</span>
+            ChainMind <span className="hidden font-normal text-cm-faint sm:inline">· Robinhood Chain explorer</span>
           </span>
         </Link>
         <nav className="hidden items-center gap-0.5 md:flex">
@@ -36,7 +36,7 @@ export function SiteHeader() {
           href="/ask"
           className="inline-flex min-h-[40px] shrink-0 items-center rounded-md border border-cm-accent/30 bg-cm-accent px-3 py-2 font-mono text-xs font-bold uppercase tracking-wide text-cm-on-accent hover:bg-cm-accent-bright sm:py-2"
         >
-          Console
+          Ask AI
         </Link>
       </div>
       <nav className="flex border-t border-cm-border-subtle px-2 py-2 sm:px-3 md:hidden">

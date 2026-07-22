@@ -9,121 +9,85 @@ export default function HowItWorksPage() {
     <div className="border-b border-cm-border-subtle">
       <div className="mx-auto w-full max-w-3xl px-4 py-16 sm:px-6 sm:py-24">
         <p className="font-[family-name:var(--font-mono)] text-[10px] uppercase tracking-widest text-cm-faint">Guide</p>
-        <h1 className="mt-3 text-3xl font-bold tracking-tight text-cm-text sm:text-4xl">How ChainMind fits together</h1>
+        <h1 className="mt-3 text-3xl font-bold tracking-tight text-cm-text sm:text-4xl">How ChainMind works</h1>
         <p className="mt-4 text-lg leading-relaxed text-cm-muted">
-          Stand up live Solana reads in minutes; turn on coordination scoring once your pipeline mirrors events to the
-          cloud.
+          ChainMind is an AI explorer for Robinhood Chain—the Ethereum Layer-2 for tokenized stocks and real-world
+          assets. Paste an address or transaction, ask a question, and get a plain-English answer grounded in live
+          on-chain data.
         </p>
 
         <ol className="mt-14 space-y-10">
           <li className="border-l border-cm-border pl-5">
-            <h2 className="text-lg font-semibold text-cm-text">1. Solana dashboard</h2>
+            <h2 className="text-lg font-semibold text-cm-text">1. You paste a target</h2>
             <p className="mt-2 text-sm leading-relaxed text-cm-muted">
-              The{" "}
+              Any Robinhood Chain address (<code className="font-mono text-xs">0x…</code> 40 chars) or transaction hash
+              (<code className="font-mono text-xs">0x…</code> 64 chars). No signup, no wallet connection. Try it in the{" "}
               <Link href="/ask" className="font-medium text-cm-text underline-offset-4 hover:underline">
-                dashboard
-              </Link>{" "}
-              validates RPC health, pulls recent signatures for any base58, and renders scored coordination windows
-              when Turso holds your mirrored events.
+                explorer
+              </Link>
+              .
             </p>
           </li>
           <li className="border-l border-cm-border pl-5">
-            <h2 className="text-lg font-semibold text-cm-text">2. Pipeline</h2>
+            <h2 className="text-lg font-semibold text-cm-text">2. ChainMind reads the chain</h2>
             <p className="mt-2 text-sm leading-relaxed text-cm-muted">
-              On your machine, the CLI backfills signatures, parses transactions into events, and optionally syncs to
-              Turso. The hosted UI does not pretend the database is local to Vercel.
+              We pull the relevant facts live from the Robinhood Chain RPC and the Blockscout indexer: balances, token
+              metadata, recent transfers, counterparties, transaction status, fees, and decoded logs. Only what&apos;s
+              needed to answer your question—kept compact and factual.
             </p>
           </li>
           <li className="border-l border-cm-border pl-5">
-            <h2 className="text-lg font-semibold text-cm-text">3. v1 score</h2>
+            <h2 className="text-lg font-semibold text-cm-text">3. The AI explains it</h2>
             <p className="mt-2 text-sm leading-relaxed text-cm-muted">
-              v1 measures peak distinct fee payers inside a minute bucket over your lookback—ideal for surfacing crowded
-              windows fast. Pair with fundamentals and your compliance process; limitations are in the site footer.
+              That evidence, plus your question, goes to a language model with strict instructions to ground every claim
+              in the data and never invent balances, tokens, or transactions. You get a short, readable answer—with the
+              exact evidence one click away so you can verify it.
             </p>
           </li>
         </ol>
 
-        <section id="roadmap" className="mt-16 scroll-mt-20 border-t border-cm-border-subtle pt-14">
-          <h2 className="text-xl font-semibold tracking-tight text-cm-text sm:text-2xl">Product direction</h2>
+        <section id="scope" className="mt-16 scroll-mt-20 border-t border-cm-border-subtle pt-14">
+          <h2 className="text-xl font-semibold tracking-tight text-cm-text sm:text-2xl">What it can and can&apos;t answer</h2>
           <p className="mt-3 text-sm leading-relaxed text-cm-muted">
-            v1 is narrow on purpose: one co-activity score on ingested events—a fast trip wire, not the full case file.
-            The trajectory is <strong className="font-medium text-cm-text">detect</strong>,{" "}
-            <strong className="font-medium text-cm-text">explain</strong>, and{" "}
-            <strong className="font-medium text-cm-text">get ahead</strong>.{" "}
-            <strong className="font-medium text-cm-text">This is what we&apos;re building toward.</strong>
+            ChainMind is an explainer, not an oracle. It&apos;s good at making on-chain activity legible; it will not
+            predict prices or give financial advice.
           </p>
 
           <div className="mt-10 space-y-10">
             <div className="border-l border-cm-border pl-5">
-              <h3 className="text-base font-semibold text-cm-text">Detection layer</h3>
+              <h3 className="text-base font-semibold text-cm-text">Great at</h3>
               <ul className="mt-3 list-inside list-disc space-y-2 text-sm leading-relaxed text-cm-muted">
                 <li>
-                  <strong className="font-medium text-cm-text">Funding-graph clusters</strong> — link wallets with
-                  explicit edges (shared funder, labeled transfer hops within N days, repeated small-route patterns) so
-                  groups are evidence-backed, not single-address anecdotes.
+                  <strong className="font-medium text-cm-text">Explaining a transaction</strong> — what it did, whether
+                  it succeeded, the method called, tokens moved, and the fee paid.
                 </li>
                 <li>
-                  <strong className="font-medium text-cm-text">Versioned pattern packs</strong> — named detectors (e.g.
-                  wash-shaped round-trips, accumulation ladders, time-synchronized bursts) each shipped as a rule pack
-                  with thresholds, changelog, and documented false-positive modes—not a black box “AI said so.”
+                  <strong className="font-medium text-cm-text">Summarizing a wallet</strong> — its balance, the tokens
+                  it holds and moves, how active it is, and who it interacts with.
                 </li>
                 <li>
-                  <strong className="font-medium text-cm-text">Velocity &amp; acceleration</strong> — same windowed
-                  counts as v1, plus week-over-week (or regime-normalized) deltas: rising unique payers, rising
-                  programs touched, rising event rate into a bucket—<em>not</em> a static “high score” only.
+                  <strong className="font-medium text-cm-text">Describing a token</strong> — name, symbol, type,
+                  supply, and holder count for a contract address.
                 </li>
               </ul>
             </div>
 
             <div className="border-l border-cm-border pl-5">
-              <h3 className="text-base font-semibold text-cm-text">Evidence layer</h3>
+              <h3 className="text-base font-semibold text-cm-text">Not designed for</h3>
               <ul className="mt-3 list-inside list-disc space-y-2 text-sm leading-relaxed text-cm-muted">
                 <li>
-                  <strong className="font-medium text-cm-text">Case timeline &amp; wallet table</strong> — for each
-                  scope: enumerated wallets, the linking funding txs (signatures + amounts + timestamps), each flagged
-                  coordination window (UTC range, duration), and recurrence count inside the lookback.
+                  <strong className="font-medium text-cm-text">Price predictions or advice</strong> — it describes what
+                  the chain shows, it doesn&apos;t tell you what to buy.
                 </li>
                 <li>
-                  <strong className="font-medium text-cm-text">Exports for review</strong> — CSV/JSON graph (nodes +
-                  edges), evidence bundle zip (key txs + parsed fields), and a one-page PDF summary suitable for internal
-                  committees—not screenshots of a console.
+                  <strong className="font-medium text-cm-text">Off-chain context</strong> — news, social sentiment, or
+                  anything not recorded on Robinhood Chain.
+                </li>
+                <li>
+                  <strong className="font-medium text-cm-text">Guarantees</strong> — answers are AI-generated and can be
+                  incomplete or wrong. The evidence panel is there so you can check.
                 </li>
               </ul>
-            </div>
-
-            <div className="border-l border-cm-border pl-5">
-              <h3 className="text-base font-semibold text-cm-text">Prediction / leading indicators (“get ahead”)</h3>
-              <p className="mt-3 text-sm leading-relaxed text-cm-muted">
-                This layer is the hardest and the clearest differentiator: not <em>what the chain already printed</em> but
-                what tends to show up <em>before</em> tape and narrative catch up. It requires per-asset rolling baselines,
-                enough history to know “normal,” and tight definitions of “early”—otherwise you are selling astrology.
-                Concretely, we are targeting:
-              </p>
-              <ul className="mt-3 list-inside list-disc space-y-2 text-sm leading-relaxed text-cm-muted">
-                <li>
-                  <strong className="font-medium text-cm-text">Pre-positioning clusters</strong> — rising normalized
-                  participation from a stable wallet cohort <em>before</em> public volume or attention inflects; measure
-                  divergence between stealth activity and headline-ready tape.
-                </li>
-                <li>
-                  <strong className="font-medium text-cm-text">Liquidity &amp; route stress</strong> — DEX/pool depth
-                  or route-mix shifts (withdrawal of resting liquidity, sudden venue/route concentration) in a bounded
-                  pre-window vs trailing median.
-                </li>
-                <li>
-                  <strong className="font-medium text-cm-text">Leading fee-payer compression</strong> — v1-style
-                  crowding expressed as z-score or delta vs a rolling baseline for that asset and time-of-week regime—so
-                  “spike” is <em>unusual for this name</em>, not globally arbitrary.
-                </li>
-              </ul>
-              <p className="mt-4 text-sm leading-relaxed text-cm-muted">
-                <strong className="font-medium text-cm-text">Cross-signal corroboration is the moat.</strong> Any single
-                metric can be farmed or mistaken for alpha. When detection (who clusters), evidence (what chained
-                on-chain), and leading indicators (what is early vs baseline) have to agree before ChainMind elevates a
-                hypothesis—and when they don&apos;t, the product should stay quiet—that is both the anti-noise story and
-                the anti-gaming story. Confidence bands and forced multi-signal agreement are how this stays credible in
-                front of funds and compliance, not just another pretty explorer chart.
-              </p>
             </div>
           </div>
         </section>
@@ -133,7 +97,7 @@ export default function HowItWorksPage() {
             href="/ask"
             className="inline-flex h-12 items-center justify-center rounded-xl bg-cm-accent px-6 text-sm font-semibold text-cm-on-accent transition hover:bg-cm-accent-bright sm:min-w-[10.5rem]"
           >
-            Open dashboard
+            Open the explorer
           </Link>
           <Link
             href="/"

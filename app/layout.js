@@ -12,9 +12,9 @@ const jetbrains = JetBrains_Mono({
 });
 
 export const metadata = {
-  title: "ChainMind — coordinated manipulation intelligence",
+  title: "ChainMind — AI explorer for Robinhood Chain",
   description:
-    "Detect and prove coordinated manipulation on Solana before it surfaces — graphs, detectors, webhook alerts.",
+    "Ask anything about Robinhood Chain — wallets, tokens, and transactions explained in plain English, grounded in live on-chain data.",
 };
 
 export const viewport = {
