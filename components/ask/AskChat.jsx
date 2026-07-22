@@ -26,6 +26,15 @@ export function AskChat() {
   const [messages, setMessages] = useState([]);
   const [busy, setBusy] = useState(false);
   const endRef = useRef(null);
+  const didPrefill = useRef(false);
+
+  // Prefill from a ?q= param (e.g. the landing-page hero input) once on mount.
+  useEffect(() => {
+    if (didPrefill.current) return;
+    didPrefill.current = true;
+    const q = new URLSearchParams(window.location.search).get("q");
+    if (q) setInput(q);
+  }, []);
 
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: "smooth" });
