@@ -157,3 +157,53 @@ html {
     scroll-behavior: smooth;
   }
 }
+
+/* Ambient decor: slow-drifting accent glow orbs behind hero/section content.
+ * Purely decorative — always pointer-events-none, aria-hidden at the markup. */
+.cm-ambient-orb {
+  position: absolute;
+  border-radius: 9999px;
+  filter: blur(60px);
+  opacity: 0.5;
+  pointer-events: none;
+  will-change: transform;
+  animation: cmOrbDrift 22s ease-in-out infinite alternate;
+}
+
+.cm-ambient-orb--slow {
+  animation-duration: 34s;
+}
+
+.cm-ambient-orb--breathe {
+  animation:
+    cmOrbDrift 26s ease-in-out infinite alternate,
+    cmOrbBreathe 9s ease-in-out infinite;
+}
+
+@keyframes cmOrbDrift {
+  0% {
+    transform: translate3d(0, 0, 0);
+  }
+  100% {
+    transform: translate3d(4%, -3%, 0);
+  }
+}
+
+@keyframes cmOrbBreathe {
+  0%,
+  100% {
+    opacity: 0.4;
+  }
+  50% {
+    opacity: 0.62;
+  }
+}
+
+/* Reveal helper for non-framer scroll-in (kept in sync with the JS Reveal). */
+@media (prefers-reduced-motion: reduce) {
+  .cm-ambient-orb,
+  .cm-ambient-orb--slow,
+  .cm-ambient-orb--breathe {
+    animation: none !important;
+  }
+}
