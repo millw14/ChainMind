@@ -99,7 +99,10 @@ export async function POST(req) {
     );
   }
   if (!gathered.ok) {
-    return NextResponse.json({ ok: false, error: gathered.error, kind: gathered.kind }, { status: 404 });
+    // "unavailable" is an indexer outage — our problem, and retryable. Only a
+    // genuine miss is a 404, or the client learns something false about chain.
+    const status = gathered.kind === "unavailable" ? 503 : 404;
+    return NextResponse.json({ ok: false, error: gathered.error, kind: gathered.kind }, { status });
   }
 
   // Strip the fence markers out of the question so it can't close its own block.
