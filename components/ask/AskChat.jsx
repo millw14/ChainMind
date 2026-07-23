@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
 import { motion, useReducedMotion } from "framer-motion";
+import { extractTarget } from "@/lib/extract-target";
 
 const THINKING_PHASES = ["reading chain", "gathering evidence", "asking the model"];
 
@@ -36,15 +37,6 @@ function ThinkingIndicator() {
       )}
     </div>
   );
-}
-
-/** Pull the first tx hash (0x + 64 hex) or address (0x + 40 hex) out of free text. */
-function extractTarget(text) {
-  const tx = text.match(/0x[0-9a-fA-F]{64}/);
-  if (tx) return tx[0];
-  const addr = text.match(/0x[0-9a-fA-F]{40}/);
-  if (addr) return addr[0];
-  return null;
 }
 
 function shortHex(v) {
