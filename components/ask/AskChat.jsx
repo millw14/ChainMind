@@ -57,20 +57,34 @@ export function AskChat() {
   const endRef = useRef(null);
   const didPrefill = useRef(false);
 
-  // Prefill from a ?q= param (e.g. the landing-page hero input) once on mount.
+  // Handle a ?q= handoff (the landing hero input and its suggestion chips) once
+  // on mount: a question that already names a target can answer itself, anything
+  // else is prefilled with a hint instead of dead-stopping on the target error.
   useEffect(() => {
     if (didPrefill.current) return;
     didPrefill.current = true;
     const q = new URLSearchParams(window.location.search).get("q");
-    if (q) setInput(q);
+    if (!q) return;
+    if (extractTarget(q)) {
+      submit(q);
+      return;
+    }
+    setInput(q);
+    setMessages([
+      {
+        role: "assistant",
+        hint: "Add the address or transaction you mean — a 0x…40-character address or 0x…64-character hash — then press Ask. Every answer is read straight off Robinhood Chain, so there is nothing to look up without one.",
+      },
+    ]);
   }, []);
 
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, busy]);
 
-  async function send() {
-    const text = input.trim();
+  /** Send one question. Text is passed in so the ?q= handoff can send directly. */
+  async function submit(raw) {
+    const text = String(raw ?? "").trim();
     if (!text || busy) return;
 
     const target = extractTarget(text);
@@ -116,6 +130,10 @@ export function AskChat() {
     }
   }
 
+  function send() {
+    submit(input);
+  }
+
   function onKeyDown(e) {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
@@ -123,7 +141,9 @@ export function AskChat() {
     }
   }
 
-  const empty = messages.length === 0;
+  // The examples stay up until a real question is asked, so the ?q= hint has
+  // something actionable next to it.
+  const empty = !messages.some((m) => m.role === "user");
 
   return (
     <div className="mx-auto flex min-h-[calc(100vh-3.5rem)] w-full max-w-3xl flex-col px-3 sm:px-6">
@@ -197,6 +217,12 @@ function Message({ m }) {
           {m.content}
         </div>
       </div>
+    );
+  }
+
+  if (m.hint) {
+    return (
+      <div className="rounded-lg border border-cm-border bg-cm-card px-3 py-2 text-sm text-cm-subtle">{m.hint}</div>
     );
   }
 
