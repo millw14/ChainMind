@@ -11,10 +11,28 @@ const jetbrains = JetBrains_Mono({
   variable: "--font-mono",
 });
 
+const title = "ChainMind — AI explorer for Robinhood Chain";
+const description =
+  "Ask anything about Robinhood Chain — wallets, tokens, and transactions explained in plain English, grounded in live on-chain data.";
+
 export const metadata = {
-  title: "ChainMind — AI explorer for Robinhood Chain",
-  description:
-    "Ask anything about Robinhood Chain — wallets, tokens, and transactions explained in plain English, grounded in live on-chain data.",
+  // Needed for absolute OG/twitter image URLs. Set NEXT_PUBLIC_APP_URL in the
+  // deploy env; localhost is only a dev fallback.
+  metadataBase: new URL(process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000"),
+  title,
+  description,
+  applicationName: "ChainMind",
+  openGraph: {
+    type: "website",
+    siteName: "ChainMind",
+    title,
+    description,
+  },
+  twitter: {
+    card: "summary_large_image",
+    title,
+    description,
+  },
 };
 
 export const viewport = {
