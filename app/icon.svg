@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
+  <!-- Favicon build of the radar mark. The full logo's crosshairs, sweep trails
+       and blip glow turn to mud below ~24px, so this keeps only the shapes that
+       survive: dark tile, two rings, sweep, centre node, blip. -->
+  <rect width="64" height="64" rx="14" fill="#080a09"/>
+  <circle cx="32" cy="32" r="21" fill="none" stroke="#10b981" stroke-opacity="0.35" stroke-width="2.5"/>
+  <circle cx="32" cy="32" r="11" fill="none" stroke="#10b981" stroke-opacity="0.5" stroke-width="2.5"/>
+  <line x1="32" y1="32" x2="49" y2="21" stroke="#6ee7b7" stroke-width="3.5" stroke-linecap="round"/>
+  <circle cx="32" cy="32" r="5" fill="#10b981"/>
+  <circle cx="49" cy="20" r="5" fill="#ef4444"/>
+</svg>
