@@ -20,6 +20,9 @@ import CommandPill from "@/components/landing/CommandPill";
 import HeroGridCanvas from "@/components/landing/HeroGridCanvas";
 import ScrollDeck from "@/components/landing/ScrollDeck";
 import HoverPreviewList from "@/components/landing/HoverPreviewList";
+import ScrollFlipStage from "@/components/landing/ScrollFlipStage";
+import ScrollTypeStatement from "@/components/landing/ScrollTypeStatement";
+import AskOverlay from "@/components/landing/AskOverlay";
 
 function useTypewriter(text, speed = 18, startDelay = 400, enabled = true) {
   const [displayed, setDisplayed] = useState(() => (enabled ? "" : text));
@@ -191,6 +194,15 @@ function CtaLink({ href, className, children }) {
 
 export function LandingPage() {
   const reduceMotion = useReducedMotion() ?? false;
+  const [askOpen, setAskOpen] = useState(false);
+
+  /** Hand the question to the real /ask route rather than answering inline. */
+  function handleAsk(question) {
+    const q = String(question ?? "").trim();
+    setAskOpen(false);
+    window.location.href = q ? `/ask?q=${encodeURIComponent(q)}` : "/ask";
+  }
+
   const headlineText = "Ask anything on Robinhood Chain, get answers in plain English.";
   const typedHeadline = useTypewriter(headlineText, 28, 200, !reduceMotion);
   const fv = fadeUp(reduceMotion);
@@ -205,8 +217,19 @@ export function LandingPage() {
       <Preloader label="ChainMind" duration={1500} />
       <GrainOverlay opacity={0.05} />
       <CursorLayer youLabel="You" bots={[{ label: "ChainMind AI", color: "var(--cm-accent-bright)" }]} />
-      <CommandPill href="/ask" label="Ask anything" />
-      <EditorialHero />
+      <CommandPill href="/ask" label="Ask anything" onTrigger={() => setAskOpen(true)} />
+      <AskOverlay open={askOpen} onClose={() => setAskOpen(false)} onSubmit={handleAsk} />
+
+      {/* The hero rides on a board that hinges away in 3D as you scroll off it. */}
+      <ScrollFlipStage>
+        <EditorialHero />
+      </ScrollFlipStage>
+
+      <ScrollTypeStatement
+        label="Statement 01"
+        text="Every wallet, token and transaction on Robinhood Chain is public — but almost none of it is readable. ChainMind turns the ledger into plain English."
+        highlight={["readable", "plain", "English."]}
+      />
 
       <section className="relative overflow-hidden border-b border-cm-border-subtle pb-10 pt-20 sm:pt-28">
         <div className={`relative ${shell}`}>
