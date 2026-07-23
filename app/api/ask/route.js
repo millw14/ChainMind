@@ -2,9 +2,15 @@ import { NextResponse } from "next/server";
 import { getGeoqApiKey, geoqFetch } from "@/lib/geoq.js";
 import { gatherEvidence } from "@/lib/ask-evidence.js";
 import { getChainConfig } from "@/lib/chain.js";
+import { clientIp, isSameOriginRequest, rateLimit } from "@/lib/api-guard.js";
 
 export const maxDuration = 30;
 export const runtime = "nodejs";
+
+// Every accepted request spends Groq tokens and fires several Blockscout calls,
+// so the route is gated before any upstream work happens.
+const RATE_LIMIT = 10;
+const RATE_WINDOW_MS = 60_000;
 
 const SYSTEM_PROMPT = `You are an on-chain analyst for Robinhood Chain, an Ethereum Layer-2 for tokenized stocks and real-world assets.
 You are given a user question and a JSON "evidence" block gathered from the chain's Blockscout indexer.
@@ -19,6 +25,27 @@ Rules:
 - Do not give financial advice or price predictions.`;
 
 export async function POST(req) {
+  // Requiring a JSON content-type takes the route out of CORS "simple request"
+  // territory: a cross-origin page now needs a preflight we never answer.
+  if (!String(req.headers.get("content-type") ?? "").toLowerCase().includes("application/json")) {
+    return NextResponse.json(
+      { ok: false, error: "Content-Type must be application/json." },
+      { status: 415 },
+    );
+  }
+
+  if (!isSameOriginRequest(req)) {
+    return NextResponse.json({ ok: false, error: "Cross-origin requests are not allowed." }, { status: 403 });
+  }
+
+  const { allowed } = rateLimit(clientIp(req), RATE_LIMIT, RATE_WINDOW_MS);
+  if (!allowed) {
+    return NextResponse.json(
+      { ok: false, error: `Too many questions — limit is ${RATE_LIMIT} per minute. Try again shortly.` },
+      { status: 429 },
+    );
+  }
+
   let body;
   try {
     body = await req.json();
