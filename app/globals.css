@@ -158,6 +158,18 @@ html {
   }
 }
 
+/* Outlined display type — pairs a solid line with a stroked one at hero scale. */
+.cm-text-outline {
+  color: transparent;
+  -webkit-text-stroke: 1px var(--cm-accent);
+}
+
+@media (min-width: 640px) {
+  .cm-text-outline {
+    -webkit-text-stroke-width: 1.5px;
+  }
+}
+
 /* Ambient decor: slow-drifting accent glow orbs behind hero/section content.
  * Purely decorative — always pointer-events-none, aria-hidden at the markup. */
 .cm-ambient-orb {
