@@ -18,7 +18,8 @@ import Preloader from "@/components/landing/Preloader";
 import CursorLayer from "@/components/landing/CursorLayer";
 import CommandPill from "@/components/landing/CommandPill";
 import HeroGridCanvas from "@/components/landing/HeroGridCanvas";
-import FeatureStack from "@/components/landing/FeatureStack";
+import ScrollDeck from "@/components/landing/ScrollDeck";
+import HoverPreviewList from "@/components/landing/HoverPreviewList";
 
 function useTypewriter(text, speed = 18, startDelay = 400, enabled = true) {
   const [displayed, setDisplayed] = useState(() => (enabled ? "" : text));
@@ -207,23 +208,24 @@ export function LandingPage() {
       <CommandPill href="/ask" label="Ask anything" />
       <EditorialHero />
 
-      <section className="relative overflow-hidden border-b border-cm-border-subtle py-20 sm:py-28">
-        <Parallax speed={-0.15} className="pointer-events-none absolute inset-0">
-          <div aria-hidden className="cm-ambient-orb cm-ambient-orb--slow left-1/2 top-1/3 h-96 w-96 -translate-x-1/2 bg-cm-accent/10" />
-        </Parallax>
+      <section className="relative overflow-hidden border-b border-cm-border-subtle pb-10 pt-20 sm:pt-28">
         <div className={`relative ${shell}`}>
           <Reveal className="mx-auto max-w-3xl px-4 text-center">
             <p className="font-mono text-[10px] uppercase tracking-[0.22em] text-cm-terminal">What you can do</p>
             <h2 className="mt-3 text-2xl font-semibold tracking-tight text-cm-text sm:text-3xl">
               One question away from the whole chain
             </h2>
-            <p className="mt-3 text-sm leading-relaxed text-cm-muted sm:text-base">
-              Every capability, in plain English — scroll through the stack.
-            </p>
           </Reveal>
-          <div className="mt-12 sm:mt-16">
-            <FeatureStack />
-          </div>
+        </div>
+        {/* Sticky 3D deck — each card pins for a viewport while the next rides over it. */}
+        <div className="mt-14 sm:mt-20">
+          <ScrollDeck />
+        </div>
+      </section>
+
+      <section className="relative border-b border-cm-border-subtle py-20 sm:py-28">
+        <div className={`relative ${shell}`}>
+          <HoverPreviewList />
         </div>
       </section>
 
