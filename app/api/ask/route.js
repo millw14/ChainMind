@@ -12,6 +12,12 @@ export const runtime = "nodejs";
 const RATE_LIMIT = 10;
 const RATE_WINDOW_MS = 60_000;
 
+// Input and output token spend are both bounded: the question by length, the
+// serialized evidence by a backstop truncation, the answer by max_tokens.
+const MAX_QUESTION_CHARS = 500;
+const MAX_EVIDENCE_CHARS = 24_000;
+const MAX_ANSWER_TOKENS = 700;
+
 const SYSTEM_PROMPT = `You are an on-chain analyst for Robinhood Chain, an Ethereum Layer-2 for tokenized stocks and real-world assets.
 You are given a user question and a JSON "evidence" block gathered from the chain's Blockscout indexer.
 Answer in plain, conversational English that a Robinhood trader (not an engineer) can understand.
@@ -54,6 +60,13 @@ export async function POST(req) {
   }
 
   const question = String(body?.question ?? "").trim();
+  if (question.length > MAX_QUESTION_CHARS) {
+    return NextResponse.json(
+      { ok: false, error: `Question is too long — keep it under ${MAX_QUESTION_CHARS} characters.` },
+      { status: 400 },
+    );
+  }
+
   const target = String(body?.target ?? "").trim();
   if (!target) {
     return NextResponse.json(
@@ -74,13 +87,16 @@ export async function POST(req) {
   }
 
   const userQuestion = question || `Explain this ${gathered.kind} in plain English.`;
+  // Backstop only — the evidence shape is already capped per list, but a token
+  // with a pathological field shouldn't be able to inflate the prompt.
+  const evidenceJson = JSON.stringify(gathered.evidence, null, 2).slice(0, MAX_EVIDENCE_CHARS);
   const userContent = `Question: ${userQuestion}
 
 Target: ${gathered.target} (${gathered.kind})
 Network: ${getChainConfig().name}
 
 Evidence (JSON):
-${JSON.stringify(gathered.evidence, null, 2)}`;
+${evidenceJson}`;
 
   const model = process.env.GROQ_MODEL?.trim() || "llama-3.3-70b-versatile";
 
@@ -91,6 +107,7 @@ ${JSON.stringify(gathered.evidence, null, 2)}`;
       body: JSON.stringify({
         model,
         temperature: 0.2,
+        max_tokens: MAX_ANSWER_TOKENS,
         messages: [
           { role: "system", content: SYSTEM_PROMPT },
           { role: "user", content: userContent },
