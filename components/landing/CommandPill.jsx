@@ -131,6 +131,18 @@ export default function CommandPill({
             href={href}
             aria-label={`${label} (command palette)`}
             aria-keyshortcuts="Meta+K Control+K"
+            // With a handler supplied the pill opens the overlay in place; the
+            // href stays as the real destination so the link is still valid to
+            // middle-click, copy, or follow with JS disabled.
+            onClick={
+              onTrigger
+                ? (e) => {
+                    if (e.metaKey || e.ctrlKey || e.shiftKey || e.button !== 0) return;
+                    e.preventDefault();
+                    onTrigger();
+                  }
+                : undefined
+            }
             className="flex select-none items-center gap-3 rounded-full px-5 py-3 outline-none ring-cm-accent/60 transition-colors focus-visible:ring-2"
           >
             <span className="relative h-6 w-6 shrink-0" aria-hidden="true">
