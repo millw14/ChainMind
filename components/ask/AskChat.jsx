@@ -75,7 +75,6 @@ export function AskChat() {
 
     const target = extractTarget(text);
     setMessages((m) => [...m, { role: "user", content: text }]);
-    setInput("");
 
     if (!target) {
       setMessages((m) => [
@@ -88,6 +87,9 @@ export function AskChat() {
       return;
     }
 
+    // Only now is the question actually leaving — clearing earlier destroyed
+    // what the user typed on the most common failure.
+    setInput("");
     setBusy(true);
     try {
       const res = await fetch("/api/ask", {
