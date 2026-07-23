@@ -1,107 +1,51 @@
 "use client";
 
-import Link from "next/link";
 import { useEffect, useRef } from "react";
-import HeroGridCanvas from "@/components/landing/HeroGridCanvas";
+import DotGrid from "@/components/landing/DotGrid";
+import DraggableWordmark from "@/components/landing/DraggableWordmark";
 
 /**
- * MaskedLine — a line of display type that rises out of an overflow mask.
- * The rise is a CSS animation, not a JS one: if a JS-driven reveal never gets
- * a frame, the line stays parked at its hidden start value and the headline
- * silently disappears. CSS keeps the copy independent of the JS thread.
- * @param {{ children: import("react").ReactNode, delay?: number, className?: string }} props
- */
-function MaskedLine({ children, delay = 0, className = "" }) {
-  return (
-    <span className="block overflow-hidden pb-[0.06em]">
-      <span className={`cm-line-rise block ${className}`} style={{ animationDelay: `${delay}s` }}>
-        {children}
-      </span>
-    </span>
-  );
-}
-
-/**
- * EditorialHero — full-viewport hero built on scale contrast: a 10px mono label
- * against a wordmark that fills the screen, with brutal whitespace between.
+ * EditorialHero — full-viewport hero: a dot-grid field with the wordmark
+ * presented as a selected object in the middle, framed by small mono type.
  */
 export default function EditorialHero() {
   const rootRef = useRef(null);
 
-  // Fail-visible net: the entrance animations use fill-mode "both", so a stalled
-  // animation clock would leave the wordmark parked off-mask and invisible. Once
-  // the longest delay + duration has passed, force the resting state regardless.
+  // Fail-visible net: the mono framing uses fill-mode "both", so a stalled
+  // animation clock would leave it parked hidden. Force the resting state once
+  // the longest delay has passed. Copy must never depend on an animation.
   useEffect(() => {
-    const t = setTimeout(() => rootRef.current?.classList.add("cm-revealed"), 2600);
+    const t = setTimeout(() => rootRef.current?.classList.add("cm-revealed"), 2400);
     return () => clearTimeout(t);
   }, []);
 
   return (
     <section
       ref={rootRef}
-      className="relative flex min-h-[94svh] flex-col overflow-hidden border-b border-cm-border-subtle bg-cm-bg"
+      className="relative flex min-h-[92svh] flex-col items-center justify-center overflow-hidden border-b border-cm-border-subtle bg-cm-bg px-6 py-24 sm:px-10"
     >
-      <HeroGridCanvas speed={0.6} density={0.8} />
-      <div aria-hidden className="cm-ambient-orb cm-ambient-orb--breathe left-[-10rem] top-[10%] h-[26rem] w-[26rem] bg-cm-accent/12" />
+      <DotGrid gap={22} fade parallax />
+      <div aria-hidden className="cm-ambient-orb cm-ambient-orb--breathe left-1/2 top-1/2 h-[34rem] w-[34rem] -translate-x-1/2 -translate-y-1/2 bg-cm-accent/8" />
 
-      {/* top rule — tiny mono meta, maximum scale contrast against the wordmark */}
-      <div
-        className="cm-fade-in relative z-10 mx-auto flex w-full max-w-[100rem] items-center justify-between px-6 pt-8 font-mono text-[10px] uppercase tracking-[0.34em] text-cm-faint sm:px-10"
-        style={{ animationDelay: "0.1s" }}
+      {/* small mono line above the wordmark — the scale contrast anchor */}
+      <p
+        className="cm-fade-in relative z-10 text-center font-mono text-[10px] uppercase tracking-[0.34em] text-cm-muted sm:text-xs sm:tracking-[0.42em]"
+        style={{ animationDelay: "0.15s" }}
       >
-        <span className="flex items-center gap-2 text-cm-terminal">
-          <span className="cm-pulse-live inline-block h-1 w-1 rounded-full bg-cm-ok" />
-          Robinhood Chain
-        </span>
-        <span className="hidden sm:block">AI Explorer</span>
+        Reading the chain, block by block.
+      </p>
+
+      {/* the selected object */}
+      <div className="relative z-10 mt-10 w-full sm:mt-14">
+        <DraggableWordmark top="CHAIN" bottom="MIND" hint="Drag to move" />
       </div>
 
-      {/* the wordmark — the only thing that matters on this screen */}
-      <div className="relative z-10 mx-auto flex w-full max-w-[100rem] flex-1 flex-col justify-center px-6 py-16 sm:px-10">
-        <h1 className="font-semibold uppercase leading-[0.82] tracking-[-0.045em] text-cm-text">
-          <MaskedLine delay={0.25} className="text-[clamp(3.25rem,15.5vw,13rem)]">
-            Ask the
-          </MaskedLine>
-          <MaskedLine delay={0.38} className="cm-text-outline text-[clamp(3.25rem,15.5vw,13rem)]">
-            Chain
-          </MaskedLine>
-        </h1>
-
-        <p
-          className="cm-fade-in mt-10 max-w-sm text-[0.95rem] leading-relaxed text-cm-muted sm:mt-14"
-          style={{ animationDelay: "1.05s" }}
-        >
-          Wallets, tokens and transactions — read straight from the chain and explained in plain
-          English.
-        </p>
-
-        <div className="cm-fade-in mt-10 flex items-center gap-8" style={{ animationDelay: "1.2s" }}>
-          <Link
-            href="/ask"
-            className="group inline-flex items-center gap-3 border-b border-cm-accent pb-1 font-mono text-xs uppercase tracking-[0.24em] text-cm-accent transition-colors hover:text-cm-accent-bright"
-          >
-            Start asking
-            <span aria-hidden className="transition-transform duration-300 group-hover:translate-x-1">
-              →
-            </span>
-          </Link>
-          <Link
-            href="/how-it-works"
-            className="font-mono text-xs uppercase tracking-[0.24em] text-cm-faint transition-colors hover:text-cm-text"
-          >
-            How it works
-          </Link>
-        </div>
-      </div>
-
-      {/* bottom rule */}
-      <div
-        className="cm-fade-in relative z-10 mx-auto flex w-full max-w-[100rem] items-center justify-between border-t border-cm-border-subtle px-6 py-6 font-mono text-[10px] uppercase tracking-[0.34em] text-cm-faint sm:px-10"
-        style={{ animationDelay: "1.35s" }}
+      <p
+        className="cm-fade-in relative z-10 mt-12 max-w-md text-center text-base leading-relaxed text-cm-muted sm:mt-16 sm:text-lg"
+        style={{ animationDelay: "0.5s" }}
       >
-        <span>Scroll</span>
-        <span className="hidden sm:block">No signup required</span>
-      </div>
+        Wallets, tokens and transactions on Robinhood Chain — explained in plain English.
+      </p>
     </section>
   );
 }

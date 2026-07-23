@@ -14,6 +14,9 @@ import {
 import { Reveal, Parallax } from "@/components/motion/scroll";
 import GrainOverlay from "@/components/landing/GrainOverlay";
 import EditorialHero from "@/components/landing/EditorialHero";
+import Preloader from "@/components/landing/Preloader";
+import CursorLayer from "@/components/landing/CursorLayer";
+import CommandPill from "@/components/landing/CommandPill";
 import HeroGridCanvas from "@/components/landing/HeroGridCanvas";
 import FeatureStack from "@/components/landing/FeatureStack";
 
@@ -198,7 +201,10 @@ export function LandingPage() {
 
   return (
     <>
+      <Preloader label="ChainMind" duration={1500} />
       <GrainOverlay opacity={0.05} />
+      <CursorLayer youLabel="You" bots={[{ label: "ChainMind AI", color: "var(--cm-accent-bright)" }]} />
+      <CommandPill href="/ask" label="Ask anything" />
       <EditorialHero />
 
       <section className="relative overflow-hidden border-b border-cm-border-subtle py-20 sm:py-28">
