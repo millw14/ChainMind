@@ -86,7 +86,18 @@ export async function POST(req) {
     return NextResponse.json({ ok: false, error: String(e?.message ?? e) }, { status: 500 });
   }
 
-  const gathered = await gatherEvidence(target);
+  // gatherEvidence is best-effort internally, but an unexpected throw here
+  // would leave Next to emit a bodyless 500 that breaks the { ok, error }
+  // contract the client parses.
+  let gathered;
+  try {
+    gathered = await gatherEvidence(target);
+  } catch (e) {
+    return NextResponse.json(
+      { ok: false, error: `Could not read chain data: ${String(e?.message ?? e)}` },
+      { status: 503 },
+    );
+  }
   if (!gathered.ok) {
     return NextResponse.json({ ok: false, error: gathered.error, kind: gathered.kind }, { status: 404 });
   }
