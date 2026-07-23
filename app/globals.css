@@ -158,6 +158,58 @@ html {
   }
 }
 
+/* Hero entrance — CSS-driven on purpose. A JS/rAF-driven reveal leaves the
+ * headline stuck at its hidden start state if a frame never fires (throttled
+ * tab, stalled hydration), so the copy must never depend on JS to appear. */
+@keyframes cmLineRise {
+  from {
+    transform: translateY(110%);
+  }
+  to {
+    transform: translateY(0);
+  }
+}
+
+@keyframes cmFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.cm-line-rise {
+  animation: cmLineRise 1.05s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.cm-fade-in {
+  animation: cmFadeIn 0.9s ease-out both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cm-line-rise,
+  .cm-fade-in {
+    animation: none !important;
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* Fail-visible safety: both entrance animations use fill-mode "both", so if the
+ * animation clock never advances (throttled/background tab, animations disabled)
+ * the copy would stay parked at its hidden start value forever. A timer stamps
+ * this class on to force the resting state. Never let a headline depend on
+ * an animation completing in order to exist. */
+.cm-revealed .cm-line-rise,
+.cm-revealed .cm-fade-in {
+  animation: none !important;
+  opacity: 1;
+  transform: none;
+}
+
 /* Outlined display type — pairs a solid line with a stroked one at hero scale. */
 .cm-text-outline {
   color: transparent;
