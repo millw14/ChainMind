@@ -1,8 +1,9 @@
 import Link from "next/link";
 import LiveClock from "@/components/site/LiveClock";
 
-/** Two words, not five. The page is the product; the header just orients you. */
+/** Three words, not five. The page is the product; the header just orients you. */
 const nav = [
+  { href: "/stocks", label: "Stocks" },
   { href: "/#capabilities", label: "Work" },
   { href: "/docs", label: "Docs" },
 ];
@@ -24,8 +25,8 @@ export function SiteHeader() {
           <LiveClock />
         </div>
 
-        {/* right — two words */}
-        <nav className="pointer-events-auto flex items-center gap-7 justify-self-end">
+        {/* right — three words; tighter gap on phones so they clear the mark */}
+        <nav className="pointer-events-auto flex items-center gap-5 justify-self-end sm:gap-7">
           {nav.map((item) => (
             <Link
               key={item.href}
