@@ -46,6 +46,27 @@ Deploy (Vercel Hobby + Turso + Railway worker):
      R2_BUCKET, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY). npm run backup does the
      same by hand. See docs/backup-restore.md.
 
+RPC provider (optional — the public RPC works out of the box):
+  Robinhood Chain's public endpoint (https://rpc.mainnet.chain.robinhood.com) is
+  the zero-config default and is fine for development. Move to a dedicated
+  provider such as Alchemy when you want:
+    - rate limits that survive real traffic (the public RPC throttles bursts,
+      which shows up as slow/failed eth_* calls on the dashboard and /api/health)
+    - websockets for push updates instead of polling every panel
+    - webhooks (Alchemy Notify) to drive live updates without a poll loop
+  To point the app at Alchemy, set ONE of these in .env.local / your host env:
+    ALCHEMY_RPC_URL   — the full endpoint URL copied from the Alchemy dashboard
+                        (key included). Used verbatim; preferred.
+    ALCHEMY_RPC_TEMPLATE + ALCHEMY_API_KEY — when you would rather not put the
+                        key in the URL. The template carries the host Alchemy
+                        assigns to chain 4663, with {key} as the placeholder.
+                        The app never guesses that host, so a wrong hostname can
+                        never be baked in silently.
+  Precedence is ROBINHOOD_RPC_URL > ALCHEMY_RPC_URL > template+key > public RPC,
+  so ROBINHOOD_RPC_URL still overrides everything for any other provider.
+  Blockscout (token lists, holders, transfers) is a separate service and is not
+  affected by the RPC choice.
+
 If the build says "No Output Directory named public found":
   Your Vercel project still has a static-site output override. Clear Output Directory
   and set Framework Preset to Next.js, then redeploy.

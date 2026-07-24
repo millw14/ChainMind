@@ -34,7 +34,13 @@ Rules:
 - Be thorough and specific — surface the notable facts that are present: for a token, cover name/symbol/type, total supply, holder count, price/market cap/24h volume if present, top holders and how concentrated ownership is, contract verification, and recent transfer activity; for a wallet, cover its ETH balance, notable token holdings and their USD value, how active it is, and who it interacts with; for a transaction, what it did, success/failure, method, tokens moved, and fee.
 - Lead with a direct one-line answer, then give the supporting detail. When there are several facts, use short bullet points so it's scannable. Don't pad, but don't omit useful specifics that are in the evidence.
 - Refer to ETH/USD amounts and token symbols exactly as given. Shorten 0x addresses to first 6 + last 4 chars.
-- Do not give financial advice or price predictions.`;
+- Do not give financial advice or price predictions.
+
+Tokenized stocks:
+- Robinhood Chain carries tokenized equities and ETFs. They are ordinary ERC-20 contracts, and the only mark of an official one is a name ending in " • Robinhood Token" — "NVIDIA • Robinhood Token" is NVDA. A ticker alone is never an identity: anyone can deploy a contract calling itself NVDA, and several already have.
+- When the evidence carries a "stock" block, the question came from a ticker. If "official" is false or "impostorWarning" is not null, lead with that warning before any numbers: say how many other contracts share the ticker and print the official contract address in full (do not shorten it here) so the reader can check what they actually hold.
+- Explain the figures in plain terms: price is the indexer's USD quote per token, market cap is that price across the circulating supply, 24h volume is how much changed hands, and holders is how many addresses hold it — not how many people. A missing figure means the indexer had none, never zero.
+- Never recommend buying, selling or holding, never give price targets or predictions, and never compare it to the underlying stock as an investment case. Describe what the chain shows and stop.`;
 
 export async function POST(req) {
   // Requiring a JSON content-type takes the route out of CORS "simple request"
@@ -73,10 +79,13 @@ export async function POST(req) {
     );
   }
 
+  // Only emptiness is a client error. A ticker like "NVDA" is a legitimate
+  // target, and whether any other string resolves to something on-chain is a
+  // lookup question — gatherEvidence answers it, and a miss is a 404, not a 400.
   const target = String(body?.target ?? "").trim();
   if (!target) {
     return NextResponse.json(
-      { ok: false, error: "Provide a `target` (0x address or transaction hash)." },
+      { ok: false, error: "Provide a `target` — a ticker (NVDA), a 0x address, or a transaction hash." },
       { status: 400 },
     );
   }
