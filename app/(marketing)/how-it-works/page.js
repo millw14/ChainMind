@@ -7,7 +7,8 @@ export const metadata = {
 export default function HowItWorksPage() {
   return (
     <div className="border-b border-cm-border-subtle">
-      <div className="mx-auto w-full max-w-3xl px-4 py-16 sm:px-6 sm:py-24">
+      {/* pt clears the floating header (absolute, so the hero runs full-bleed). */}
+      <div className="mx-auto w-full max-w-3xl px-4 pb-16 pt-28 sm:px-6 sm:pb-24 sm:pt-32">
         <p className="font-[family-name:var(--font-mono)] text-[10px] uppercase tracking-widest text-cm-faint">Guide</p>
         <h1 className="mt-3 text-3xl font-bold tracking-tight text-cm-text sm:text-4xl">How ChainMind works</h1>
         <p className="mt-4 text-lg leading-relaxed text-cm-muted">

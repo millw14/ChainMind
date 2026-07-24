@@ -11,6 +11,18 @@ import {
   staggerParent,
   springGentle,
 } from "@/components/motion/presets";
+import { Reveal, Parallax } from "@/components/motion/scroll";
+import GrainOverlay from "@/components/landing/GrainOverlay";
+import EditorialHero from "@/components/landing/EditorialHero";
+import Preloader from "@/components/landing/Preloader";
+import CursorLayer from "@/components/landing/CursorLayer";
+import CommandPill from "@/components/landing/CommandPill";
+import HeroGridCanvas from "@/components/landing/HeroGridCanvas";
+import ScrollDeck from "@/components/landing/ScrollDeck";
+import HoverPreviewList from "@/components/landing/HoverPreviewList";
+import ScrollFlipStage from "@/components/landing/ScrollFlipStage";
+import ScrollTypeStatement from "@/components/landing/ScrollTypeStatement";
+import AskOverlay from "@/components/landing/AskOverlay";
 
 function useTypewriter(text, speed = 18, startDelay = 400, enabled = true) {
   const [displayed, setDisplayed] = useState(() => (enabled ? "" : text));
@@ -182,6 +194,15 @@ function CtaLink({ href, className, children }) {
 
 export function LandingPage() {
   const reduceMotion = useReducedMotion() ?? false;
+  const [askOpen, setAskOpen] = useState(false);
+
+  /** Hand the question to the real /ask route rather than answering inline. */
+  function handleAsk(question) {
+    const q = String(question ?? "").trim();
+    setAskOpen(false);
+    window.location.href = q ? `/ask?q=${encodeURIComponent(q)}` : "/ask";
+  }
+
   const headlineText = "Ask anything on Robinhood Chain, get answers in plain English.";
   const typedHeadline = useTypewriter(headlineText, 28, 200, !reduceMotion);
   const fv = fadeUp(reduceMotion);
@@ -193,146 +214,41 @@ export function LandingPage() {
 
   return (
     <>
-      <section className="relative overflow-x-clip border-b border-cm-border-subtle bg-cm-bg bg-cm-hero cm-war-grid cm-war-grid-motion">
-        <HeroGraphDecor reduce={reduceMotion} />
-        <div className={`relative ${shell} pb-20 pt-14 sm:pb-24 sm:pt-20`}>
-          <motion.div
-            className="relative grid grid-cols-1 gap-12 lg:grid-cols-[1fr,minmax(0,22rem)] lg:items-center lg:gap-16"
-            initial="hidden"
-            animate="show"
-            variants={scFast}
-          >
-            <motion.div className="min-w-0" variants={staggerParent(reduceMotion, { stagger: 0.08, delayChildren: 0.02 })}>
-              <motion.div variants={fv} className="inline-flex items-center gap-2 rounded border border-cm-border bg-cm-surface/80 px-2.5 py-1 font-mono text-[10px] font-medium uppercase tracking-[0.2em] text-cm-terminal">
-                <span className="cm-pulse-live inline-block h-1.5 w-1.5 rounded-full bg-cm-ok" />
-                Robinhood Chain · AI explorer
-              </motion.div>
-              <motion.h1
-                variants={fv}
-                className="mt-6 max-w-3xl text-[1.75rem] font-semibold leading-[1.12] tracking-tight text-cm-text sm:text-4xl sm:leading-tight lg:text-[2.75rem]"
-              >
-                {reduceMotion ? headlineText : typedHeadline}
-                {!reduceMotion && (
-                  <motion.span
-                    className="text-cm-accent"
-                    animate={{ opacity: typedHeadline.length < headlineText.length ? [1, 0, 1] : [1, 0] }}
-                    transition={{
-                      duration: typedHeadline.length < headlineText.length ? 0.8 : 1.2,
-                      repeat: typedHeadline.length < headlineText.length ? Infinity : 0,
-                      delay: typedHeadline.length >= headlineText.length ? 0.8 : 0,
-                    }}
-                  >|</motion.span>
-                )}
-              </motion.h1>
-              <motion.p
-                initial={{ opacity: 0, y: 8 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.7, delay: reduceMotion ? 0.2 : 2.2 }}
-                className="mt-5 max-w-2xl text-base leading-relaxed text-cm-muted sm:text-lg"
-              >
-                ChainMind reads wallets, tokens, and transactions straight from the chain and explains what&apos;s
-                happening. Just ask.
-              </motion.p>
-              <motion.div
-                initial={{ opacity: 0, y: 8 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.7, delay: reduceMotion ? 0.3 : 2.8 }}
-                className="mt-8 w-full min-w-0 max-w-full flex flex-col gap-3 md:max-w-xl"
-              >
-                <div className="flex flex-col gap-2">
-                  <CtaLink
-                    href="/ask"
-                    className="inline-flex h-12 w-full items-center justify-center rounded-md bg-cm-accent px-8 text-base font-semibold text-cm-on-accent transition-colors hover:bg-cm-accent-bright active:bg-cm-accent-dim sm:w-auto sm:self-start"
-                  >
-                    Ask
-                  </CtaLink>
-                  <p className="text-xs text-cm-faint">No signup needed — start exploring Robinhood Chain.</p>
-                </div>
-                <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
-                  <CtaLink
-                    href="/#how-it-works"
-                    className="inline-flex h-9 items-center justify-center rounded-md border border-cm-border bg-cm-elevated/90 px-5 text-sm font-medium text-cm-text backdrop-blur-sm transition-colors hover:border-cm-accent/40 hover:bg-cm-row-hover"
-                  >
-                    How it works
-                  </CtaLink>
-                  <motion.div whileHover={{ x: 3 }} transition={springGentle}>
-                    <Link
-                      href="/docs"
-                      className="inline-flex px-2 text-sm font-medium text-cm-muted underline-offset-4 hover:text-cm-text hover:underline sm:px-4"
-                    >
-                      Read the docs →
-                    </Link>
-                  </motion.div>
-                </div>
-              </motion.div>
-            </motion.div>
+      <Preloader label="ChainMind" duration={1500} />
+      <GrainOverlay opacity={0.05} />
+      <CursorLayer youLabel="You" bots={[{ label: "ChainMind AI", color: "var(--cm-accent-bright)" }]} />
+      <CommandPill href="/ask" label="Ask anything" onTrigger={() => setAskOpen(true)} />
+      <AskOverlay open={askOpen} onClose={() => setAskOpen(false)} onSubmit={handleAsk} />
 
-            <motion.div variants={fs} className="relative">
-              <motion.div
-                className="cm-panel-edge cm-landing-card-glow rounded-md border border-cm-border bg-cm-card/95 p-4 shadow-cm backdrop-blur-sm sm:p-5"
-                whileHover={reduceMotion ? {} : { scale: 1.02 }}
-                transition={springGentle}
-              >
-                <div className="flex items-center justify-between border-b border-cm-border-subtle pb-3 font-mono text-[10px] uppercase tracking-wider text-cm-faint">
-                  <motion.span animate={reduceMotion ? {} : { opacity: [0.7, 1, 0.75] }} transition={{ duration: 2.2, repeat: Infinity }}>
-                    Ask · preview
-                  </motion.span>
-                  <span className="text-cm-terminal">wallet</span>
-                </div>
-                <TerminalCard reduce={reduceMotion} />
-                <p className="mt-3 border-t border-cm-border-subtle pt-3 text-[11px] leading-snug text-cm-muted">
-                  Every answer is grounded in live chain data—
-                  <span className="text-cm-subtle"> open the evidence to see the exact rows behind it.</span>
-                </p>
-              </motion.div>
-            </motion.div>
-          </motion.div>
+      {/* The hero rides on a board that hinges away in 3D as you scroll off it. */}
+      <ScrollFlipStage>
+        <EditorialHero />
+      </ScrollFlipStage>
 
-          <motion.div
-            className="relative mt-16 grid grid-cols-1 gap-3 sm:mt-20 sm:grid-cols-3 sm:gap-4"
-            initial="hidden"
-            whileInView="show"
-            viewport={inViewOpts}
-            variants={staggerContainer(reduceMotion, { stagger: 0.12, delayChildren: 0.1 })}
-          >
-            {[
-              {
-                k: "Plain English",
-                v: "Answers, not raw hex",
-                sub: "Paste any address or transaction and get a human-readable explanation—balances, tokens, and what actually happened.",
-              },
-              {
-                k: "Grounded in chain truth",
-                v: "Live Blockscout data",
-                sub: "Every answer is built from real on-chain reads, with the underlying evidence one click away. No made-up numbers.",
-              },
-              {
-                k: "Anything on-chain",
-                v: "Wallets · tokens · txns",
-                sub: "Ask about a wallet's activity, a token's details, or exactly what a transaction did—all from one place.",
-              },
-            ].map((item) => (
-              <motion.div
-                key={item.k}
-                variants={fadeScale(reduceMotion)}
-                whileHover={
-                  reduceMotion
-                    ? {}
-                    : {
-                        y: -6,
-                        boxShadow:
-                          "0 0 0 1px rgba(16,185,129,0.4), 0 8px 32px -8px rgba(16,185,129,0.3)",
-                        transition: springGentle,
-                      }
-                }
-                className="cm-panel-edge border border-cm-border bg-cm-surface/90 p-4 sm:p-5"
-              >
-                <p className="font-mono text-[10px] font-semibold uppercase tracking-widest text-cm-faint">{item.k}</p>
-                <p className="mt-2 text-sm font-semibold text-cm-text">{item.v}</p>
-                <p className="mt-2 text-xs leading-relaxed text-cm-muted">{item.sub}</p>
-              </motion.div>
-            ))}
-          </motion.div>
+      <ScrollTypeStatement
+        label="Statement 01"
+        text="Every wallet, token and transaction on Robinhood Chain is public — but almost none of it is readable. ChainMind turns the ledger into plain English."
+        highlight={["readable", "plain", "English."]}
+      />
+
+      <section className="relative overflow-hidden border-b border-cm-border-subtle pb-10 pt-20 sm:pt-28">
+        <div className={`relative ${shell}`}>
+          <Reveal className="mx-auto max-w-3xl px-4 text-center">
+            <p className="font-mono text-[10px] uppercase tracking-[0.22em] text-cm-terminal">What you can do</p>
+            <h2 className="mt-3 text-2xl font-semibold tracking-tight text-cm-text sm:text-3xl">
+              One question away from the whole chain
+            </h2>
+          </Reveal>
+        </div>
+        {/* Sticky 3D deck — each card pins for a viewport while the next rides over it. */}
+        <div className="mt-14 sm:mt-20">
+          <ScrollDeck />
+        </div>
+      </section>
+
+      <section className="relative border-b border-cm-border-subtle py-20 sm:py-28">
+        <div className={`relative ${shell}`}>
+          <HoverPreviewList />
         </div>
       </section>
 

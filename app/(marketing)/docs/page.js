@@ -7,7 +7,9 @@ export const metadata = {
 export default function DocsPage() {
   return (
     <div className="border-b border-cm-border-subtle">
-      <div className="mx-auto max-w-3xl px-4 py-12 sm:px-6 sm:py-16">
+      {/* pt clears the floating header, which is absolutely positioned so the
+          landing hero can run full-bleed underneath it. */}
+      <div className="mx-auto max-w-3xl px-4 pb-12 pt-28 sm:px-6 sm:pb-16 sm:pt-32">
         <p className="font-[family-name:var(--font-mono)] text-[11px] uppercase tracking-wide text-cm-faint">
           Reference
         </p>
