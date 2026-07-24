@@ -157,3 +157,117 @@ html {
     scroll-behavior: smooth;
   }
 }
+
+/* Hero entrance — CSS-driven on purpose. A JS/rAF-driven reveal leaves the
+ * headline stuck at its hidden start state if a frame never fires (throttled
+ * tab, stalled hydration), so the copy must never depend on JS to appear. */
+@keyframes cmLineRise {
+  from {
+    transform: translateY(110%);
+  }
+  to {
+    transform: translateY(0);
+  }
+}
+
+@keyframes cmFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.cm-line-rise {
+  animation: cmLineRise 1.05s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.cm-fade-in {
+  animation: cmFadeIn 0.9s ease-out both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cm-line-rise,
+  .cm-fade-in {
+    animation: none !important;
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* Fail-visible safety: both entrance animations use fill-mode "both", so if the
+ * animation clock never advances (throttled/background tab, animations disabled)
+ * the copy would stay parked at its hidden start value forever. A timer stamps
+ * this class on to force the resting state. Never let a headline depend on
+ * an animation completing in order to exist. */
+.cm-revealed .cm-line-rise,
+.cm-revealed .cm-fade-in {
+  animation: none !important;
+  opacity: 1;
+  transform: none;
+}
+
+/* Outlined display type — pairs a solid line with a stroked one at hero scale. */
+.cm-text-outline {
+  color: transparent;
+  -webkit-text-stroke: 1px var(--cm-accent);
+}
+
+@media (min-width: 640px) {
+  .cm-text-outline {
+    -webkit-text-stroke-width: 1.5px;
+  }
+}
+
+/* Ambient decor: slow-drifting accent glow orbs behind hero/section content.
+ * Purely decorative — always pointer-events-none, aria-hidden at the markup. */
+.cm-ambient-orb {
+  position: absolute;
+  border-radius: 9999px;
+  filter: blur(60px);
+  opacity: 0.5;
+  pointer-events: none;
+  will-change: transform;
+  animation: cmOrbDrift 22s ease-in-out infinite alternate;
+}
+
+.cm-ambient-orb--slow {
+  animation-duration: 34s;
+}
+
+.cm-ambient-orb--breathe {
+  animation:
+    cmOrbDrift 26s ease-in-out infinite alternate,
+    cmOrbBreathe 9s ease-in-out infinite;
+}
+
+@keyframes cmOrbDrift {
+  0% {
+    transform: translate3d(0, 0, 0);
+  }
+  100% {
+    transform: translate3d(4%, -3%, 0);
+  }
+}
+
+@keyframes cmOrbBreathe {
+  0%,
+  100% {
+    opacity: 0.4;
+  }
+  50% {
+    opacity: 0.62;
+  }
+}
+
+/* Reveal helper for non-framer scroll-in (kept in sync with the JS Reveal). */
+@media (prefers-reduced-motion: reduce) {
+  .cm-ambient-orb,
+  .cm-ambient-orb--slow,
+  .cm-ambient-orb--breathe {
+    animation: none !important;
+  }
+}
