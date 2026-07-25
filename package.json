@@ -17,6 +17,7 @@
     "nextjs"
   ],
   "homepage": "https://chainmind.fun",
+  "license": "MIT",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/millw14/ChainMind.git"

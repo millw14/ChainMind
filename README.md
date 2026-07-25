@@ -98,5 +98,4 @@ upstream during the pivot. `git log` is the record.
 
 ## License
 
-Not yet licensed — see [#license](https://github.com/millw14/ChainMind/issues). Until one is
-added, default copyright applies and no usage rights are granted.
+[MIT](LICENSE).
