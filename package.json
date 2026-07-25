@@ -3,7 +3,28 @@
   "private": true,
   "version": "0.0.1",
   "type": "module",
-  "description": "Robinhood Chain — AI on-chain explorer",
+  "description": "AI explorer for Robinhood Chain — ask about wallets, tokens, transactions and tokenized stocks in plain English",
+  "keywords": [
+    "robinhood-chain",
+    "blockchain-explorer",
+    "ethereum",
+    "layer-2",
+    "arbitrum-orbit",
+    "tokenized-stocks",
+    "ai",
+    "llm",
+    "viem",
+    "nextjs"
+  ],
+  "homepage": "https://chainmind.fun",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/millw14/ChainMind.git"
+  },
+  "bugs": {
+    "url": "https://github.com/millw14/ChainMind/issues"
+  },
   "engines": {
     "node": ">=20"
   },

@@ -196,13 +196,6 @@ export function LandingPage() {
   const reduceMotion = useReducedMotion() ?? false;
   const [askOpen, setAskOpen] = useState(false);
 
-  /** Hand the question to the real /ask route rather than answering inline. */
-  function handleAsk(question) {
-    const q = String(question ?? "").trim();
-    setAskOpen(false);
-    window.location.href = q ? `/ask?q=${encodeURIComponent(q)}` : "/ask";
-  }
-
   const headlineText = "Ask anything on Robinhood Chain, get answers in plain English.";
   const typedHeadline = useTypewriter(headlineText, 28, 200, !reduceMotion);
   const fv = fadeUp(reduceMotion);
@@ -218,7 +211,8 @@ export function LandingPage() {
       <GrainOverlay opacity={0.05} />
       <CursorLayer youLabel="You" bots={[{ label: "ChainMind AI", color: "var(--cm-accent-bright)" }]} />
       <CommandPill href="/ask" label="Ask anything" onTrigger={() => setAskOpen(true)} />
-      <AskOverlay open={askOpen} onClose={() => setAskOpen(false)} onSubmit={handleAsk} />
+      {/* No onSubmit: the overlay answers in place and keeps the follow-ups there. */}
+      <AskOverlay open={askOpen} onClose={() => setAskOpen(false)} />
 
       {/* The hero rides on a board that hinges away in 3D as you scroll off it. */}
       <ScrollFlipStage>
