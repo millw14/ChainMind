@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
 import { motion, useReducedMotion } from "framer-motion";
-import { extractTarget } from "@/lib/extract-target";
+import { INTENTS, classifyIntent, extractTargets } from "@/lib/ask-intent";
 
 const THINKING_PHASES = ["reading chain", "gathering evidence", "asking the model"];
 
@@ -44,10 +44,49 @@ function shortHex(v) {
   return `${v.slice(0, 6)}…${v.slice(-4)}`;
 }
 
+/** Same shortening, applied in place to every long hex run inside a sentence. */
+function shortenHexIn(text) {
+  return String(text ?? "").replace(/0x[0-9a-fA-F]{20,}/g, (m) => shortHex(m));
+}
+
+/**
+ * Router intents, rendered as a short human tag. Anything unmapped falls back to
+ * the raw name with underscores opened up, so a new server intent still shows
+ * something readable instead of vanishing.
+ */
+const INTENT_LABELS = {
+  [INTENTS.EXPLAIN_TARGET]: "lookup",
+  [INTENTS.COMPARE]: "compare",
+  [INTENTS.RANK_STOCKS]: "ranking",
+  [INTENTS.MARKET_OVERVIEW]: "market",
+  [INTENTS.SAFETY_CHECK]: "safety",
+  [INTENTS.EXPLAIN_CHAIN]: "chain",
+};
+
+function intentLabel(intent) {
+  if (typeof intent !== "string" || !intent || intent === INTENTS.UNKNOWN) return null;
+  return INTENT_LABELS[intent] ?? intent.replace(/_/g, " ");
+}
+
+/**
+ * The empty state doubles as the feature list: one example per thing the intent
+ * router can now do, so nobody has to guess that a bare ranking question works.
+ * Both addresses are real — the issuer wallet behind the official equity tokens,
+ * and a live NVDA impostor — so a click produces a genuine answer rather than a
+ * lookup failure on a placeholder.
+ */
 const EXAMPLES = [
-  { label: "Explain a transaction", hint: "What happened in 0x<tx hash>?" },
-  { label: "Analyze a wallet", hint: "What is 0x<address> and what has it been doing?" },
-  { label: "Look up a token", hint: "Tell me about the token at 0x<address>." },
+  { label: "Price a ticker", question: "How is NVDA trading on Robinhood Chain right now?" },
+  { label: "Rank the market", question: "Which five stock tokens have the most holders?" },
+  { label: "Set two side by side", question: "Compare NVDA and TSLA on price and holder count." },
+  {
+    label: "Check it is genuine",
+    question: "Is the NVDA token at 0x465834D5BA3af2169E49B70A139448e59e3CA492 the official one?",
+  },
+  {
+    label: "Read a wallet",
+    question: "What is 0x4783C67b63dE2B358Ac5951a7D41F47A38F3C046 and what has it been doing?",
+  },
 ];
 
 export function AskChat() {
@@ -58,14 +97,15 @@ export function AskChat() {
   const didPrefill = useRef(false);
 
   // Handle a ?q= handoff (the landing hero input and its suggestion chips) once
-  // on mount: a question that already names a target can answer itself, anything
-  // else is prefilled with a hint instead of dead-stopping on the target error.
+  // on mount. Actionable now means "the router recognises it" rather than "it
+  // carries a 0x" — a ranking or market question answers itself with no target
+  // at all. Only a question nothing matches is prefilled with a hint.
   useEffect(() => {
     if (didPrefill.current) return;
     didPrefill.current = true;
     const q = new URLSearchParams(window.location.search).get("q");
     if (!q) return;
-    if (extractTarget(q)) {
+    if (classifyIntent(q).intent !== INTENTS.UNKNOWN) {
       submit(q);
       return;
     }
@@ -73,7 +113,7 @@ export function AskChat() {
     setMessages([
       {
         role: "assistant",
-        hint: "Add the address or transaction you mean — a 0x…40-character address or 0x…64-character hash — then press Ask. Every answer is read straight off Robinhood Chain, so there is nothing to look up without one.",
+        hint: "I could not tell what that one is asking for. Name a ticker (NVDA), ask for a ranking (\"most holders\"), compare two stocks, or paste a 0x address — then press Ask.",
       },
     ]);
   }, []);
@@ -87,19 +127,20 @@ export function AskChat() {
     const text = String(raw ?? "").trim();
     if (!text || busy) return;
 
-    const target = extractTarget(text);
     setMessages((m) => [...m, { role: "user", content: text }]);
 
-    if (!target) {
-      setMessages((m) => [
-        ...m,
-        {
-          role: "assistant",
-          error: "Paste a Robinhood Chain address (0x…40 chars) or transaction hash (0x…64 chars) in your message.",
-        },
-      ]);
-      return;
-    }
+    // The composer no longer refuses questions without a target: deciding what a
+    // question is asking for is the router's job, and most of the good ones name
+    // nothing at all. `target` is still sent for a plain lookup so the existing
+    // explain_target path is untouched — but never for a compare or a ranking,
+    // where pinning one target is exactly how "compare NVDA and TSLA" used to
+    // collapse into an answer about NVDA alone.
+    const targets = extractTargets(text);
+    const previewed = classifyIntent(text, targets);
+    const target =
+      previewed.intent === INTENTS.EXPLAIN_TARGET
+        ? targets.txs[0] ?? targets.addresses[0] ?? targets.symbols[0] ?? null
+        : null;
 
     // Only now is the question actually leaving — clearing earlier destroyed
     // what the user typed on the most common failure.
@@ -109,18 +150,36 @@ export function AskChat() {
       const res = await fetch("/api/ask", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ question: text, target }),
+        body: JSON.stringify(target ? { question: text, target } : { question: text }),
       });
       const j = await res.json().catch(() => null);
       if (!res.ok || !j?.ok) {
-        setMessages((m) => [
-          ...m,
-          { role: "assistant", error: j?.error || `Request failed (${res.status}).`, detail: j?.detail },
-        ]);
+        // A 400 is always something about the question itself — too vague, too
+        // long. That is coaching, not a failure, so it reads as an ordinary
+        // reply instead of a red box the user feels told off by. Only a plain
+        // string is shown: a structured `guidance` would throw on render.
+        const raw400 = j?.guidance ?? j?.error;
+        const guidance = typeof raw400 === "string" ? raw400.trim() : "";
+        if (res.status === 400 && guidance) {
+          setMessages((m) => [...m, { role: "assistant", hint: guidance }]);
+        } else {
+          setMessages((m) => [
+            ...m,
+            { role: "assistant", error: j?.error || `Request failed (${res.status}).`, detail: j?.detail },
+          ]);
+        }
       } else {
         setMessages((m) => [
           ...m,
-          { role: "assistant", content: j.answer, kind: j.kind, target: j.target, evidence: j.evidence, model: j.model },
+          {
+            role: "assistant",
+            content: j.answer,
+            intent: j.intent,
+            kind: j.kind,
+            target: j.target,
+            evidence: j.evidence,
+            model: j.model,
+          },
         ]);
       }
     } catch (e) {
@@ -154,23 +213,26 @@ export function AskChat() {
         </p>
         <h1 className="mt-1 text-lg font-semibold text-cm-text sm:text-xl">Ask anything on-chain</h1>
         <p className="mt-1 text-sm text-cm-muted">
-          Paste an address or transaction hash and ask a question. Answers are grounded in live chain data.
+          Ask about a ticker, a ranking, two stocks side by side, or any 0x address. Answers are grounded in live chain
+          data.
         </p>
       </div>
 
       {/* Conversation */}
       <div className="flex-1 space-y-4 pb-4">
         {empty && (
-          <div className="grid gap-2 sm:grid-cols-3">
+          <div className="grid gap-2 sm:grid-cols-2">
             {EXAMPLES.map((ex) => (
               <button
                 key={ex.label}
                 type="button"
-                onClick={() => setInput(ex.hint)}
-                className="rounded-lg border border-cm-border bg-cm-card px-3 py-3 text-left text-sm text-cm-subtle transition hover:border-cm-accent/40 hover:bg-cm-row-hover"
+                disabled={busy}
+                onClick={() => submit(ex.question)}
+                className="rounded-lg border border-cm-border bg-cm-card px-3 py-3 text-left text-sm text-cm-subtle transition hover:border-cm-accent/40 hover:bg-cm-row-hover disabled:cursor-not-allowed disabled:opacity-40"
               >
                 <span className="block font-medium text-cm-text">{ex.label}</span>
-                <span className="mt-1 block font-mono text-[11px] text-cm-faint">{ex.hint}</span>
+                {/* Sends the full question; only the display shortens the hex. */}
+                <span className="mt-1 block font-mono text-[11px] text-cm-faint">{shortenHexIn(ex.question)}</span>
               </button>
             ))}
           </div>
@@ -192,7 +254,7 @@ export function AskChat() {
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={onKeyDown}
             rows={1}
-            placeholder="Ask about a 0x address or transaction…"
+            placeholder="Ask about a ticker, a ranking, an address…"
             className="max-h-32 min-h-[2.25rem] flex-1 resize-none bg-transparent px-2 py-1.5 text-sm text-cm-text placeholder:text-cm-faint focus:outline-none"
           />
           <button
@@ -235,10 +297,14 @@ function Message({ m }) {
     );
   }
 
+  const intent = intentLabel(m.intent);
+
   return (
     <div className="rounded-2xl rounded-bl-sm border border-cm-border bg-cm-surface px-3 py-3">
-      {(m.kind || m.target) && (
+      {(intent || m.kind || m.target) && (
         <div className="mb-1.5 flex items-center gap-2 font-mono text-[10px] uppercase tracking-wider text-cm-faint">
+          {/* What the router decided this question was — deliberately quiet. */}
+          {intent && <span>{intent}</span>}
           {m.kind && <span className="rounded bg-cm-row px-1.5 py-0.5 text-cm-terminal">{m.kind}</span>}
           {m.target && <span>{shortHex(m.target)}</span>}
         </div>
