@@ -11,7 +11,8 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "test": "node --test"
+    "test": "node --test",
+    "flex:check": "node scripts/check-intent-flex.mjs"
   },
   "dependencies": {
     "dotenv": "^16.4.7",
