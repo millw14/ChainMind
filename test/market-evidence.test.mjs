@@ -16,6 +16,7 @@ import {
   clampLimit,
   collisions,
   compareByMetric,
+  displayNumber,
   genuineFor,
   resolveDirection,
   resolveMetric,
@@ -215,7 +216,31 @@ test("toRow carries identity plus the four headline numbers, unknowns as null", 
     marketCap: 1200.5,
     holders: null,
     volume24h: null,
+    // Pre-rendered so the model copies a string instead of formatting a float.
+    display: { price: null, marketCap: "$1.20K", holders: null, volume24h: null },
   });
+});
+
+test("display strings never slide a decimal point", () => {
+  // The live regression: 4160789.1145265275 was answered as $4,160,789,114.53,
+  // a thousandfold overstatement, because the model formatted the float itself.
+  const row = toRow({ symbol: "NVDA", marketCap: 4160789.1145265275, holders: 28899, price: 206.71 }, 0);
+  assert.equal(row.display.marketCap, "$4.16M");
+  assert.equal(row.display.holders, "28,899");
+  assert.equal(row.display.price, "$206.71");
+  assert.equal(row.marketCap, 4160789.1145265275, "the raw value stays exact");
+});
+
+test("displayNumber handles each magnitude and refuses non-numbers", () => {
+  assert.equal(displayNumber(null), null);
+  assert.equal(displayNumber(Number.NaN), null);
+  assert.equal(displayNumber(0), "$0.00");
+  assert.equal(displayNumber(206.71), "$206.71");
+  assert.equal(displayNumber(1200.5), "$1.20K");
+  assert.equal(displayNumber(4_160_789.11), "$4.16M");
+  assert.equal(displayNumber(1_836_055_688.37), "$1.84B");
+  assert.equal(displayNumber(2.5e12), "$2.50T");
+  assert.equal(displayNumber(28899, "count"), "28,899");
 });
 
 /* ------------------------------ aggregates ------------------------------ */
