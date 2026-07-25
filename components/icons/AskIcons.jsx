@@ -93,6 +93,35 @@ export function IconBolt({ className = "", size = 16, ...rest }) {
   );
 }
 
+/** Three ascending bars. Used by the "rank the market" chip. */
+export function IconRank({ className = "", size = 16, ...rest }) {
+  return (
+    <Glyph className={className} size={size} {...rest}>
+      <path d="M4.75 19.25V13M12 19.25V8.5M19.25 19.25V4.75" />
+    </Glyph>
+  );
+}
+
+/** Two opposed bars, longest against shortest. Used by the "compare" chip. */
+export function IconCompare({ className = "", size = 16, ...rest }) {
+  return (
+    <Glyph className={className} size={size} {...rest}>
+      <path d="M4 8.5h11.5M4 8.5l2.75-2.75M4 8.5l2.75 2.75" />
+      <path d="M20 15.5H8.5M20 15.5l-2.75-2.75M20 15.5l-2.75 2.75" />
+    </Glyph>
+  );
+}
+
+/** Shield with a check. Used by the "is it genuine" chip. */
+export function IconShield({ className = "", size = 16, ...rest }) {
+  return (
+    <Glyph className={className} size={size} {...rest}>
+      <path d="M12 3.25 5 6v5.25c0 4.1 2.85 7.7 7 9.5 4.15-1.8 7-5.4 7-9.5V6z" />
+      <path d="M9.25 11.75 11.5 14l3.5-4" />
+    </Glyph>
+  );
+}
+
 /** Upward arrow. Used inside the overlay's submit button. */
 export function IconSend({ className = "", size = 16, ...rest }) {
   return (
