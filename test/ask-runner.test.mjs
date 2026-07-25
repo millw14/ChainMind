@@ -27,7 +27,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { INTENTS } from "../lib/ask-intent.js";
 import { BUDGET_EXHAUSTED_RESULT, MAX_EVIDENCE_CHARS } from "../lib/ask-loop.js";
-import { GUIDANCE, runAsk } from "../lib/ask-runner.js";
+import { GUIDANCE, SMALL_TALK_FALLBACK, runAsk } from "../lib/ask-runner.js";
 
 const ADDRESS = "0xd0601ce157db5bdc3162bbac2a2c8af5320d9eec";
 const TX_HASH = `0x${"ab".repeat(32)}`;
@@ -528,4 +528,92 @@ test("a company name reaches the resolver untouched, through the real dispatcher
   assert.deepEqual(seen, ["apple"]);
   assert.equal(res.status, 200);
   assert.equal(res.body.target, "AAPL");
+});
+
+/* ------------------------------ small talk ------------------------------ */
+
+// Measured live before this branch existed: "hello" and "hi" both fired the
+// market_overview tool and came back with a summary of the tokenized-equity
+// market. A greeting answered with a table is the single most robotic thing the
+// product did, and it also spent a tool round trip and an indexer fan-out on one
+// word. These tests pin the JSON path; test/ask-stream.test.mjs pins the streamed
+// one and isSmallTalk itself.
+
+test("a greeting is answered socially, with no tool call and no chain lookup", async () => {
+  const { chat, payloads } = scriptedChat([proseTurn("Hey! Ask me about a ticker like NVDA.")]);
+  const forbidden = async () => assert.fail("small talk must not reach the chain");
+
+  const res = await runAsk({
+    question: "hello",
+    chat,
+    model: MODEL,
+    deps: {
+      gatherEvidence: forbidden,
+      marketOverview: forbidden,
+      rankStocks: forbidden,
+      compareTargets: forbidden,
+      safetyReport: forbidden,
+      dispatch: forbidden,
+    },
+  });
+
+  assert.equal(res.status, 200);
+  assert.equal(res.body.intent, "small_talk", "the client labels the turn with this");
+  assert.equal(res.body.intent, INTENTS.SMALL_TALK);
+  assert.equal(res.body.answer, "Hey! Ask me about a ticker like NVDA.");
+  assert.equal(res.body.evidence, null, "nothing was looked up, so there is no evidence card");
+  assert.deepEqual(res.body.toolCalls, []);
+
+  // One completion, and no `tools` on it: a greeting cannot cost a tool round trip.
+  assert.equal(payloads.length, 1);
+  assert.equal("tools" in payloads[0], false);
+});
+
+test("a greeting still gets a warm answer when the model is down", async () => {
+  const { chat } = scriptedChat([upstream(503, "Groq 503")]);
+  const res = await runAsk({ question: "gm", chat, model: MODEL });
+
+  // The one question in the product that needs no upstream at all. A 502 in reply
+  // to "gm" would be absurd, so it degrades to the fixed sentence.
+  assert.equal(res.status, 200);
+  assert.equal(res.body.ok, true);
+  assert.equal(res.body.answer, SMALL_TALK_FALLBACK);
+});
+
+test("a greeting that also names a subject is routed as the question it is", async () => {
+  const { chat, payloads } = scriptedChat([
+    toolTurn([{ id: "a", name: "lookup_token", args: { query: "nvda" } }]),
+    proseTurn("NVDA trades at $206.71."),
+  ]);
+  const { dispatch, calls } = recorder({
+    lookup_token: { ok: true, kind: "token", target: "NVDA", evidence: { symbol: "NVDA" } },
+  });
+
+  const res = await runAsk({ question: "hi, what is nvda", chat, model: MODEL, deps: { dispatch } });
+
+  assert.equal(res.status, 200);
+  assert.equal(res.body.intent, INTENTS.EXPLAIN_TARGET);
+  assert.deepEqual(calls, [{ name: "lookup_token", args: { query: "nvda" } }]);
+  assert.equal(payloads.length, 2, "the greeting did not short-circuit the lookup");
+});
+
+test("an explicit target keeps even a chatty question on the lookup path", async () => {
+  const { chat } = scriptedChat([proseTurn("That wallet holds 2 ETH.")]);
+  const gathered = [];
+  // The interface has something in view, so "hi" about it is about that thing.
+  const res = await runAsk({
+    question: "hi",
+    target: ADDRESS,
+    chat,
+    model: MODEL,
+    deps: {
+      gatherEvidence: async (t) => {
+        gathered.push(t);
+        return { ok: true, kind: "address", target: ADDRESS, evidence: { balance: "2" } };
+      },
+    },
+  });
+
+  assert.deepEqual(gathered, [ADDRESS]);
+  assert.equal(res.body.intent, INTENTS.EXPLAIN_TARGET);
 });
