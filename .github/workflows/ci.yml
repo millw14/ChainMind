@@ -29,4 +29,9 @@ jobs:
 
       - run: npm test
 
+      # Prints the keyword router's flexibility baseline (see
+      # scripts/check-intent-flex.mjs). Non-blocking by design — it fails the job
+      # only if a phrasing that used to route has stopped routing.
+      - run: npm run flex:check
+
       - run: npm run build
