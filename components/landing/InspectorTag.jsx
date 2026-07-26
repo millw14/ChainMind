@@ -110,6 +110,12 @@ export default function InspectorTag({
   const wrapRef = useRef(null);
   const tipRef = useRef(null);
 
+  // Cached wrapper box. Measuring on every pointermove forces a synchronous
+  // layout right after the rAF loop wrote a transform, which stutters the
+  // pointer over annotated text; measure on enter instead and refresh only
+  // when the box can actually have moved.
+  const rectRef = useRef(null);
+
   // Per-frame geometry lives in refs so the rAF loop never re-renders anything.
   const targetRef = useRef({ x: 0, y: 0 });
   const posRef = useRef({ x: 0, y: 0 });
@@ -180,15 +186,22 @@ export default function InspectorTag({
     rafRef.current = requestAnimationFrame(step);
   }, [step]);
 
+  /** Re-reads the wrapper box into the cache; safe to call with no node. */
+  const measure = useCallback(() => {
+    const el = wrapRef.current;
+    rectRef.current = el ? el.getBoundingClientRect() : null;
+    return rectRef.current;
+  }, []);
+
   const handleEnter = useCallback(
     (event) => {
       if (!annotated) return;
       const el = wrapRef.current;
       if (el && prop) {
-        const rect = el.getBoundingClientRect();
+        const rect = measure();
         targetRef.current = {
-          x: event.clientX - rect.left + OFFSET_X,
-          y: event.clientY - rect.top + OFFSET_Y,
+          x: event.clientX - (rect ? rect.left : 0) + OFFSET_X,
+          y: event.clientY - (rect ? rect.top : 0) + OFFSET_Y,
         };
         // First entry: snap so the pill can't sweep in from the origin corner.
         if (!primedRef.current) {
@@ -199,25 +212,25 @@ export default function InspectorTag({
       }
       setHovered(true);
     },
-    [annotated, prop, paint]
+    [annotated, prop, paint, measure]
   );
 
   const handleMove = useCallback(
     (event) => {
       if (!annotated || !prop) return;
-      const el = wrapRef.current;
-      if (!el) return;
-      const rect = el.getBoundingClientRect();
+      const rect = rectRef.current || measure();
+      if (!rect) return;
       targetRef.current = {
         x: event.clientX - rect.left + OFFSET_X,
         y: event.clientY - rect.top + OFFSET_Y,
       };
       ensureLoop();
     },
-    [annotated, prop, ensureLoop]
+    [annotated, prop, ensureLoop, measure]
   );
 
   const handleLeave = useCallback(() => {
+    rectRef.current = null;
     setHovered(false);
   }, []);
 
@@ -242,6 +255,19 @@ export default function InspectorTag({
     },
     []
   );
+
+  /* The cached box goes stale if the page scrolls or resizes under a live
+     hover, so refresh it then — and only then, never per pointermove. */
+  useEffect(() => {
+    if (!hovered || !showTip) return undefined;
+    const refresh = () => measure();
+    window.addEventListener("scroll", refresh, { passive: true, capture: true });
+    window.addEventListener("resize", refresh, { passive: true });
+    return () => {
+      window.removeEventListener("scroll", refresh, { capture: true });
+      window.removeEventListener("resize", refresh);
+    };
+  }, [hovered, showTip, measure]);
 
   /* Drop the hover state if the tab or window goes away mid-hover. */
   useEffect(() => {

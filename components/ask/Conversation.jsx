@@ -5,10 +5,10 @@ import { motion, useReducedMotion } from "framer-motion";
 import { INTENTS } from "@/lib/ask-intent";
 import { createSseParser } from "@/lib/sse";
 import {
-  IconBolt,
+  IconRank,
   IconSend,
+  IconShield,
   IconSparkle,
-  IconTrace,
   IconTrend,
   IconWallet,
 } from "@/components/icons/AskIcons";
@@ -78,15 +78,40 @@ const UNKNOWN_ERROR = "Something went wrong on my side. Try that again in a mome
 const NETWORK_ERROR = "I could not reach the chain just now. Check your connection and try again.";
 
 /**
- * Default prompts. Kept short so the chip row wraps nicely on narrow screens.
+ * Default prompts — what the landing overlay opens on, since it passes none of
+ * its own. Labels short so the row wraps on narrow screens; the `question` is
+ * what actually gets sent, which is why a two-word chip can carry a real
+ * contract address. Both addresses are live (a known NVDA impostor, and the
+ * issuer wallet behind the official equity tokens), so a press returns an answer
+ * rather than a lookup failure on a placeholder.
+ *
+ * They read like a terminal rather than a tutorial: the audience already trades
+ * on-chain, and "Why did this token move?" against no target was neither.
+ *
  * The glyphs are components rather than emoji so they inherit `currentColor`
  * and can tint with the chip on hover.
  */
 const DEFAULT_SUGGESTIONS = [
-  { Icon: IconWallet, text: "Explain this wallet" },
-  { Icon: IconTrend, text: "Why did this token move?" },
-  { Icon: IconTrace, text: "Trace this transaction" },
-  { Icon: IconBolt, text: "What is Robinhood Chain?" },
+  {
+    Icon: IconTrend,
+    text: "Price a ticker",
+    question: "NVDA — price, market cap, holders and top-10 concentration.",
+  },
+  {
+    Icon: IconRank,
+    text: "Top by market cap",
+    question: "Top 10 stock tokens by market cap.",
+  },
+  {
+    Icon: IconShield,
+    text: "Verify a contract",
+    question: "Is the NVDA token at 0x465834D5BA3af2169E49B70A139448e59e3CA492 the official one?",
+  },
+  {
+    Icon: IconWallet,
+    text: "Read a wallet",
+    question: "What is 0x4783C67b63dE2B358Ac5951a7D41F47A38F3C046 and what has it been doing?",
+  },
 ];
 
 /**

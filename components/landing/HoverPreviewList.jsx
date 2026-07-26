@@ -398,7 +398,12 @@ export default function HoverPreviewList({
               >
                 <Wrapper
                   {...wrapperProps}
-                  className={`grid w-full cursor-pointer grid-cols-1 items-baseline gap-2 px-5 py-9 outline-none transition-colors duration-[400ms] ease-out md:grid-cols-[1fr_220px] ${
+                  // Only rows that actually go somewhere get the pointer
+                  // cursor; a hand over a dead <div> is a promise the row
+                  // cannot keep and reads as a broken click.
+                  className={`grid w-full grid-cols-1 items-baseline gap-2 px-5 py-9 outline-none transition-colors duration-[400ms] ease-out md:grid-cols-[1fr_220px] ${
+                    row.href ? "cursor-pointer" : ""
+                  } ${
                     on ? "bg-white/[0.016]" : "bg-transparent"
                   } focus-visible:ring-1 focus-visible:ring-cm-accent/50`}
                   onPointerEnter={(event) => {

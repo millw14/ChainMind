@@ -1,7 +1,8 @@
 # ChainMind
 
 **AI explorer for [Robinhood Chain](https://chain.robinhood.com).** Ask about any wallet, token,
-transaction or tokenized stock in plain English and get an answer grounded in live chain data.
+transaction or tokenized stock and get the figures — plus what they imply — grounded in live chain
+data. Written for people who already trade on-chain: numbers first, no glossary.
 
 [chainmind.fun](https://chainmind.fun)
 
@@ -71,6 +72,11 @@ worst thing a tool like this can produce:
   never be reported as "the cheapest".
 - **Aggregates report how many entries lacked data** rather than counting `null` as zero.
 - **A dead indexer reads as "could not look this up"**, never as "does not exist".
+- **An unpriced token says why it is unpriced.** Only the issuer-verified equities carry a quote on
+  the indexer, so an ordinary ERC-20 comes back with `priceStatus: "not_indexed"` and a reason
+  attached. The answer leads with supply, holders, verification and concentration and closes with
+  the price gap in one clause — rather than opening with three bare absences. An indexer failure is
+  `"unavailable"` instead, which is a different sentence.
 - **Money is pre-rendered server-side** (`$4.16M`) and copied verbatim. Given a raw float, a
   model will slide the decimal — that was a real, observed 1000× overstatement.
 - **On-chain strings are untrusted.** Token names are attacker-controlled; anyone can mint a

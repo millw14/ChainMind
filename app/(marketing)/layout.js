@@ -7,7 +7,7 @@ export const metadata = {
     template: "%s · ChainMind",
   },
   description:
-    "Ask anything about Robinhood Chain — wallets, tokens, and transactions explained in plain English, grounded in live on-chain data.",
+    "Ask anything about Robinhood Chain — wallets, tokens, transactions and tokenized equities read live: supply, holders, concentration, deployer, verification, and what they mean.",
 };
 
 export default function MarketingLayout({ children }) {

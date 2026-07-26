@@ -333,6 +333,77 @@ test("a target nothing can be read about is still a failure, with the old wordin
   assert.match(brownout.error, /did not answer \(HTTP 503\)/);
 });
 
+/* ------------------------------ the price gap ------------------------------ */
+
+/*
+ * Blockscout prices the issuer-verified tokenized equities and nothing else, so
+ * an unlisted ERC-20 answers with exchange_rate / circulating_market_cap /
+ * volume_24h all null. A reviewer asked one for its price and got an answer that
+ * opened by listing three things it could not do. The nulls stay — inventing a
+ * quote would be far worse — but the evidence now carries WHY, so the reason can
+ * be one clause at the end instead of the whole reply.
+ */
+
+/** The same token body with the three market fields absent, as an unlisted one is. */
+function unpricedTokenBody() {
+  const { exchange_rate, circulating_market_cap, volume_24h, ...rest } = tokenBody();
+  return { ...rest, name: "Andy", symbol: "ANDY", total_supply: "1000000000000000000000000000" };
+}
+
+test("a token the indexer never priced says why, instead of three bare nulls", async () => {
+  const r = recorder();
+  const calls = tokenCalls(r, {
+    getToken: r.call("getToken", { body: unpricedTokenBody() }),
+    getAddress: r.call("getAddress", { body: overviewBody({ token: unpricedTokenBody(), is_verified: false }) }),
+  });
+
+  const res = await gatherEvidence(TOKEN, { known: KNOWN_TOKEN, calls });
+
+  assert.equal(res.ok, true);
+  assert.equal(res.evidence.token.priceStatus, "not_indexed");
+  assert.match(res.evidence.token.priceStatusReason, /no price feed for this contract/i);
+  assert.match(res.evidence.token.priceStatusReason, /issuer-verified tokenized equities/i);
+  // The absence itself is unchanged: still null, still never zero, still not
+  // listed as a failed source — nothing failed, the feed does not exist.
+  assert.equal(res.evidence.token.priceUsd, null);
+  assert.equal(res.evidence.token.marketCapUsd, null);
+  assert.equal(res.evidence.token.display.price, null);
+  assert.equal(res.degraded, undefined);
+  // And everything the answer should actually lead with is present.
+  assert.equal(res.evidence.token.holders, 28899);
+  assert.equal(res.evidence.token.transfers, 4321);
+  assert.equal(res.evidence.token.totalSupply, "1B ANDY");
+});
+
+test("a verified equity is untouched — a real quote is still just a quote", async () => {
+  const r = recorder();
+  const res = await gatherEvidence(TOKEN, { known: KNOWN_TOKEN, calls: tokenCalls(r) });
+
+  assert.equal(res.evidence.token.priceStatus, "indexed");
+  assert.equal(res.evidence.token.priceStatusReason, null, "nothing to explain when the price is there");
+  assert.equal(res.evidence.token.priceUsd, "212.5");
+  assert.equal(res.evidence.token.display.marketCap, "$4.16M");
+  assert.equal(res.evidence.token.display.volume24h, "$98.77K");
+});
+
+test("an indexer that could not be asked is 'unavailable', never 'not priced'", async () => {
+  const r = recorder();
+  // The token endpoint fails outright; metadata falls back to the overview's
+  // copy, which here carries no market fields either. The figures may well
+  // exist — nobody managed to look — so this must not read as a token nobody prices.
+  const calls = tokenCalls(r, {
+    getToken: r.call("getToken", { status: 500 }),
+    getAddress: r.call("getAddress", { body: overviewBody({ token: unpricedTokenBody() }) }),
+  });
+
+  const res = await gatherEvidence(TOKEN, { known: KNOWN_TOKEN, calls });
+
+  assert.equal(res.evidence.token.priceStatus, "unavailable");
+  assert.match(res.evidence.token.priceStatusReason, /outage, not a token without a price/i);
+  assert.ok(res.evidence.unavailable.includes("token"));
+  assert.equal(res.degraded, true);
+});
+
 /* ------------------------------ deadlines ------------------------------ */
 
 test("an enrichment call that misses its deadline is reported unavailable, not empty", async () => {
