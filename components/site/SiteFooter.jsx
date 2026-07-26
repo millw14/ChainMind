@@ -8,8 +8,8 @@ export function SiteFooter() {
           <div className="max-w-sm">
             <p className="text-sm font-semibold text-cm-text">ChainMind</p>
             <p className="mt-2 text-xs leading-relaxed text-cm-faint sm:text-sm">
-              An AI explorer for Robinhood Chain—ask about any wallet, token, or transaction and get a plain-English
-              answer grounded in live on-chain data.
+              An AI explorer for Robinhood Chain—ask about any wallet, token, or transaction and get the figures, plus
+              what they imply, grounded in live on-chain data.
             </p>
           </div>
           <div className="flex flex-col gap-10 text-sm sm:flex-row sm:gap-14">

@@ -13,8 +13,8 @@ export default function HowItWorksPage() {
         <h1 className="mt-3 text-3xl font-bold tracking-tight text-cm-text sm:text-4xl">How ChainMind works</h1>
         <p className="mt-4 text-lg leading-relaxed text-cm-muted">
           ChainMind is an AI explorer for Robinhood Chain—the Ethereum Layer-2 for tokenized stocks and real-world
-          assets. Paste an address or transaction, ask a question, and get a plain-English answer grounded in live
-          on-chain data.
+          assets. Paste an address or transaction, ask a question, and get the figures — plus what they imply —
+          grounded in live on-chain data.
         </p>
 
         <ol className="mt-14 space-y-10">
@@ -41,8 +41,8 @@ export default function HowItWorksPage() {
             <h2 className="text-lg font-semibold text-cm-text">3. The AI explains it</h2>
             <p className="mt-2 text-sm leading-relaxed text-cm-muted">
               That evidence, plus your question, goes to a language model with strict instructions to ground every claim
-              in the data and never invent balances, tokens, or transactions. You get a short, readable answer—with the
-              exact evidence one click away so you can verify it.
+              in the data and never invent balances, tokens, or transactions. You get the numbers first and the reading
+              of them second—with the exact evidence one click away so you can verify it.
             </p>
           </li>
         </ol>
@@ -67,8 +67,8 @@ export default function HowItWorksPage() {
                   it holds and moves, how active it is, and who it interacts with.
                 </li>
                 <li>
-                  <strong className="font-medium text-cm-text">Describing a token</strong> — name, symbol, type,
-                  supply, and holder count for a contract address.
+                  <strong className="font-medium text-cm-text">Reading a token</strong> — supply, holders, transfer
+                  count, contract verification, deployer, and how much of the float the top ten addresses hold.
                 </li>
               </ul>
             </div>
@@ -79,6 +79,11 @@ export default function HowItWorksPage() {
                 <li>
                   <strong className="font-medium text-cm-text">Price predictions or advice</strong> — it describes what
                   the chain shows, it doesn&apos;t tell you what to buy.
+                </li>
+                <li>
+                  <strong className="font-medium text-cm-text">Pricing unlisted tokens</strong> — the indexer quotes the
+                  issuer-verified tokenized equities and nothing else, so an ordinary ERC-20 has no price, market cap or
+                  24h volume to report. ChainMind says that, with the reason, rather than inventing a number.
                 </li>
                 <li>
                   <strong className="font-medium text-cm-text">Off-chain context</strong> — news, social sentiment, or
