@@ -256,18 +256,24 @@ export default function InspectorTag({
     []
   );
 
-  /* The cached box goes stale if the page scrolls or resizes under a live
-     hover, so refresh it then — and only then, never per pointermove. */
+  /* The cached box goes stale if the page scrolls or resizes under a live hover.
+     Mark it dirty rather than re-measuring here: measuring inside a scroll
+     handler forces a synchronous layout on every scroll event, which is exactly
+     the cost this cache exists to avoid. `handleMove` re-measures lazily, and it
+     is the only thing that consumes the box — until the pointer moves again the
+     tooltip is positioned relative to the wrapper and travels with it for free. */
   useEffect(() => {
     if (!hovered || !showTip) return undefined;
-    const refresh = () => measure();
-    window.addEventListener("scroll", refresh, { passive: true, capture: true });
-    window.addEventListener("resize", refresh, { passive: true });
-    return () => {
-      window.removeEventListener("scroll", refresh, { capture: true });
-      window.removeEventListener("resize", refresh);
+    const invalidate = () => {
+      rectRef.current = null;
     };
-  }, [hovered, showTip, measure]);
+    window.addEventListener("scroll", invalidate, { passive: true, capture: true });
+    window.addEventListener("resize", invalidate, { passive: true });
+    return () => {
+      window.removeEventListener("scroll", invalidate, { capture: true });
+      window.removeEventListener("resize", invalidate);
+    };
+  }, [hovered, showTip]);
 
   /* Drop the hover state if the tab or window goes away mid-hover. */
   useEffect(() => {
@@ -349,7 +355,9 @@ export default function InspectorTag({
           style={{
             opacity: hovered ? 1 : 0,
             transition: "opacity 180ms ease",
-            willChange: "transform",
+            // Promoted only for the hover it is actually moving through; an
+            // idle page should not carry a composited layer per annotation.
+            willChange: hovered ? "transform" : "auto",
           }}
         >
           <span className="text-cm-faint">{prop}</span>

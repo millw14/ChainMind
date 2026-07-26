@@ -47,8 +47,9 @@ function clampRotate(value) {
  * physical artboard: as the reader scrolls past, the board hinges backwards
  * from near its top edge, shrinks, lifts and fades, revealing whatever section
  * follows it in the document. Progress is driven purely by scroll position
- * (`useScroll` over the tall outer track), and every channel is routed through
- * a spring so the board carries weight instead of snapping.
+ * (`useScroll` over the tall outer track) and routed through a single spring so
+ * the board carries weight instead of snapping; rotation, scale, lift and fade
+ * are all plain transforms of that one sprung value.
  *
  * Safety / degradation contract:
  * - At scroll progress 0 every channel resolves to its identity value
@@ -130,21 +131,28 @@ export default function ScrollFlipStage({
 
   const rotateEnd = clampRotate(maxRotate);
 
-  const rotateRaw = useTransform(scrollYProgress, [0, 1], [0, rotateEnd]);
-  const scaleRaw = useTransform(scrollYProgress, [0, 1], [1, END_SCALE]);
-  const yRaw = useTransform(scrollYProgress, [0, 1], [0, END_Y_VH]);
-  const opacityRaw = useTransform(scrollYProgress, [0, 1], [1, END_OPACITY]);
+  // ONE spring, on progress itself, with every channel derived from it.
+  //
+  // Each channel used to carry its own `useSpring` — four springs, all with the
+  // same config, all fed a linear map of the same progress value. A spring is
+  // linear and time-invariant, so springing progress once and mapping afterwards
+  // produces the identical curve on all four channels while running a quarter of
+  // the per-frame integration, and every channel stays in lockstep by
+  // construction rather than by coincidence.
+  const progress = useSpring(scrollYProgress, SPRING);
 
-  const rotateX = useSpring(rotateRaw, SPRING);
-  const scale = useSpring(scaleRaw, SPRING);
-  const ySpring = useSpring(yRaw, SPRING);
-  const opacity = useSpring(opacityRaw, SPRING);
+  const rotateX = useTransform(progress, [0, 1], [0, rotateEnd]);
+  const scale = useTransform(progress, [0, 1], [1, END_SCALE]);
+  const opacity = useTransform(progress, [0, 1], [1, END_OPACITY]);
 
   // `y` is expressed in viewport units so the lift scales with the stage.
   // Resolving to a plain numeric 0 at rest lets framer-motion collapse the
   // whole transform to `none`, so the hero is genuinely untransformed at
   // progress 0 (no stray containing block, no compositing seams).
-  const y = useTransform(ySpring, (v) => (Math.abs(v) < 0.001 ? 0 : `${v}vh`));
+  const y = useTransform(progress, (p) => {
+    const v = p * END_Y_VH;
+    return Math.abs(v) < 0.001 ? 0 : `${v}vh`;
+  });
 
   /* -- Plain fallback ------------------------------------------------------ */
   if (!enhanced) {

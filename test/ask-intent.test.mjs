@@ -7,7 +7,7 @@
 // Run with: npm test
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { INTENTS, classifyIntent, extractTargets, parseRankQuery } from "../lib/ask-intent.js";
+import { INTENTS, classifyIntent, extractTargets, isOffChainKnowledge, parseRankQuery } from "../lib/ask-intent.js";
 
 const TX = `0x${"a".repeat(64)}`;
 const ADDR = `0x${"b".repeat(40)}`;
@@ -155,6 +155,74 @@ test("classifyIntent: explain_chain", () => {
   assert.equal(intentOf("How does this work?"), INTENTS.EXPLAIN_CHAIN);
   assert.equal(intentOf("What are stock tokens?"), INTENTS.EXPLAIN_CHAIN);
   assert.equal(intentOf("What is a tokenized equity?"), INTENTS.EXPLAIN_CHAIN);
+});
+
+/* --------------------------- off-chain knowledge -------------------------- */
+
+// Reported by a user testing the live site: "who is the founder?" was answered
+// with "The founder of Robinhood Chain is not specified in the provided market
+// overview". The market tool had been used as the fallback for a question about
+// a person, and its evidence then got described back at the user as an absence.
+// Founders, teams and roadmaps are not on-chain and never will be, so these
+// questions must reach the tool-free path instead of any lookup.
+
+test("isOffChainKnowledge: people, teams, the company and its plans", () => {
+  for (const q of [
+    "who is the founder?",
+    "who is the co founder?",
+    "whos the cofounder",
+    "who is behind this?",
+    "who made this",
+    "who built robinhood chain",
+    "who runs the project",
+    "who is the ceo",
+    "how big is the team",
+    "tell me about the team behind it",
+    "when was it founded",
+    "what is the roadmap",
+    "is there a whitepaper",
+    "who are the investors",
+    "what are the tokenomics",
+  ]) {
+    assert.equal(isOffChainKnowledge(q), true, q);
+  }
+});
+
+test("isOffChainKnowledge leaves on-chain questions alone", () => {
+  for (const q of [
+    // The deployer IS a field, so "who is behind this contract" is a real lookup.
+    "who deployed this contract",
+    "who is behind this contract",
+    "who is the issuer of NVDA",
+    "who holds the most NVDA",
+    "whats trending",
+    "top 10 stocks by market cap",
+    "what is robinhood chain",
+    "hows nvda doin",
+    `is ${FAKE_NVDA} legit`,
+    "",
+  ]) {
+    assert.equal(isOffChainKnowledge(q), false, q);
+  }
+  // Total, like the rest of this module: any input type, never a throw.
+  assert.equal(isOffChainKnowledge(null), false);
+  assert.equal(isOffChainKnowledge(42), false);
+});
+
+test("classifyIntent: a question about people is never a market question", () => {
+  for (const q of ["who is the founder?", "who is the co founder?", "who is behind this?", "what is the roadmap"]) {
+    const r = classifyIntent(q, extractTargets(q));
+    assert.equal(r.intent, INTENTS.EXPLAIN_CHAIN, q);
+    assert.notEqual(r.intent, INTENTS.MARKET_OVERVIEW, q);
+    assert.ok(r.matched.length, "the phrase that fired is reported");
+  }
+});
+
+test("classifyIntent: off-chain knowledge outranks the overview and the lookup", () => {
+  // Both of these also read as something the router would otherwise answer with
+  // real data about a different question.
+  assert.equal(intentOf("whats the roadmap, and whats trending"), INTENTS.EXPLAIN_CHAIN);
+  assert.equal(intentOf("who is the founder of NVDA"), INTENTS.EXPLAIN_CHAIN);
 });
 
 test("classifyIntent: unknown", () => {

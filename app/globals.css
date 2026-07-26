@@ -238,10 +238,16 @@ html {
   animation-duration: 34s;
 }
 
+/* The breathing variant animates opacity as well as transform. Both belong in
+ * will-change: a 60px-blur orb that is only promoted for transform gets its
+ * blur re-rasterised on every opacity step, and in the hero it sits inside a
+ * board that is itself being scaled in 3D on scroll — which is exactly where
+ * that re-raster turns into dropped frames. */
 .cm-ambient-orb--breathe {
   animation:
     cmOrbDrift 26s ease-in-out infinite alternate,
     cmOrbBreathe 9s ease-in-out infinite;
+  will-change: transform, opacity;
 }
 
 @keyframes cmOrbDrift {
@@ -269,5 +275,7 @@ html {
   .cm-ambient-orb--slow,
   .cm-ambient-orb--breathe {
     animation: none !important;
+    /* Nothing moves, so nothing needs a promoted layer. */
+    will-change: auto;
   }
 }

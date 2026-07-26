@@ -352,35 +352,64 @@ function CardFace({ item }) {
   );
 }
 
+/** Spring feel for the deck. One instance per animated card, on progress only. */
+const DECK_SPRING = { stiffness: 120, damping: 26, restDelta: 0.0005 };
+
+/**
+ * The last card in the deck: pinned like the rest, but with nothing scroll-linked
+ * so the section lands flat.
+ *
+ * It gets its own component rather than an `isLast` branch inside `DeckCard`
+ * because hooks cannot be skipped conditionally — as a branch it would still pay
+ * for a scroll subscription and a spring whose output is thrown away.
+ */
+function DeckCardStatic({ item }) {
+  return (
+    <div
+      className="sticky top-0 flex h-[100svh] items-center justify-center px-4 sm:px-6"
+      style={{ perspective: "1200px" }}
+    >
+      <div className="w-full max-w-5xl origin-top">
+        <CardFace item={item} />
+      </div>
+    </div>
+  );
+}
+
 /**
  * One pinned card. The wrapper is sticky and exactly one viewport tall, so the
  * next card scrolls up and covers it; meanwhile the card itself tilts back in
  * real 3D (perspective lives on the wrapper, rotateX on the card).
+ *
+ * PERFORMANCE — the four channels share ONE spring, taken on scroll progress and
+ * mapped afterwards. Springing each channel separately (as this used to) runs
+ * four integrations per frame per card for an identical curve, since a spring is
+ * linear and each channel is a linear map of the same progress. `will-change`
+ * lives on the element that actually moves; it used to sit on the sticky wrapper,
+ * which permanently promoted four full-viewport layers that never animate.
  */
-function DeckCard({ item, isLast, tiltDeg, liftPx }) {
+function DeckCard({ item, tiltDeg, liftPx }) {
   const wrapperRef = useRef(null);
   const { scrollYProgress } = useScroll({
     target: wrapperRef,
     offset: ["start start", "end start"],
   });
 
-  const spring = { stiffness: 120, damping: 26, restDelta: 0.0005 };
-  const rotateX = useSpring(useTransform(scrollYProgress, [0, 1], [0, tiltDeg]), spring);
-  const scale = useSpring(useTransform(scrollYProgress, [0, 1], [1, 0.9]), spring);
-  const opacity = useSpring(useTransform(scrollYProgress, [0, 1], [1, 0.35]), spring);
-  const y = useSpring(useTransform(scrollYProgress, [0, 1], [0, liftPx]), spring);
+  const progress = useSpring(scrollYProgress, DECK_SPRING);
 
-  // The final card stays at rest so the section lands flat.
-  const style = isLast ? undefined : { rotateX, scale, opacity, y };
+  const rotateX = useTransform(progress, [0, 1], [0, tiltDeg]);
+  const scale = useTransform(progress, [0, 1], [1, 0.9]);
+  const opacity = useTransform(progress, [0, 1], [1, 0.35]);
+  const y = useTransform(progress, [0, 1], [0, liftPx]);
 
   return (
     <div
       ref={wrapperRef}
       className="sticky top-0 flex h-[100svh] items-center justify-center px-4 sm:px-6"
-      style={{ perspective: "1200px", willChange: "transform, opacity" }}
+      style={{ perspective: "1200px" }}
     >
       <motion.div
-        style={style}
+        style={{ rotateX, scale, opacity, y, willChange: "transform, opacity" }}
         className="w-full max-w-5xl origin-top"
       >
         <CardFace item={item} />
@@ -449,15 +478,18 @@ export default function ScrollDeck({ items, className = "" }) {
 
   return (
     <section className={`relative w-full pb-[10vh] ${className}`}>
-      {cards.map((item, i) => (
-        <DeckCard
-          key={item.id || item.title || i}
-          item={item}
-          isLast={i === cards.length - 1}
-          tiltDeg={coarse ? -4 : -9}
-          liftPx={coarse ? -20 : -40}
-        />
-      ))}
+      {cards.map((item, i) =>
+        i === cards.length - 1 ? (
+          <DeckCardStatic key={item.id || item.title || i} item={item} />
+        ) : (
+          <DeckCard
+            key={item.id || item.title || i}
+            item={item}
+            tiltDeg={coarse ? -4 : -9}
+            liftPx={coarse ? -20 : -40}
+          />
+        )
+      )}
     </section>
   );
 }

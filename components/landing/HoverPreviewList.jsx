@@ -9,6 +9,8 @@ const PANEL_H = (420 * 9) / 16;
 const CURSOR_GAP = 24;
 const EDGE = 12;
 const LERP = 0.14;
+/** Sub-pixel threshold below which the panel is parked and the loop stops. */
+const SETTLE_EPSILON = 0.15;
 
 const DEFAULT_ITEMS = [
   {
@@ -254,6 +256,13 @@ export default function HoverPreviewList({
   const targetRef = useRef({ x: -9999, y: -9999 });
   const posRef = useRef({ x: -9999, y: -9999 });
   const seededRef = useRef(false);
+  // Viewport metrics are cached rather than read per pointermove: reading
+  // window.innerWidth/innerHeight can force a synchronous layout, and this runs
+  // on every pointer sample across the list.
+  const viewRef = useRef({ w: 0, h: 0 });
+  // Restarts the easing loop after it has parked itself. Null while no preview
+  // is showing.
+  const kickRef = useRef(null);
 
   const activeIndex = hovered >= 0 ? hovered : focused;
   const panelOn = interactive && hovered >= 0;
@@ -278,6 +287,7 @@ export default function HoverPreviewList({
     }
     const coarse = window.matchMedia("(pointer: coarse)");
     const apply = () => {
+      viewRef.current = { w: window.innerWidth, h: window.innerHeight };
       setInteractive(!coarse.matches && window.innerWidth >= 900);
     };
     apply();
@@ -312,8 +322,9 @@ export default function HoverPreviewList({
   }, []);
 
   const setTargetFromPointer = useCallback((clientX, clientY) => {
-    const vw = window.innerWidth;
-    const vh = window.innerHeight;
+    const view = viewRef.current;
+    const vw = view.w || window.innerWidth;
+    const vh = view.h || window.innerHeight;
     let x = clientX + CURSOR_GAP;
     if (x + PANEL_W > vw - EDGE) x = clientX - CURSOR_GAP - PANEL_W;
     if (x < EDGE) x = EDGE;
@@ -328,6 +339,7 @@ export default function HoverPreviewList({
     (event) => {
       if (!interactive) return;
       setTargetFromPointer(event.clientX, event.clientY);
+      if (kickRef.current) kickRef.current();
     },
     [interactive, setTargetFromPointer]
   );
@@ -336,10 +348,14 @@ export default function HoverPreviewList({
     setHovered(-1);
   }, []);
 
-  /* Single rAF loop, alive only while a preview is showing. */
+  /* Single rAF loop, alive only while a preview is showing — and only while it
+     still has ground to cover. Once the panel has caught up with the pointer the
+     loop parks itself; the next pointer sample kicks it back off. A hovering,
+     motionless reader costs nothing. */
   useEffect(() => {
     if (!panelOn) {
       seededRef.current = false;
+      kickRef.current = null;
       return undefined;
     }
     const el = panelRef.current;
@@ -351,18 +367,47 @@ export default function HoverPreviewList({
       el.style.transform = `translate3d(${posRef.current.x}px, ${posRef.current.y}px, 0) translateY(-50%)`;
     }
 
-    let frame = requestAnimationFrame(function tick() {
+    let frame = 0;
+
+    const paint = () => {
       const pos = posRef.current;
-      const target = targetRef.current;
-      pos.x += (target.x - pos.x) * LERP;
-      pos.y += (target.y - pos.y) * LERP;
       el.style.transform = `translate3d(${pos.x.toFixed(2)}px, ${pos.y.toFixed(
         2
       )}px, 0) translateY(-50%)`;
-      frame = requestAnimationFrame(tick);
-    });
+    };
 
-    return () => cancelAnimationFrame(frame);
+    const tick = () => {
+      const pos = posRef.current;
+      const target = targetRef.current;
+      const dx = target.x - pos.x;
+      const dy = target.y - pos.y;
+
+      if (Math.abs(dx) < SETTLE_EPSILON && Math.abs(dy) < SETTLE_EPSILON) {
+        pos.x = target.x;
+        pos.y = target.y;
+        paint();
+        frame = 0; // Parked until the pointer moves again.
+        return;
+      }
+
+      pos.x += dx * LERP;
+      pos.y += dy * LERP;
+      paint();
+      frame = requestAnimationFrame(tick);
+    };
+
+    const kick = () => {
+      if (!frame) frame = requestAnimationFrame(tick);
+    };
+
+    kickRef.current = kick;
+    kick();
+
+    return () => {
+      if (frame) cancelAnimationFrame(frame);
+      frame = 0;
+      kickRef.current = null;
+    };
   }, [panelOn]);
 
   const labelTransition = reduce
@@ -418,8 +463,13 @@ export default function HoverPreviewList({
                   onBlur={() => setFocused((prev) => (prev === i ? -1 : prev))}
                 >
                   <span
-                    className="block text-[clamp(1.5rem,3.4vw,2.75rem)] font-semibold uppercase leading-[1.05] tracking-[-0.02em] will-change-transform"
+                    className="block text-[clamp(1.5rem,3.4vw,2.75rem)] font-semibold uppercase leading-[1.05] tracking-[-0.02em]"
                     style={{
+                      // Promoted per row, only while that row is lit. As a
+                      // permanent `will-change-transform` class this kept a
+                      // composited layer alive for every display-size label on
+                      // the page, none of which move until they are hovered.
+                      willChange: on ? "transform" : "auto",
                       color: on
                         ? "var(--cm-accent)"
                         : strokeOk
@@ -453,7 +503,9 @@ export default function HoverPreviewList({
         style={{
           opacity: panelOn ? 0.95 : 0,
           transition: "opacity 0.3s ease",
-          willChange: "transform",
+          // Promoted only while it is actually being flown around, so an idle
+          // page is not carrying a composited layer for a hidden panel.
+          willChange: panelOn ? "transform" : "auto",
         }}
       >
         <div
