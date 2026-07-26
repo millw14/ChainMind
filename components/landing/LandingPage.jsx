@@ -1,180 +1,27 @@
 "use client";
 
 import Link from "next/link";
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { motion, useReducedMotion } from "framer-motion";
 import {
   fadeScale,
   fadeUp,
-  graphFloatTransition,
   staggerContainer,
-  staggerParent,
   springGentle,
 } from "@/components/motion/presets";
-import { Reveal, Parallax } from "@/components/motion/scroll";
+import { Reveal } from "@/components/motion/scroll";
 import GrainOverlay from "@/components/landing/GrainOverlay";
 import EditorialHero from "@/components/landing/EditorialHero";
 import Preloader from "@/components/landing/Preloader";
 import CursorLayer from "@/components/landing/CursorLayer";
 import CommandPill from "@/components/landing/CommandPill";
-import HeroGridCanvas from "@/components/landing/HeroGridCanvas";
 import ScrollDeck from "@/components/landing/ScrollDeck";
 import HoverPreviewList from "@/components/landing/HoverPreviewList";
 import ScrollFlipStage from "@/components/landing/ScrollFlipStage";
 import ScrollTypeStatement from "@/components/landing/ScrollTypeStatement";
 import AskOverlay from "@/components/landing/AskOverlay";
 
-function useTypewriter(text, speed = 18, startDelay = 400, enabled = true) {
-  const [displayed, setDisplayed] = useState(() => (enabled ? "" : text));
-  useEffect(() => {
-    if (!enabled) {
-      setDisplayed(text);
-      return;
-    }
-    setDisplayed("");
-    let active = true;
-    let intervalId;
-    const timeoutId = setTimeout(() => {
-      if (!active) return;
-      let i = 0;
-      intervalId = setInterval(() => {
-        if (!active) return;
-        i += 1;
-        setDisplayed(text.slice(0, i));
-        if (i >= text.length) clearInterval(intervalId);
-      }, speed);
-    }, startDelay);
-    return () => {
-      active = false;
-      clearTimeout(timeoutId);
-      clearInterval(intervalId);
-    };
-  }, [text, speed, startDelay, enabled]);
-  return displayed;
-}
-
-function TerminalCard({ reduce }) {
-  const [visible, setVisible] = useState(false);
-  const answer =
-    "Active wallet holding 0.11 ETH. It recently sent WETH and several tokens to 8 different addresses — looks like a distribution wallet.";
-  const typed = useTypewriter(answer, 16, 2600, !reduce);
-
-  useEffect(() => {
-    if (reduce) {
-      setVisible(true);
-      return;
-    }
-    const fadeTimer = setTimeout(() => setVisible(true), 2000);
-    return () => clearTimeout(fadeTimer);
-  }, [reduce]);
-
-  return (
-    <motion.div
-      className="mt-3 max-h-[14rem] overflow-hidden text-[11px] leading-relaxed sm:text-xs"
-      initial={{ opacity: 0 }}
-      animate={{ opacity: visible ? 1 : 0 }}
-      transition={{ duration: 0.8 }}
-    >
-      <p className="font-mono text-[10px] uppercase tracking-wider text-cm-faint">You</p>
-      <p className="mt-1 text-cm-subtle">What is 0x966C2F…8Ca79 doing?</p>
-      <p className="mt-3 font-mono text-[10px] uppercase tracking-wider text-cm-terminal">ChainMind</p>
-      <p className="mt-1 text-cm-text">
-        {reduce ? answer : typed}
-        {!reduce && typed.length < answer.length && <span className="text-cm-accent">▋</span>}
-      </p>
-    </motion.div>
-  );
-}
-
 const shell = "mx-auto w-full max-w-6xl px-3 sm:px-6";
-
-/** Points of the rising market line, in the 200x200 viewBox. */
-const MARKET_PTS = [
-  [8, 168],
-  [38, 150],
-  [64, 160],
-  [92, 112],
-  [118, 126],
-  [148, 72],
-  [174, 88],
-  [194, 38],
-];
-
-function HeroGraphDecor({ reduce }) {
-  const line = MARKET_PTS.map((p, i) => `${i === 0 ? "M" : "L"}${p[0]},${p[1]}`).join(" ");
-  const area = `${line} L194,196 L8,196 Z`;
-  const cx = MARKET_PTS.map((p) => p[0]);
-  const cy = MARKET_PTS.map((p) => p[1]);
-  const [endX, endY] = MARKET_PTS[MARKET_PTS.length - 1];
-
-  return (
-    <div className="pointer-events-none absolute inset-0 overflow-hidden opacity-[0.7]" aria-hidden>
-      <motion.svg
-        className="absolute -right-6 top-10 h-72 w-80 text-cm-accent sm:right-10 sm:top-14 sm:h-96 sm:w-[26rem]"
-        viewBox="0 0 200 200"
-        animate={reduce ? {} : { y: [0, -8, 0] }}
-        transition={graphFloatTransition(reduce)}
-      >
-        <defs>
-          <linearGradient id="marketArea" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor="rgba(16, 185, 129, 0.28)" />
-            <stop offset="100%" stopColor="rgba(16, 185, 129, 0)" />
-          </linearGradient>
-          <radialGradient id="dotGlow" cx="50%" cy="50%" r="50%">
-            <stop offset="0%" stopColor="rgba(110, 231, 183, 0.5)" />
-            <stop offset="100%" stopColor="rgba(110, 231, 183, 0)" />
-          </radialGradient>
-        </defs>
-
-        {/* soft area fill beneath the line */}
-        <motion.path
-          d={area}
-          fill="url(#marketArea)"
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ duration: 1.6, delay: reduce ? 0 : 0.5 }}
-        />
-
-        {/* the rising line, drawn in */}
-        <motion.path
-          d={line}
-          fill="none"
-          stroke="#10b981"
-          strokeWidth="2.5"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          initial={{ pathLength: reduce ? 1 : 0 }}
-          animate={{ pathLength: 1 }}
-          transition={{ duration: 2.2, ease: "easeInOut" }}
-          style={{ filter: "drop-shadow(0 0 6px rgba(16, 185, 129, 0.45))" }}
-        />
-
-        {/* dot tracing along the path */}
-        {!reduce && (
-          <>
-            <motion.circle
-              r="9"
-              fill="url(#dotGlow)"
-              initial={{ cx: cx[0], cy: cy[0] }}
-              animate={{ cx, cy }}
-              transition={{ duration: 5, ease: "linear", repeat: Infinity, repeatDelay: 0.6 }}
-            />
-            <motion.circle
-              r="3.5"
-              fill="#6ee7b7"
-              initial={{ cx: cx[0], cy: cy[0] }}
-              animate={{ cx, cy }}
-              transition={{ duration: 5, ease: "linear", repeat: Infinity, repeatDelay: 0.6 }}
-            />
-          </>
-        )}
-
-        {/* resting endpoint marker (also the static state for reduced motion) */}
-        <circle cx={endX} cy={endY} r="3.5" fill="#10b981" />
-      </motion.svg>
-    </div>
-  );
-}
 
 function CtaLink({ href, className, children }) {
   const reduce = useReducedMotion() ?? false;
@@ -196,11 +43,11 @@ export function LandingPage() {
   const reduceMotion = useReducedMotion() ?? false;
   const [askOpen, setAskOpen] = useState(false);
 
-  const headlineText = "Ask anything on Robinhood Chain, get the numbers and what they mean.";
-  const typedHeadline = useTypewriter(headlineText, 28, 200, !reduceMotion);
-  const fv = fadeUp(reduceMotion);
-  const fs = fadeScale(reduceMotion);
-  const scFast = staggerContainer(reduceMotion, { stagger: 0.065, delayChildren: 0.05 });
+  /* NOTE: this component used to run a `useTypewriter` hook whose output was
+     never rendered. It stepped a `setState` once every 28ms for the first two
+     seconds after mount, re-rendering the whole landing tree ~70 times while the
+     hero was still settling. Nothing below reads it, so it is gone; the same
+     goes for the unused motion presets that were computed on every render. */
 
   /** Scroll-in choreography */
   const inViewOpts = { once: true, margin: "-60px", amount: 0.2 };

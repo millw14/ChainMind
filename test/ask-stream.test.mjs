@@ -508,6 +508,36 @@ test("a greeting still gets an answer when the model is unreachable", async () =
   assert.equal(joined(events), SMALL_TALK_FALLBACK);
 });
 
+test("a question about the founder streams the tool-free answer", async () => {
+  // Live, this one was routed to market_overview and answered with "not
+  // specified in the provided market overview". Streamed or not, a question
+  // about a person must not reach a market tool: the routing turn that made
+  // that mistake is never spent at all.
+  const { chat, payloads } = scriptedChat([]);
+  const { streamChat, payloads: streamed } = scriptedStream(["Who founded it ", "isn't on-chain."]);
+  const forbidden = async () => {
+    throw new Error("a question about people must not reach the chain");
+  };
+
+  const events = await run({
+    question: "who is the founder?",
+    chat,
+    streamChat,
+    model: MODEL,
+    deps: { gatherEvidence: forbidden, marketOverview: forbidden, rankStocks: forbidden, dispatch: forbidden },
+  });
+
+  assert.equal(payloads.length, 0, "no routing completion, so no tool can be chosen");
+  assert.equal(streamed.length, 1);
+  assert.equal("tools" in streamed[0], false);
+  assert.equal(events[0].type, "meta");
+  assert.equal(events[0].intent, INTENTS.EXPLAIN_CHAIN);
+  assert.deepEqual(events[0].toolCalls, []);
+  assert.equal(typeof events[0].evidence.notOnChain, "string", "the factsheet says so outright");
+  assert.equal(joined(events), "Who founded it isn't on-chain.");
+  assert.equal(events.at(-1).type, "done");
+});
+
 test("a greeting plus a real subject is routed, not greeted", async () => {
   const { chat, payloads } = scriptedChat([toolTurn([{ name: "lookup_token", args: { query: "nvda" } }])]);
   const { streamChat, payloads: streamed } = scriptedStream(["NVDA trades at ", "$206.71."]);

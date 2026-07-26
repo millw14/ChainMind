@@ -8,6 +8,9 @@ const DEFAULT_BOTS = [{ label: "ChainMind AI", color: "var(--cm-accent-bright)" 
 /** Keeps wandering bots away from the very edge of the viewport (0..1). */
 const EDGE_PAD = 0.05;
 
+/** Repaint budget for the drift loop — 30fps, see the note in `step`. */
+const PAINT_INTERVAL_MS = 1000 / 30 - 1;
+
 function clamp(value, min, max) {
   return value < min ? min : value > max ? max : value;
 }
@@ -120,6 +123,7 @@ export default function CursorLayer({ bots, enabled = true }) {
 
     let frame = 0;
     let lastTs = 0;
+    let lastPaint = 0;
     let clock = 0; // seconds of "visible" time, so hidden tabs never jump
 
     let viewW = window.innerWidth;
@@ -131,10 +135,20 @@ export default function CursorLayer({ bots, enabled = true }) {
     };
 
     const step = (ts) => {
+      frame = window.requestAnimationFrame(step);
+
       if (!lastTs) lastTs = ts;
       const deltaMs = Math.min(ts - lastTs, 100);
       lastTs = ts;
       clock += deltaMs / 1000;
+
+      // Half-rate: these bots drift at a fraction of a viewport per second, so
+      // 30fps is indistinguishable from 60 and halves the composite work this
+      // always-on, always-on-screen fixed layer costs every frame the page
+      // scrolls. The clock keeps advancing at full rate, so the paths are
+      // unchanged — only how often they are sampled.
+      if (ts - lastPaint < PAINT_INTERVAL_MS) return;
+      lastPaint = ts;
 
       for (let i = 0; i < botEls.length; i += 1) {
         const el = botEls[i];
@@ -158,13 +172,12 @@ export default function CursorLayer({ bots, enabled = true }) {
         el.style.transform =
           "translate3d(" + bx.toFixed(2) + "px, " + by.toFixed(2) + "px, 0)";
       }
-
-      frame = window.requestAnimationFrame(step);
     };
 
     const start = () => {
       if (frame) return;
       lastTs = 0;
+      lastPaint = 0;
       frame = window.requestAnimationFrame(step);
     };
 
