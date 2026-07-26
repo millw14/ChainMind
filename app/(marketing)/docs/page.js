@@ -45,8 +45,8 @@ export default function DocsPage() {
         </p>
         <ul className="mt-3 list-inside list-disc space-y-1.5 text-sm text-cm-muted">
           <li>
-            <strong className="font-medium text-cm-text">GROQ_API_KEY</strong> — required. Powers the plain-English
-            answers on <code className="font-mono text-xs">/ask</code> (via{" "}
+            <strong className="font-medium text-cm-text">GROQ_API_KEY</strong> — required. Powers the answers on{" "}
+            <code className="font-mono text-xs">/ask</code> (via{" "}
             <code className="font-mono text-xs">POST /api/ask</code>).
           </li>
           <li>

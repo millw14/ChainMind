@@ -48,7 +48,7 @@ export default function EditorialHero() {
           className="cm-fade-in max-w-md text-center text-base leading-relaxed text-cm-muted sm:text-lg"
           style={{ animationDelay: "0.5s" }}
         >
-          Wallets, tokens and transactions on Robinhood Chain — explained in plain English.
+          Wallets, tokens and transactions on Robinhood Chain — read live, with what the numbers mean.
         </p>
       </InspectorTag>
     </section>

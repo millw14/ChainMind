@@ -1,7 +1,7 @@
 ChainMind — AI explorer for Robinhood Chain
 
-Ask about any wallet, token, transaction or tokenized stock in plain English and
-get an answer grounded in live chain data. Robinhood Chain is an Arbitrum Orbit
+Ask about any wallet, token, transaction or tokenized stock and get the figures —
+plus what they imply — grounded in live chain data. Robinhood Chain is an Arbitrum Orbit
 L2 (chain id 4663, ETH gas) carrying ~94 tokenized equities and ETFs.
 
 Run it:

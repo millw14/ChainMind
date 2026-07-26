@@ -64,8 +64,17 @@ export default function HeroGridCanvas({ speed = 1, density = 1, className = "" 
     let running = true;
     let visible = true;
 
+    // Cached parent box. Reading it inside the pointermove handler forces a
+    // synchronous layout on every pointer sample; scrolling only marks it stale
+    // so the re-measure lands on the next pointer move instead of every frame
+    // of every scroll.
+    let parentRect = null;
+    let rectStale = false;
+
     const resize = () => {
       const rect = parent.getBoundingClientRect();
+      parentRect = rect;
+      rectStale = false;
       width = Math.max(1, rect.width);
       height = Math.max(1, rect.height);
       dpr = Math.min(window.devicePixelRatio || 1, 2);
@@ -225,9 +234,18 @@ export default function HeroGridCanvas({ speed = 1, density = 1, className = "" 
       raf = 0;
     };
 
+    const onScroll = () => {
+      rectStale = true;
+    };
+
     const onPointerMove = (e) => {
       if (e.pointerType === "touch") return;
-      const rect = parent.getBoundingClientRect();
+      if (rectStale || !parentRect) {
+        parentRect = parent.getBoundingClientRect();
+        rectStale = false;
+      }
+      const rect = parentRect;
+      if (!rect.width || !rect.height) return;
       const nx = (e.clientX - rect.left) / rect.width - 0.5;
       const ny = (e.clientY - rect.top) / rect.height - 0.5;
       px.target = nx * 14;
@@ -266,6 +284,7 @@ export default function HeroGridCanvas({ speed = 1, density = 1, className = "" 
     } else {
       document.addEventListener("visibilitychange", onVisibility);
       parent.addEventListener("pointermove", onPointerMove);
+      window.addEventListener("scroll", onScroll, { passive: true });
       start();
     }
 
@@ -276,6 +295,7 @@ export default function HeroGridCanvas({ speed = 1, density = 1, className = "" 
       io.disconnect();
       document.removeEventListener("visibilitychange", onVisibility);
       parent.removeEventListener("pointermove", onPointerMove);
+      window.removeEventListener("scroll", onScroll);
     };
   }, [reduce, speed, density]);
 

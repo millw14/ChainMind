@@ -3,7 +3,7 @@
   "private": true,
   "version": "0.0.1",
   "type": "module",
-  "description": "AI explorer for Robinhood Chain — ask about wallets, tokens, transactions and tokenized stocks in plain English",
+  "description": "AI explorer for Robinhood Chain — read wallets, tokens, transactions and tokenized stocks, with what the numbers mean",
   "keywords": [
     "robinhood-chain",
     "blockchain-explorer",

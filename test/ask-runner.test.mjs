@@ -27,7 +27,14 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { INTENTS } from "../lib/ask-intent.js";
 import { BUDGET_EXHAUSTED_RESULT, MAX_EVIDENCE_CHARS } from "../lib/ask-loop.js";
-import { GUIDANCE, runAsk } from "../lib/ask-runner.js";
+import {
+  GUIDANCE,
+  MISSING_INFO_GUIDANCE,
+  OFF_CHAIN_BRIEF,
+  SMALL_TALK_FALLBACK,
+  SYSTEM_PROMPT,
+  runAsk,
+} from "../lib/ask-runner.js";
 
 const ADDRESS = "0xd0601ce157db5bdc3162bbac2a2c8af5320d9eec";
 const TX_HASH = `0x${"ab".repeat(32)}`;
@@ -528,4 +535,189 @@ test("a company name reaches the resolver untouched, through the real dispatcher
   assert.deepEqual(seen, ["apple"]);
   assert.equal(res.status, 200);
   assert.equal(res.body.target, "AAPL");
+});
+
+/* ------------------------------ small talk ------------------------------ */
+
+// Measured live before this branch existed: "hello" and "hi" both fired the
+// market_overview tool and came back with a summary of the tokenized-equity
+// market. A greeting answered with a table is the single most robotic thing the
+// product did, and it also spent a tool round trip and an indexer fan-out on one
+// word. These tests pin the JSON path; test/ask-stream.test.mjs pins the streamed
+// one and isSmallTalk itself.
+
+test("a greeting is answered socially, with no tool call and no chain lookup", async () => {
+  const { chat, payloads } = scriptedChat([proseTurn("Hey! Ask me about a ticker like NVDA.")]);
+  const forbidden = async () => assert.fail("small talk must not reach the chain");
+
+  const res = await runAsk({
+    question: "hello",
+    chat,
+    model: MODEL,
+    deps: {
+      gatherEvidence: forbidden,
+      marketOverview: forbidden,
+      rankStocks: forbidden,
+      compareTargets: forbidden,
+      safetyReport: forbidden,
+      dispatch: forbidden,
+    },
+  });
+
+  assert.equal(res.status, 200);
+  assert.equal(res.body.intent, "small_talk", "the client labels the turn with this");
+  assert.equal(res.body.intent, INTENTS.SMALL_TALK);
+  assert.equal(res.body.answer, "Hey! Ask me about a ticker like NVDA.");
+  assert.equal(res.body.evidence, null, "nothing was looked up, so there is no evidence card");
+  assert.deepEqual(res.body.toolCalls, []);
+
+  // One completion, and no `tools` on it: a greeting cannot cost a tool round trip.
+  assert.equal(payloads.length, 1);
+  assert.equal("tools" in payloads[0], false);
+});
+
+test("a greeting still gets a warm answer when the model is down", async () => {
+  const { chat } = scriptedChat([upstream(503, "Groq 503")]);
+  const res = await runAsk({ question: "gm", chat, model: MODEL });
+
+  // The one question in the product that needs no upstream at all. A 502 in reply
+  // to "gm" would be absurd, so it degrades to the fixed sentence.
+  assert.equal(res.status, 200);
+  assert.equal(res.body.ok, true);
+  assert.equal(res.body.answer, SMALL_TALK_FALLBACK);
+});
+
+test("a greeting that also names a subject is routed as the question it is", async () => {
+  const { chat, payloads } = scriptedChat([
+    toolTurn([{ id: "a", name: "lookup_token", args: { query: "nvda" } }]),
+    proseTurn("NVDA trades at $206.71."),
+  ]);
+  const { dispatch, calls } = recorder({
+    lookup_token: { ok: true, kind: "token", target: "NVDA", evidence: { symbol: "NVDA" } },
+  });
+
+  const res = await runAsk({ question: "hi, what is nvda", chat, model: MODEL, deps: { dispatch } });
+
+  assert.equal(res.status, 200);
+  assert.equal(res.body.intent, INTENTS.EXPLAIN_TARGET);
+  assert.deepEqual(calls, [{ name: "lookup_token", args: { query: "nvda" } }]);
+  assert.equal(payloads.length, 2, "the greeting did not short-circuit the lookup");
+});
+
+test("an explicit target keeps even a chatty question on the lookup path", async () => {
+  const { chat } = scriptedChat([proseTurn("That wallet holds 2 ETH.")]);
+  const gathered = [];
+  // The interface has something in view, so "hi" about it is about that thing.
+  const res = await runAsk({
+    question: "hi",
+    target: ADDRESS,
+    chat,
+    model: MODEL,
+    deps: {
+      gatherEvidence: async (t) => {
+        gathered.push(t);
+        return { ok: true, kind: "address", target: ADDRESS, evidence: { balance: "2" } };
+      },
+    },
+  });
+
+  assert.deepEqual(gathered, [ADDRESS]);
+  assert.equal(res.body.intent, INTENTS.EXPLAIN_TARGET);
+});
+
+/* --------------------------- off-chain knowledge --------------------------- */
+
+// Reported by a user testing the live site, verbatim: "AI still needs work too /
+// This is a very basic question". The question was "who is the founder?", it was
+// routed to market_overview, and the answer was "The founder of Robinhood Chain
+// is not specified in the provided market overview". The follow-up, "who is the
+// co founder?", got "cannot be answered with the available tools".
+//
+// Neither has an on-chain answer — founders are not a field a block carries —
+// and inventing one would be far worse than admitting it. So two things change,
+// and these tests pin both: WHERE the question goes (never to a market tool) and
+// HOW the gap is worded (never in the vocabulary of the plumbing).
+
+test("a question about the founder never reaches a market lookup", async () => {
+  const { chat, payloads } = scriptedChat([
+    proseTurn("I read Robinhood Chain itself, and who founded it isn't recorded on it."),
+  ]);
+  const forbidden = async () => assert.fail("a question about people must not reach the chain");
+
+  const res = await runAsk({
+    question: "who is the founder?",
+    chat,
+    model: MODEL,
+    deps: {
+      gatherEvidence: forbidden,
+      marketOverview: forbidden,
+      rankStocks: forbidden,
+      compareTargets: forbidden,
+      safetyReport: forbidden,
+      dispatch: forbidden,
+    },
+  });
+
+  assert.equal(res.status, 200);
+  assert.equal(res.body.intent, INTENTS.EXPLAIN_CHAIN);
+  assert.equal(res.body.kind, "chain");
+  assert.deepEqual(res.body.toolCalls, [], "nothing was looked up, and nothing claims to have been");
+
+  // One completion, with no tools on it at all: the model never gets the chance
+  // to route a question about a person to market_overview.
+  assert.equal(payloads.length, 1);
+  assert.equal("tools" in payloads[0], false);
+
+  // The factsheet is what it answers from, and the factsheet says outright that
+  // this is off-chain rather than leaving the model to work it out.
+  assert.equal(typeof res.body.evidence.notOnChain, "string");
+  assert.equal(res.body.evidence.chainId, 4663);
+});
+
+test("the co-founder follow-up takes the same path, not a different one", async () => {
+  const { chat } = scriptedChat([proseTurn("Same answer: that's off-chain.")]);
+  const res = await runAsk({
+    question: "who is the co founder?",
+    chat,
+    model: MODEL,
+    deps: { dispatch: async () => assert.fail("no tool call for a question about people") },
+  });
+
+  assert.equal(res.body.intent, INTENTS.EXPLAIN_CHAIN);
+  assert.deepEqual(res.body.toolCalls, []);
+});
+
+test("the off-chain brief tells the model to answer, not to recite the factsheet", async () => {
+  const { chat, payloads } = scriptedChat([proseTurn("That's not on-chain.")]);
+  await runAsk({ question: "who is behind this?", chat, model: MODEL });
+
+  const user = payloads[0].messages.at(-1).content;
+  assert.ok(user.includes(OFF_CHAIN_BRIEF), "the brief for this case, not the generic chain one");
+  assert.ok(user.includes("who is behind this?"), "the question is still quoted verbatim");
+});
+
+test("the missing-information guidance never speaks in the vocabulary of the plumbing", () => {
+  // The exact sentences the user was shown came from this vocabulary. A reader
+  // does not know what a tool or an evidence block is and must not find out from
+  // a failure, so none of these words may appear in the guidance that produces
+  // the answer for a question we cannot answer.
+  for (const phrase of ["available tools", "provided market overview", "evidence"]) {
+    assert.equal(
+      MISSING_INFO_GUIDANCE.toLowerCase().includes(phrase),
+      false,
+      `"${phrase}" must not appear in the missing-information guidance`,
+    );
+    assert.equal(
+      OFF_CHAIN_BRIEF.toLowerCase().includes(phrase),
+      false,
+      `"${phrase}" must not appear in the off-chain brief`,
+    );
+  }
+
+  // And it is actually in force, rather than an unused export.
+  assert.ok(SYSTEM_PROMPT.includes(MISSING_INFO_GUIDANCE));
+  // It has to say the two things that make the answer usable: what is not known,
+  // and what can be done instead.
+  assert.match(MISSING_INFO_GUIDANCE, /not on it/i);
+  assert.match(MISSING_INFO_GUIDANCE, /offer/i);
 });

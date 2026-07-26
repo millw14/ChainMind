@@ -83,7 +83,7 @@ export default function Image() {
             lineHeight: 1.4,
           }}
         >
-          Wallets, tokens and transactions — explained in plain English.
+          Wallets, tokens and transactions — read live, with what the numbers mean.
         </div>
       </div>
     ),

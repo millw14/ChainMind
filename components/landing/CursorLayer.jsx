@@ -5,11 +5,11 @@ import { useEffect, useRef, useState } from "react";
 /** Fallback ambient cursor used when no `bots` prop is supplied. */
 const DEFAULT_BOTS = [{ label: "ChainMind AI", color: "var(--cm-accent-bright)" }];
 
-/** How much of the remaining distance the user cursor covers each frame. */
-const LERP = 0.18;
-
 /** Keeps wandering bots away from the very edge of the viewport (0..1). */
 const EDGE_PAD = 0.05;
+
+/** Repaint budget for the drift loop — 30fps, see the note in `step`. */
+const PAINT_INTERVAL_MS = 1000 / 30 - 1;
 
 function clamp(value, min, max) {
   return value < min ? min : value > max ? max : value;
@@ -41,26 +41,36 @@ function Arrow({ color }) {
 }
 
 /**
- * CursorLayer — a fixed, non-interactive overlay that renders "multiplayer"
- * cursors in the style of a collaborative design tool: the visitor's own
- * labeled pointer trailing the real mouse with lerp easing, plus one or two
- * ambient bot cursors wandering the viewport along summed-sine paths.
+ * CursorLayer — a fixed, non-interactive overlay that renders ambient
+ * "multiplayer" bot cursors wandering the viewport along summed-sine paths,
+ * in the style of a collaborative design tool.
+ *
+ * DELIBERATELY NO USER CURSOR. An earlier revision hid the OS pointer
+ * (`document.body.style.cursor = "none"`) and drew a lerped replacement in its
+ * place. Because the drawn glyph only closes a fraction of the gap per frame it
+ * always trailed the real pointer, so visitors aimed at the arrow they could
+ * see while the actual hit point sat somewhere ahead of it — every click near a
+ * small target became a near-miss. Pointing accuracy beats decoration, so the
+ * native cursor is never touched and the visitor's own glyph and "You" label
+ * are gone outright. A "soft glow instead of an arrow" variant was considered
+ * and rejected: anything that tracks the pointer still reads as a thing to aim
+ * with, which is exactly the failure mode. The bots stay — they drift on their
+ * own schedule, are never aimed with, and carry the multiplayer feel by
+ * themselves.
  *
  * All per-frame movement is written straight to DOM refs inside a single
  * shared requestAnimationFrame loop — no React state is touched while
- * animating. The layer renders nothing at all (and leaves the native cursor
- * alone) for coarse pointers or when the visitor prefers reduced motion.
+ * animating. The layer renders nothing at all for coarse pointers or when the
+ * visitor prefers reduced motion.
  *
  * @param {Object} props
- * @param {string} [props.youLabel="You"] Text shown in the visitor's label pill.
  * @param {Array<{label: string, color: string}>} [props.bots] Ambient cursors (max 2).
  * @param {boolean} [props.enabled=true] Master switch; when false nothing renders.
  * @returns {JSX.Element|null} The cursor overlay, or null when inactive.
  */
-export default function CursorLayer({ youLabel = "You", bots, enabled = true }) {
+export default function CursorLayer({ bots, enabled = true }) {
   const [active, setActive] = useState(false);
 
-  const youRef = useRef(null);
   const botRefs = useRef([]);
 
   const botList = (Array.isArray(bots) && bots.length > 0 ? bots : DEFAULT_BOTS).slice(0, 2);
@@ -104,66 +114,41 @@ export default function CursorLayer({ youLabel = "You", bots, enabled = true }) 
     };
   }, [enabled]);
 
-  // Hide the OS cursor only while the overlay is genuinely running.
-  useEffect(() => {
-    if (!active || typeof document === "undefined") return undefined;
-    const previous = document.body.style.cursor;
-    document.body.style.cursor = "none";
-    return () => {
-      document.body.style.cursor = previous;
-    };
-  }, [active]);
-
-  // The one shared animation loop.
+  // The one shared animation loop. No pointer listener: nothing here follows
+  // the mouse any more, so the layer costs one rAF and nothing else.
   useEffect(() => {
     if (!active || typeof window === "undefined") return undefined;
 
-    const youEl = youRef.current;
     const botEls = botRefs.current.slice(0, botCount);
 
     let frame = 0;
     let lastTs = 0;
+    let lastPaint = 0;
     let clock = 0; // seconds of "visible" time, so hidden tabs never jump
 
     let viewW = window.innerWidth;
     let viewH = window.innerHeight;
-
-    const targetX = { current: viewW / 2 };
-    const targetY = { current: viewH / 2 };
-    let posX = viewW / 2;
-    let posY = viewH / 2;
 
     const handleResize = () => {
       viewW = window.innerWidth;
       viewH = window.innerHeight;
     };
 
-    const handlePointerMove = (event) => {
-      targetX.current = event.clientX;
-      targetY.current = event.clientY;
-      if (youEl) youEl.style.opacity = "1";
-    };
-
-    const fadeOut = () => {
-      if (youEl) youEl.style.opacity = "0";
-    };
-    const fadeIn = () => {
-      if (youEl) youEl.style.opacity = "1";
-    };
-
     const step = (ts) => {
+      frame = window.requestAnimationFrame(step);
+
       if (!lastTs) lastTs = ts;
       const deltaMs = Math.min(ts - lastTs, 100);
       lastTs = ts;
       clock += deltaMs / 1000;
 
-      posX += (targetX.current - posX) * LERP;
-      posY += (targetY.current - posY) * LERP;
-
-      if (youEl) {
-        youEl.style.transform =
-          "translate3d(" + posX.toFixed(2) + "px, " + posY.toFixed(2) + "px, 0)";
-      }
+      // Half-rate: these bots drift at a fraction of a viewport per second, so
+      // 30fps is indistinguishable from 60 and halves the composite work this
+      // always-on, always-on-screen fixed layer costs every frame the page
+      // scrolls. The clock keeps advancing at full rate, so the paths are
+      // unchanged — only how often they are sampled.
+      if (ts - lastPaint < PAINT_INTERVAL_MS) return;
+      lastPaint = ts;
 
       for (let i = 0; i < botEls.length; i += 1) {
         const el = botEls[i];
@@ -187,13 +172,12 @@ export default function CursorLayer({ youLabel = "You", bots, enabled = true }) 
         el.style.transform =
           "translate3d(" + bx.toFixed(2) + "px, " + by.toFixed(2) + "px, 0)";
       }
-
-      frame = window.requestAnimationFrame(step);
     };
 
     const start = () => {
       if (frame) return;
       lastTs = 0;
+      lastPaint = 0;
       frame = window.requestAnimationFrame(step);
     };
 
@@ -208,24 +192,14 @@ export default function CursorLayer({ youLabel = "You", bots, enabled = true }) 
       else start();
     };
 
-    window.addEventListener("pointermove", handlePointerMove, { passive: true });
     window.addEventListener("resize", handleResize, { passive: true });
-    window.addEventListener("blur", fadeOut);
-    window.addEventListener("focus", fadeIn);
-    document.addEventListener("pointerleave", fadeOut);
-    document.addEventListener("pointerenter", fadeIn);
     document.addEventListener("visibilitychange", handleVisibility);
 
     if (!document.hidden) start();
 
     return () => {
       stop();
-      window.removeEventListener("pointermove", handlePointerMove);
       window.removeEventListener("resize", handleResize);
-      window.removeEventListener("blur", fadeOut);
-      window.removeEventListener("focus", fadeIn);
-      document.removeEventListener("pointerleave", fadeOut);
-      document.removeEventListener("pointerenter", fadeIn);
       document.removeEventListener("visibilitychange", handleVisibility);
     };
   }, [active, botCount]);
@@ -236,14 +210,18 @@ export default function CursorLayer({ youLabel = "You", bots, enabled = true }) 
   const centerY = typeof window === "undefined" ? 0 : window.innerHeight / 2;
 
   return (
-    <div aria-hidden="true" className="pointer-events-none fixed inset-0 z-[70] overflow-hidden">
+    // z-[62] sits above the grain film (z-[60]) but below the command pill
+    // (z-[65]) and the ask overlay (z-[8000]), so a drifting bot can never draw
+    // over interactive chrome. `pointer-events-none` on the root means nothing
+    // inside it can intercept a click regardless.
+    <div aria-hidden="true" className="pointer-events-none fixed inset-0 z-[62] overflow-hidden">
       {botList.map((bot, index) => (
         <div
           key={(bot && bot.label ? bot.label : "bot") + "-" + index}
           ref={(el) => {
             botRefs.current[index] = el;
           }}
-          className="absolute left-0 top-0 flex items-start gap-1 will-change-transform"
+          className="pointer-events-none absolute left-0 top-0 flex items-start gap-1 will-change-transform"
           style={{
             transform: "translate3d(" + centerX + "px, " + centerY + "px, 0)",
             opacity: 0.85,
@@ -261,21 +239,6 @@ export default function CursorLayer({ youLabel = "You", bots, enabled = true }) 
           </span>
         </div>
       ))}
-
-      <div
-        ref={youRef}
-        className="absolute left-0 top-0 flex items-start gap-1 will-change-transform"
-        style={{
-          transform: "translate3d(" + centerX + "px, " + centerY + "px, 0)",
-          opacity: 1,
-          transition: "opacity 220ms ease-out",
-        }}
-      >
-        <Arrow color="var(--cm-accent)" />
-        <span className="mt-2 whitespace-nowrap rounded-md bg-cm-accent px-2 py-0.5 font-mono text-[10px] leading-none text-cm-on-accent">
-          {youLabel}
-        </span>
-      </div>
     </div>
   );
 }

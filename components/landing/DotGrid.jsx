@@ -19,6 +19,11 @@ const EASE = 0.085;
  * render and never depends on JavaScript to become visible — parallax only
  * mutates a transform on a ref, so pointer movement never re-renders React.
  *
+ * The parallax loop is doubly gated: it self-parks the moment the lattice
+ * catches up to the pointer, and an IntersectionObserver stops it (and drops the
+ * `will-change` promotion) whenever the lattice is scrolled off screen, so a
+ * decorative layer costs nothing once the reader has moved past it.
+ *
  * @param {Object} props
  * @param {number} [props.gap=22] Lattice spacing in CSS pixels (both axes).
  * @param {number} [props.dotSize=1] Dot radius in CSS pixels.
@@ -36,6 +41,7 @@ export default function DotGrid({
   parallax = true,
   fade = true,
 }) {
+  const wrapRef = useRef(null);
   const layerRef = useRef(null);
   const reduceMotion = useReducedMotion();
 
@@ -82,6 +88,14 @@ export default function DotGrid({
     let targetY = 0;
     let currentX = 0;
     let currentY = 0;
+    // Scrolled past the hero, the lattice is pure decoration nobody can see —
+    // pointer movement must not keep a rAF loop (or a promoted layer) alive.
+    let onScreen = true;
+    // Cached rather than read per pointer sample: reading window.innerWidth /
+    // innerHeight can force a synchronous layout, and a window-level pointermove
+    // fires far more often than the viewport ever changes size.
+    let viewW = window.innerWidth || 1;
+    let viewH = window.innerHeight || 1;
 
     const apply = () => {
       layer.style.transform = `translate3d(${currentX.toFixed(2)}px, ${currentY.toFixed(2)}px, 0)`;
@@ -111,18 +125,22 @@ export default function DotGrid({
     };
 
     const start = () => {
-      if (!raf && !document.hidden) raf = window.requestAnimationFrame(tick);
+      if (!raf && onScreen && !document.hidden) raf = window.requestAnimationFrame(tick);
     };
 
     const onPointerMove = (event) => {
+      if (!onScreen) return;
       // Fine pointers only; a stylus/touch contact should not drive the lattice.
       if (event.pointerType && event.pointerType !== "mouse") return;
-      const w = window.innerWidth || 1;
-      const h = window.innerHeight || 1;
       // -1..1 from viewport center, then damped to the max shift.
-      targetX = ((event.clientX / w) * 2 - 1) * MAX_SHIFT;
-      targetY = ((event.clientY / h) * 2 - 1) * MAX_SHIFT;
+      targetX = ((event.clientX / viewW) * 2 - 1) * MAX_SHIFT;
+      targetY = ((event.clientY / viewH) * 2 - 1) * MAX_SHIFT;
       start();
+    };
+
+    const onResize = () => {
+      viewW = window.innerWidth || 1;
+      viewH = window.innerHeight || 1;
     };
 
     const onPointerOut = (event) => {
@@ -137,15 +155,45 @@ export default function DotGrid({
       else start();
     };
 
-    layer.style.willChange = "transform";
     window.addEventListener("pointermove", onPointerMove, { passive: true });
+    window.addEventListener("resize", onResize, { passive: true });
     window.addEventListener("blur", onPointerOut);
     document.addEventListener("pointerout", onPointerOut, { passive: true });
     document.addEventListener("visibilitychange", onVisibility);
 
+    // The promotion hint is scoped to "on screen" rather than "mounted", so a
+    // large blurred/masked layer is not left permanently composited for the
+    // whole page. It flips at most a couple of times per visit, so the layer
+    // itself never churns.
+    let io = null;
+    const wrap = wrapRef.current;
+    if (wrap && typeof IntersectionObserver === "function") {
+      onScreen = false;
+      io = new IntersectionObserver(
+        (entries) => {
+          const next = entries[entries.length - 1]?.isIntersecting ?? true;
+          if (next === onScreen) return;
+          onScreen = next;
+          if (next) {
+            layer.style.willChange = "transform";
+            start();
+          } else {
+            stop();
+            layer.style.willChange = "";
+          }
+        },
+        { threshold: 0 }
+      );
+      io.observe(wrap);
+    } else {
+      layer.style.willChange = "transform";
+    }
+
     return () => {
       stop();
+      if (io) io.disconnect();
       window.removeEventListener("pointermove", onPointerMove);
+      window.removeEventListener("resize", onResize);
       window.removeEventListener("blur", onPointerOut);
       document.removeEventListener("pointerout", onPointerOut);
       document.removeEventListener("visibilitychange", onVisibility);
@@ -157,6 +205,7 @@ export default function DotGrid({
 
   return (
     <div
+      ref={wrapRef}
       aria-hidden="true"
       className={`pointer-events-none absolute inset-0 overflow-hidden ${className}`}
       style={wrapperStyle}

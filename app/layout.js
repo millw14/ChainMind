@@ -13,7 +13,7 @@ const jetbrains = JetBrains_Mono({
 
 const title = "ChainMind — AI explorer for Robinhood Chain";
 const description =
-  "Ask anything about Robinhood Chain — wallets, tokens, and transactions explained in plain English, grounded in live on-chain data.";
+  "Ask anything about Robinhood Chain — wallets, tokens, transactions and tokenized equities read live: supply, holders, concentration, deployer, verification, and what they mean.";
 
 export const metadata = {
   // Needed for absolute OG/twitter image URLs. Set NEXT_PUBLIC_APP_URL in the
