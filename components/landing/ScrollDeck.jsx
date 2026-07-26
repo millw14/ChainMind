@@ -338,7 +338,12 @@ function CardFace({ item }) {
 
       {/* RIGHT — visual */}
       <div className="relative flex min-h-[220px] items-center justify-center bg-cm-bg p-6 sm:p-8">
-        <div aria-hidden="true" className="absolute inset-0 opacity-70" style={DOT_GRID} />
+        {/* Decorative fill — never a hit target. */}
+        <div
+          aria-hidden="true"
+          className="pointer-events-none absolute inset-0 opacity-70"
+          style={DOT_GRID}
+        />
         <div className="relative aspect-[13/10] w-full max-w-[420px]">
           <Visual />
         </div>

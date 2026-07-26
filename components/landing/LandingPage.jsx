@@ -196,7 +196,7 @@ export function LandingPage() {
   const reduceMotion = useReducedMotion() ?? false;
   const [askOpen, setAskOpen] = useState(false);
 
-  const headlineText = "Ask anything on Robinhood Chain, get answers in plain English.";
+  const headlineText = "Ask anything on Robinhood Chain, get the numbers and what they mean.";
   const typedHeadline = useTypewriter(headlineText, 28, 200, !reduceMotion);
   const fv = fadeUp(reduceMotion);
   const fs = fadeScale(reduceMotion);
@@ -209,7 +209,8 @@ export function LandingPage() {
     <>
       <Preloader label="ChainMind" duration={1500} />
       <GrainOverlay opacity={0.05} />
-      <CursorLayer youLabel="You" bots={[{ label: "ChainMind AI", color: "var(--cm-accent-bright)" }]} />
+      {/* Ambient bot cursors only — the visitor's own pointer is the OS one. */}
+      <CursorLayer bots={[{ label: "ChainMind AI", color: "var(--cm-accent-bright)" }]} />
       <CommandPill href="/ask" label="Ask anything" onTrigger={() => setAskOpen(true)} />
       {/* No onSubmit: the overlay answers in place and keeps the follow-ups there. */}
       <AskOverlay open={askOpen} onClose={() => setAskOpen(false)} />
@@ -221,8 +222,8 @@ export function LandingPage() {
 
       <ScrollTypeStatement
         label="Statement 01"
-        text="Every wallet, token and transaction on Robinhood Chain is public — but almost none of it is readable. ChainMind turns the ledger into plain English."
-        highlight={["readable", "plain", "English."]}
+        text="Every wallet, token and transaction on Robinhood Chain is public — but public is not the same as readable. ChainMind reads the ledger and tells you what it means."
+        highlight={["readable", "what", "it", "means."]}
       />
 
       <section className="relative overflow-hidden border-b border-cm-border-subtle pb-10 pt-20 sm:pt-28">
@@ -256,7 +257,7 @@ export function LandingPage() {
             variants={staggerContainer(reduceMotion, { stagger: 0.09 })}
           >
             <motion.h2 variants={fadeUp(reduceMotion)} className="text-xl font-semibold tracking-tight text-cm-text sm:text-2xl">
-              From 0x to plain English
+              From 0x to a read on it
             </motion.h2>
             <motion.p variants={fadeUp(reduceMotion)} className="mt-2 text-sm leading-relaxed text-cm-muted sm:text-base">
               Three steps: paste a target, ChainMind reads it from the chain, and the AI explains it. More detail in the{" "}
@@ -277,7 +278,7 @@ export function LandingPage() {
             {[
               { step: "01", title: "Paste a target", body: "Any Robinhood Chain address or transaction hash—no signup, no setup." },
               { step: "02", title: "We read the chain", body: "ChainMind pulls balances, tokens, transfers, and decoded activity live from Blockscout." },
-              { step: "03", title: "AI explains it", body: "A grounded, plain-English answer to your question—with the raw evidence one click away." },
+              { step: "03", title: "AI explains it", body: "Figures first, then what they imply—supply, concentration, deployer—with the raw evidence one click away." },
             ].map((item) => (
               <motion.li
                 key={item.step}
@@ -327,8 +328,8 @@ export function LandingPage() {
               Built for people, not parsers
             </motion.h2>
             <motion.p variants={fadeUp(reduceMotion)} className="mt-3 text-sm leading-relaxed text-cm-muted sm:text-base">
-              Robinhood Chain brings tokenized stocks and real-world assets on-chain. ChainMind makes that activity
-              legible to anyone—no need to read raw logs or decode calldata.
+              Robinhood Chain brings tokenized stocks and real-world assets on-chain. ChainMind pulls the figures and
+              reads them—concentration, deployer, verification—without you decoding calldata for it.
             </motion.p>
           </motion.div>
           <motion.div
@@ -377,7 +378,7 @@ export function LandingPage() {
             variants={staggerContainer(reduceMotion, { stagger: 0.07 })}
           >
             <motion.div variants={fadeUp(reduceMotion)} className="max-w-xl">
-              <h2 className="text-lg font-semibold text-cm-text sm:text-xl">Explore Robinhood Chain in plain English</h2>
+              <h2 className="text-lg font-semibold text-cm-text sm:text-xl">Read Robinhood Chain properly</h2>
               <p className="mt-2 text-sm leading-relaxed text-cm-muted">
                 Paste any address or transaction and ask. Answers are grounded in live chain data—no signup required.
               </p>
