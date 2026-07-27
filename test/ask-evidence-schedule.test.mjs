@@ -230,6 +230,33 @@ test("a snapshotted ticker starts the token calls in the same window as the reso
   assert.equal(res.evidence.token.display.marketCap, "$4.16M");
 });
 
+test("an impostor scan that never ran is unknown, not an all-clear", async () => {
+  const r = recorder();
+  const base = { ok: true, query: "AAPL", match: { address: TOKEN, symbol: "AAPL", company: "Apple" }, official: true };
+
+  // The explorer search failed, so lib/stock-tokens.js hands back null. An empty
+  // array here would have produced no warning at all, and "no warning" is what a
+  // reader takes as "checked, and nothing else wears this ticker".
+  const unread = await gatherEvidence("aapl", {
+    calls: tokenCalls(r, { resolveSymbol: r.call("resolveSymbol", { body: { ...base, impostors: null } }) }),
+  });
+  assert.equal(unread.ok, true);
+  assert.equal(unread.evidence.stock.impostors, null, "null, never [] — nothing was read");
+  assert.equal(unread.evidence.stock.impostorCount, null);
+  assert.equal(unread.evidence.stock.impostorsRead, false);
+  assert.match(unread.evidence.stock.impostorWarning, /could not be checked — unknown, not none/);
+
+  // The search DID answer and found nothing: that silence is earned.
+  const r2 = recorder();
+  const clean = await gatherEvidence("aapl", {
+    calls: tokenCalls(r2, { resolveSymbol: r2.call("resolveSymbol", { body: { ...base, impostors: [] } }) }),
+  });
+  assert.deepEqual(clean.evidence.stock.impostors, []);
+  assert.equal(clean.evidence.stock.impostorCount, 0);
+  assert.equal(clean.evidence.stock.impostorsRead, true);
+  assert.equal(clean.evidence.stock.impostorWarning, null, "an official ticker with no collisions warns about nothing");
+});
+
 test("a ticker lookup survives an address overview that never answers", async () => {
   const r = recorder();
   const calls = tokenCalls(r, {

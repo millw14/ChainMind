@@ -50,6 +50,16 @@ function fakes(overrides = {}) {
     marketOverview: log("marketOverview", { ok: true, kind: "overview", evidence: { totalStockTokens: 94 } }),
     compareTargets: log("compareTargets", { ok: true, kind: "comparison", evidence: { items: [] } }),
     safetyReport: log("safetyReport", { ok: true, kind: "safety", evidence: { verdict: "official" } }),
+    tokenHolders: log("tokenHolders", { ok: true, kind: "holders", evidence: { holders: [] } }),
+    tokenTransfers: log("tokenTransfers", { ok: true, kind: "transfers", evidence: { transfers: [] } }),
+    flagPatterns: log("flagPatterns", { ok: true, kind: "patterns", evidence: { findings: [] } }),
+    contractInfo: log("contractInfo", { ok: true, kind: "contract", evidence: { deployer: null } }),
+    searchTokens: log("searchTokens", { ok: true, kind: "search", evidence: { results: [] } }),
+    walletPortfolio: log("walletPortfolio", { ok: true, kind: "portfolio", evidence: { holdings: [] } }),
+    traceWallet: log("traceWallet", { ok: true, kind: "trace", evidence: { hasSold: null } }),
+    walletCounterparties: log("walletCounterparties", { ok: true, kind: "counterparties", evidence: { counterparties: [] } }),
+    whaleMoves: log("whaleMoves", { ok: true, kind: "whales", evidence: { largest: [] } }),
+    topMovers: log("topMovers", { ok: true, kind: "movers", evidence: { rows: [] } }),
     resolveSymbol: log("resolveSymbol", {
       ok: true,
       match: { symbol: "KO", company: "Coca-Cola", address: "0x00000000000000000000000000000000000000ko" },
@@ -97,15 +107,27 @@ test("TOOL_NAMES matches the catalogue exactly and is frozen", () => {
   assert.ok(Object.isFrozen(TOOL_SCHEMAS));
 });
 
-test("the catalogue covers all seven documented tools", () => {
+test("the catalogue covers all seventeen documented tools", () => {
+  // Seven that answer a whole question, five that go deeper into one token, and
+  // five on the wallet and market side.
   assert.deepEqual([...TOOL_NAMES].sort(), [
     "compare_tokens",
+    "contract_info",
+    "flag_patterns",
     "lookup_token",
     "lookup_transaction",
     "lookup_wallet",
     "market_overview",
     "rank_stocks",
     "safety_check",
+    "search_tokens",
+    "token_holders",
+    "token_transfers",
+    "top_movers",
+    "trace_wallet",
+    "wallet_counterparties",
+    "wallet_portfolio",
+    "whale_moves",
   ]);
 });
 
@@ -163,7 +185,9 @@ test("descriptions tell the model that casual and non-English phrasing is fine",
   assert.match(byName("compare_tokens").function.description, /tsla vs nvda/);
   assert.match(byName("market_overview").function.description, /poppin/);
   assert.match(byName("safety_check").function.description, /legit/);
-  for (const name of ["lookup_token", "lookup_wallet", "lookup_transaction", "rank_stocks", "compare_tokens", "market_overview", "safety_check"]) {
+  // Every tool, not a hand-kept list: a new one added without the phrasing note
+  // is a routing regression that would otherwise only show up in production.
+  for (const name of TOOL_NAMES) {
     assert.match(
       byName(name).function.description,
       /language|casual|informal|slang/i,

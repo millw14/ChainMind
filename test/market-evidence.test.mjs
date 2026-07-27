@@ -351,9 +351,19 @@ test("collisions never lists the contract being reported on as its own impostor"
   assert.equal(found.rows[0].holders, 2);
 });
 
-test("collisions survives a search that returned nothing usable", () => {
-  for (const input of [null, undefined, [], "nope"]) {
-    assert.deepEqual(collisions(input, NVDA.address), { rows: [], total: 0 });
+test("collisions tells an empty search apart from a search that never ran", () => {
+  // An ARRAY is a search that answered, so zero collisions is a measured zero.
+  assert.deepEqual(collisions([], NVDA.address), { rows: [], total: 0 });
+
+  // Anything else is a scan that did not happen. Reporting 0 there would say
+  // "no other contract wears this ticker" on the strength of an outage — the
+  // one direction of this answer that reassures a reader holding a fake.
+  for (const input of [null, undefined, "nope", 0, {}]) {
+    assert.deepEqual(
+      collisions(input, NVDA.address),
+      { rows: [], total: null },
+      "an unread collision scan is unknown, never none",
+    );
   }
 });
 
