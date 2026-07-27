@@ -451,6 +451,141 @@ function FollowUps({ items, onPick, reduce }) {
   );
 }
 
+/* --------------------------- clarification options --------------------------- */
+
+/**
+ * How many options a clarification may show. The server already caps at four
+ * (lib/ask-tools.js MAX_CLARIFY_OPTIONS); this is the client refusing to trust
+ * the wire, which it has to, because the JSON fallback path, an older deployment
+ * and a proxy that rewrote the body all reach this function too.
+ */
+const MAX_CLARIFY_OPTIONS = 4;
+
+function isPlainObject(value) {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+/**
+ * The `{ question, options }` block out of a response's evidence, or null.
+ *
+ * Two shapes, and the second one is defensive. A clarification returns its
+ * evidence bare, because lib/ask-loop.js runs the tool alone; but evidence keyed
+ * by tool name is what several lookups in one turn produce, and an older
+ * deployment, a proxy that rewrote the body or any future turn that does key it
+ * would put the block one level down. Missing that case would silently drop a
+ * question the assistant has already asked in its prose, leaving the reader a
+ * question with no way to answer it.
+ */
+function clarificationBlock(evidence) {
+  if (!isPlainObject(evidence)) return null;
+  if (Array.isArray(evidence.options)) return evidence;
+  const nested = evidence.ask_clarification;
+  return isPlainObject(nested) && Array.isArray(nested.options) ? nested : null;
+}
+
+/**
+ * The options one assistant message is offering, as chips.
+ *
+ * `label` is what gets SENT — verbatim, as the reader's next question — so an
+ * entry without a usable one is dropped rather than rendered as a blank button.
+ * A message with no options at all yields `[]`, and the caller draws nothing:
+ * the question itself is ordinary answer text and has already been rendered, so
+ * a clarification that arrives empty degrades to a question the reader can just
+ * answer in the composer.
+ *
+ * @param {object} message
+ * @returns {Array<{id: string, label: string, hint: string}>}
+ */
+function clarificationOptions(message) {
+  if (!message || message.role !== "assistant") return [];
+  const block = clarificationBlock(message.evidence);
+  if (!block) return [];
+  // `kind` is the server's own word for the turn; the options array standing
+  // alone is accepted too, so a reply that lost its kind still works.
+  if (message.kind !== "clarification" && !Array.isArray(block.options)) return [];
+
+  const out = [];
+  const seen = new Set();
+  for (const entry of block.options) {
+    const label =
+      typeof entry === "string"
+        ? entry.trim()
+        : isPlainObject(entry) && typeof entry.label === "string"
+          ? entry.label.trim()
+          : "";
+    if (!label) continue;
+    const key = label.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push({
+      id: `${message.id}:${out.length}`,
+      label,
+      hint: isPlainObject(entry) && typeof entry.hint === "string" ? entry.hint.trim() : "",
+    });
+    if (out.length >= MAX_CLARIFY_OPTIONS) break;
+  }
+  return out;
+}
+
+/**
+ * The readings offered under a clarification, as pressable questions.
+ *
+ * Deliberately shaped like the follow-up chips rather than like a modal: same
+ * border, surface and hover tokens, sitting in the transcript under the question
+ * that prompted them, because this IS the conversation continuing and not a
+ * dialog interrupting it. They stack rather than wrap — each label is a whole
+ * question and can carry a hint beneath it, which a pill in a wrapping row
+ * cannot hold without truncating the thing the reader is being asked to choose.
+ *
+ * `disabled` is the stale guard. Once one has been pressed, and for every
+ * clarification that is no longer the newest turn, the set stops being pressable
+ * so a question from four turns ago cannot be fired into the middle of a
+ * different thread. They stay VISIBLE — the transcript should still show what
+ * was asked — just inert.
+ *
+ * @param {Object} props
+ * @param {Array<{id: string, label: string, hint: string}>} props.items
+ * @param {(label: string) => void} props.onPick
+ * @param {boolean} props.disabled
+ * @param {boolean} props.reduce
+ * @returns {JSX.Element|null}
+ */
+function ClarifyOptions({ items, onPick, disabled, reduce }) {
+  if (!items.length) return null;
+  return (
+    <motion.div
+      role="group"
+      aria-label="Ways to read that question"
+      className="mt-3.5 flex flex-col items-start gap-2"
+      // From a legible opacity, never from zero: these chips are the only way to
+      // answer the question above them, and an animation that fails to run must
+      // leave them dim rather than leave them invisible.
+      initial={reduce ? { opacity: 1 } : { opacity: 0.35, y: 4 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={reduce ? { duration: 0 } : { duration: 0.28, ease: BLOOM_EASE, delay: 0.08 }}
+    >
+      {items.map((item) => (
+        <button
+          key={item.id}
+          type="button"
+          disabled={disabled}
+          onClick={() => onPick(item.label)}
+          className="group flex max-w-full items-start gap-2 rounded-2xl border border-cm-border-subtle bg-cm-surface px-3.5 py-2 text-left text-[13px] text-cm-muted transition hover:border-cm-border hover:text-cm-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cm-accent disabled:cursor-default disabled:opacity-45 disabled:hover:border-cm-border-subtle disabled:hover:text-cm-muted"
+        >
+          <IconSend
+            size={13}
+            className="mt-[0.2em] shrink-0 text-cm-faint transition-colors group-hover:text-cm-accent"
+          />
+          <span className="min-w-0">
+            <span className="block break-words">{item.label}</span>
+            {item.hint ? <span className="mt-0.5 block break-words text-cm-faint">{item.hint}</span> : null}
+          </span>
+        </button>
+      ))}
+    </motion.div>
+  );
+}
+
 /** POST one question. `stream` picks the SSE reply over the JSON one. */
 function askRequest(question, stream, signal) {
   return fetch("/api/ask", {
@@ -1077,10 +1212,40 @@ export default function Conversation({
    * request is in flight, or under an error — a failed lookup has no thread to
    * continue.
    */
+  /**
+   * The one clarification whose options may still be pressed: the newest turn's,
+   * and only until it has been answered.
+   *
+   * Everything older renders inert (see ClarifyOptions' `disabled`), which is
+   * what stops a stale set from being fired into the middle of a later thread —
+   * pressing an option sends a user message, so the clarification stops being the
+   * newest turn the moment one is chosen, and `clarified` covers the instant
+   * before that state lands.
+   */
+  const activeClarifyId = useMemo(() => {
+    if (pending || streamingNow) return 0;
+    const last = messages[messages.length - 1];
+    if (!last || last.role !== "assistant" || last.streaming || last.error || last.clarified) return 0;
+    return clarificationOptions(last).length ? last.id : 0;
+  }, [messages, pending, streamingNow]);
+
+  /** Retire one clarification's options the moment one of them is pressed. */
+  const pickClarification = useCallback(
+    (id, label) => {
+      setMessages((prev) => prev.map((m) => (m.id === id ? { ...m, clarified: true } : m)));
+      send(label);
+    },
+    [send],
+  );
+
   const followUps = useMemo(() => {
     if (pending || streamingNow) return { id: 0, items: [] };
     const last = messages[messages.length - 1];
     if (!last || last.role !== "assistant" || last.streaming || last.error) return { id: 0, items: [] };
+    // A clarification's options ARE its follow-ups. Offering "Read the whole
+    // board" beside "Who holds the most?" would answer the question we just
+    // asked with a third thing nobody chose.
+    if (clarificationOptions(last).length) return { id: 0, items: [] };
     return {
       id: last.id,
       items: buildFollowUps({
@@ -1122,8 +1287,12 @@ export default function Conversation({
           aria-busy={streamingNow || pending ? "true" : "false"}
           className="min-h-0 flex-1 space-y-5 overflow-y-auto overscroll-contain pb-2 pr-1 sm:pr-2"
         >
-          {messages.map((message) =>
-            message.role === "user" ? (
+          {messages.map((message) => {
+            // Recomputed per render rather than stored on the message: it is a
+            // read of at most four entries, and deriving it keeps one source of
+            // truth for what the server actually sent.
+            const clarifyOptions = clarificationOptions(message);
+            return message.role === "user" ? (
               <motion.div
                 key={message.id}
                 className="flex justify-end"
@@ -1175,13 +1344,24 @@ export default function Conversation({
                       ))
                     : null}
 
+                  {/* The readings on offer, when the turn asked a question back
+                      instead of answering one. Drawn from the evidence, so a
+                      clarification that arrived with nothing usable in it leaves
+                      just the question text rather than an empty chip row. */}
+                  <ClarifyOptions
+                    items={clarifyOptions}
+                    onPick={(label) => pickClarification(message.id, label)}
+                    disabled={message.id !== activeClarifyId}
+                    reduce={reduce}
+                  />
+
                   {message.id === followUps.id ? (
                     <FollowUps items={followUps.items} onPick={send} reduce={reduce} />
                   ) : null}
                 </div>
               </motion.div>
-            ),
-          )}
+            );
+          })}
 
           {pending ? (
             <div className="flex gap-3">

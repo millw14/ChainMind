@@ -8,6 +8,7 @@ import {
   cacheTtlMs,
   indexerCacheStats,
   resetIndexerCache,
+  setIndexerClock,
   withIndexerCache,
 } from "../lib/indexer-cache.js";
 import { getToken, getTokenHolders } from "../lib/blockscout.js";
@@ -89,25 +90,49 @@ test("different urls are cached independently", async () => {
   assert.equal(indexerCacheStats().size, 2);
 });
 
-test("the entry expires once the TTL is past", async () => {
+/**
+ * Drive the cache's clock by hand.
+ *
+ * These two tests used real setTimeout sleeps against a real TTL and asserted an
+ * exact upstream call count. That is a flake waiting for a loaded machine: three
+ * 15ms sleeps against a 40ms TTL become four expiries the moment the process is
+ * descheduled, and the assertion fails for a reason that has nothing to do with
+ * the cache. Reproduced by running the suite four times concurrently.
+ *
+ * With the clock injected the timings are exact and the tests are instant.
+ * Returns a tick(ms) to advance it, and registers the restore.
+ */
+function fakeClock(t) {
+  let nowMs = 1_000_000;
+  const restore = setIndexerClock(() => nowMs);
+  t.after(restore);
+  return (ms) => {
+    nowMs += ms;
+  };
+}
+
+test("the entry expires once the TTL is past", async (t) => {
   withTtl(20);
+  const tick = fakeClock(t);
   const up = counter((n) => ({ n }));
   const first = await withIndexerCache("https://x/tokens/1", up.fetcher);
-  await new Promise((r) => setTimeout(r, 40));
+  tick(40);
   const second = await withIndexerCache("https://x/tokens/1", up.fetcher);
   assert.equal(up.calls, 2, "an expired entry must be re-fetched");
   assert.deepEqual(first, { n: 1 });
   assert.deepEqual(second, { n: 2 });
 });
 
-test("a hit refreshes recency but never the expiry", async () => {
+test("a hit refreshes recency but never the expiry", async (t) => {
   withTtl(40);
+  const tick = fakeClock(t);
   const up = counter((n) => ({ n }));
   await withIndexerCache("https://x/tokens/1", up.fetcher);
   // Read it repeatedly across its whole life; it must still expire on schedule
-  // rather than being kept alive forever by being popular.
+  // rather than being kept alive forever by being popular. 3x15ms crosses 40ms
+  // exactly once, so a correct cache fetches twice and a sliding window once.
   for (let i = 0; i < 3; i += 1) {
-    await new Promise((r) => setTimeout(r, 15));
+    tick(15);
     await withIndexerCache("https://x/tokens/1", up.fetcher);
   }
   assert.equal(up.calls, 2, "the sliding-window bug would leave this at 1");
