@@ -584,6 +584,81 @@ test("dispatchTool sends a ticker or address straight to gatherEvidence", async 
   }
 });
 
+/* ---------------- asking when the depth measurement did not settle it ---------------- */
+
+/** A gatherEvidence result carrying a resolver collision verdict. */
+const withCollision = (collision) => ({
+  ok: true,
+  kind: "token",
+  target: "VLAD",
+  evidence: { stock: { symbol: "VLAD", address: "0x31be", collision }, token: {} },
+});
+
+const CONTENDERS = [
+  {
+    address: "0xaaaa000000000000000000000000000000000001",
+    symbol: "DUAL",
+    name: "Alpha",
+    quoteLiquidityUsd: 50_000,
+    label: '0xaaaa…0001 ("Alpha")',
+    display: { quoteLiquidity: "$50.00K", marketCap: "$1.00M" },
+  },
+  {
+    address: "0xbbbb000000000000000000000000000000000002",
+    symbol: "DUAL",
+    name: "Beta",
+    quoteLiquidityUsd: 30_000,
+    label: '0xbbbb…0002 ("Beta")',
+    display: { quoteLiquidity: "$30.00K", marketCap: "$2.00M" },
+  },
+];
+
+test("a lookup whose collision is genuinely ambiguous asks instead of picking", async () => {
+  // Two live markets under one ticker and neither dominates. Quietly answering
+  // about one reports that market's figures as though they were the ticker's.
+  const { impls } = fakes({
+    gatherEvidence: async () =>
+      withCollision({ verdict: "ambiguous", ambiguous: true, symbol: "DUAL", contenders: CONTENDERS }),
+  });
+  const res = await dispatchTool("lookup_token", { query: "dual" }, impls);
+
+  assert.equal(res.ok, true);
+  assert.equal(res.kind, "clarification", "the same terminal shape ask_clarification produces");
+  assert.equal(res.evidence.options.length, 2);
+  // A label is sent back VERBATIM as the reader's next question, so it has to
+  // carry the FULL address — the ticker is exactly what was ambiguous.
+  assert.equal(res.evidence.options[0].label, `What is ${CONTENDERS[0].address}?`);
+  assert.match(res.evidence.options[0].hint, /Alpha/);
+  assert.match(res.evidence.options[0].hint, /\$50\.00K/);
+  assert.match(res.evidence.question, /DUAL/);
+});
+
+test("a collision one contract dominates is answered directly, with no menu", async () => {
+  // VLAD: $69,583.29 against $3.92. A menu for a case this clear-cut would be its
+  // own failure, so the verdict has to reach the answer as an answer.
+  const { impls } = fakes({
+    gatherEvidence: async () =>
+      withCollision({ verdict: "dominant", ambiguous: false, symbol: "VLAD", contenders: [CONTENDERS[0]] }),
+  });
+  const res = await dispatchTool("lookup_token", { query: "vlad" }, impls);
+  assert.equal(res.kind, "token");
+  assert.equal(res.evidence.stock.collision.verdict, "dominant");
+});
+
+test("shallow, unmeasured and absent collisions are all answered, never asked about", async () => {
+  for (const collision of [
+    { verdict: "shallow", ambiguous: false, contenders: [] },
+    { verdict: "unmeasured", ambiguous: false, contenders: [] },
+    // A menu needs two things to choose between; one contender is a delay.
+    { verdict: "ambiguous", ambiguous: true, contenders: [CONTENDERS[0]] },
+    null,
+  ]) {
+    const { impls } = fakes({ gatherEvidence: async () => withCollision(collision) });
+    const res = await dispatchTool("lookup_token", { query: "vlad" }, impls);
+    assert.equal(res.kind, "token", `verdict ${collision?.verdict ?? "null"} must not produce a menu`);
+  }
+});
+
 test("dispatchTool resolves a multi-word company name, then reuses the ticker path", async () => {
   // The ticker path is the only one that carries the impostor warning, so a
   // company name is resolved to its symbol and handed back to it.
