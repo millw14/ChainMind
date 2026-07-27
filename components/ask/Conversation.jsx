@@ -4,11 +4,17 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { motion, useReducedMotion } from "framer-motion";
 import { INTENTS } from "@/lib/ask-intent";
 import { createSseParser } from "@/lib/sse";
+import { collectTables } from "@/lib/table-shape";
+import { buildFollowUps } from "@/lib/follow-ups";
+import AnswerTable from "@/components/ask/AnswerTable";
+import ThinkingStatus from "@/components/ask/ThinkingStatus";
 import {
+  IconCompare,
   IconRank,
   IconSend,
   IconShield,
   IconSparkle,
+  IconTable,
   IconTrend,
   IconWallet,
 } from "@/components/icons/AskIcons";
@@ -32,8 +38,13 @@ import {
  * watching three dots. The request now asks for `stream: true` and reads the SSE
  * events lib/ask-runner.js emits:
  *
+ *   progress → what is being read right now, shown where the dots were. Optional
+ *           by design: no event ever arriving is a supported case, and the dots
+ *           are what fills the row then (see ThinkingStatus).
  *   meta  → create the assistant message and its intent tag immediately, so the
- *           turn is labelled before a single word of it exists;
+ *           turn is labelled before a single word of it exists. It also carries
+ *           the evidence, which is where the answer's tables and its follow-up
+ *           chips come from;
  *   delta → append (batched, see FLUSH_MS) so the answer types out live;
  *   done  → replace the accumulated text with the server's assembled answer and
  *           drop the caret;
@@ -376,28 +387,67 @@ function AssistantAvatar() {
 }
 
 /**
- * The waiting state. Shown from the moment a question is sent until the first
- * word of the answer exists, and not one frame longer.
+ * The glyph a follow-up chip asks for, by the name lib/follow-ups.js uses. Kept
+ * as a map rather than baked into the chip data so the derivation stays a pure
+ * server-safe module with no React in it.
+ */
+const FOLLOW_UP_ICONS = {
+  table: IconTable,
+  wallet: IconWallet,
+  shield: IconShield,
+  rank: IconRank,
+  compare: IconCompare,
+  trend: IconTrend,
+};
+
+/**
+ * The chips offered under a settled answer.
+ *
+ * Every one of them is derived from what the answer actually contained — see
+ * lib/follow-ups.js — so this only draws them. Rendered as buttons in a group
+ * rather than as a list: they are actions, and a press sends the question
+ * immediately rather than filling the composer, because a follow-up the reader
+ * then has to press Enter on is two gestures for one intention.
  *
  * @param {Object} props
- * @param {boolean} props.reduce Whether motion is unwelcome.
- * @returns {JSX.Element} Dots, or a written line under reduced motion.
+ * @param {Array<{id: string, icon: string, text: string, question: string}>} props.items
+ * @param {(question: string) => void} props.onPick
+ * @param {boolean} props.reduce
+ * @returns {JSX.Element|null}
  */
-function Thinking({ reduce }) {
-  if (reduce) {
-    return <span className="font-mono text-[12px] text-cm-muted">Reading the chain…</span>;
-  }
+function FollowUps({ items, onPick, reduce }) {
+  if (!items.length) return null;
   return (
-    <span role="status" aria-label="Reading the chain" className="flex items-center gap-1.5">
-      {[0, 1, 2].map((dot) => (
-        <motion.span
-          key={dot}
-          className="h-1.5 w-1.5 rounded-full bg-cm-accent"
-          animate={{ opacity: [0.25, 1, 0.25], scale: [0.85, 1, 0.85] }}
-          transition={{ duration: 1.1, ease: "easeInOut", repeat: Infinity, delay: dot * 0.16 }}
-        />
-      ))}
-    </span>
+    <motion.div
+      role="group"
+      aria-label="Follow-up questions"
+      className="mt-3.5 flex flex-wrap gap-2"
+      // Fades in from a LEGIBLE opacity, not from zero — the same rule
+      // ThinkingStatus states for its phrase. These chips are the only thing
+      // offering the next question, and an animation that never runs must leave
+      // them dim rather than leave them invisible.
+      initial={reduce ? { opacity: 1 } : { opacity: 0.35, y: 4 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={reduce ? { duration: 0 } : { duration: 0.28, ease: BLOOM_EASE, delay: 0.08 }}
+    >
+      {items.map((item) => {
+        const Icon = FOLLOW_UP_ICONS[item.icon] ?? null;
+        return (
+          <button
+            key={item.id}
+            type="button"
+            onClick={() => onPick(item.question)}
+            title={item.question}
+            className="group flex items-center gap-1.5 rounded-full border border-cm-border-subtle bg-cm-surface px-3 py-1.5 text-[13px] text-cm-muted transition hover:border-cm-border hover:text-cm-text"
+          >
+            {Icon ? (
+              <Icon size={13} className="shrink-0 text-cm-faint transition-colors group-hover:text-cm-accent" />
+            ) : null}
+            <span>{item.text}</span>
+          </button>
+        );
+      })}
+    </motion.div>
   );
 }
 
@@ -518,6 +568,10 @@ export default function Conversation({
   const [value, setValue] = useState("");
   const [messages, setMessages] = useState([]);
   const [pending, setPending] = useState(false);
+  // The latest `progress` event, or null when none has arrived for this request —
+  // which is the normal case for the JSON fallback and for an older deployment.
+  // One piece of state, not one per message: only one request is ever in flight.
+  const [status, setStatus] = useState(null);
 
   const inputRef = useRef(null);
   const listRef = useRef(null);
@@ -621,8 +675,21 @@ export default function Conversation({
     idRef.current += 1;
     const id = idRef.current;
     setPending(false);
+    // The answer is here, so there is nothing left to say about the wait.
+    setStatus(null);
     setMessages((prev) =>
-      settleStale(prev).concat({ id, role: "assistant", text: "", intent: "", ...message }),
+      settleStale(prev).concat({
+        id,
+        role: "assistant",
+        text: "",
+        intent: "",
+        tables: [],
+        evidence: null,
+        toolCalls: [],
+        kind: null,
+        target: null,
+        ...message,
+      }),
     );
   }, []);
 
@@ -635,6 +702,13 @@ export default function Conversation({
         appendAssistant({
           text: answer || EMPTY_ANSWER,
           intent: intentLabel(data.intent),
+          // The JSON reply carries the same evidence the stream's `meta` does, so
+          // the fallback path gets its tables and its follow-ups too.
+          tables: collectTables(data.evidence),
+          evidence: data.evidence ?? null,
+          toolCalls: Array.isArray(data.toolCalls) ? data.toolCalls : [],
+          kind: typeof data.kind === "string" ? data.kind : null,
+          target: typeof data.target === "string" ? data.target : null,
           ...(answer ? {} : { error: true }),
         });
         return;
@@ -660,6 +734,7 @@ export default function Conversation({
       let started = false; // the assistant message exists
       let delivered = 0; // characters of answer handed over
       let finished = false; // done or error already rendered
+      let statusCleared = false; // the waiting row has already been taken down
 
       /** Create the assistant message. Called by `meta`, or by the first delta. */
       const ensure = (meta) => {
@@ -669,7 +744,9 @@ export default function Conversation({
         assistantId = idRef.current;
         const intent = intentLabel(meta && meta.intent);
         // The tag and the avatar appear before any text does, so the turn is
-        // labelled while it is still being written.
+        // labelled while it is still being written. The evidence arrives on the
+        // same event, which is what lets the table and the follow-up chips be
+        // built from data rather than from the prose.
         setPending(false);
         setMessages((prev) =>
           settleStale(prev).concat({
@@ -678,6 +755,11 @@ export default function Conversation({
             text: "",
             intent,
             streaming: true,
+            tables: collectTables(meta && meta.evidence),
+            evidence: (meta && meta.evidence) ?? null,
+            toolCalls: Array.isArray(meta && meta.toolCalls) ? meta.toolCalls : [],
+            kind: typeof (meta && meta.kind) === "string" ? meta.kind : null,
+            target: typeof (meta && meta.target) === "string" ? meta.target : null,
           }),
         );
       };
@@ -685,7 +767,10 @@ export default function Conversation({
       /** End the stream on this message: flush the tail, drop the caret. */
       const settle = (finalText, isError) => {
         flushWriter();
-        if (!started || !live(seq)) return;
+        if (!live(seq)) return;
+        // Belt and braces for an answer that finished without a single delta.
+        setStatus(null);
+        if (!started) return;
         setMessages((prev) =>
           prev.map((m) => {
             if (m.id !== assistantId) return m;
@@ -710,6 +795,10 @@ export default function Conversation({
       const discard = () => {
         clearFlush();
         writerRef.current.text = "";
+        // Whatever the stream had been reporting is over. The JSON retry that
+        // follows emits no progress at all, and a phrase left behind from the
+        // abandoned attempt would be describing work nobody is doing.
+        if (live(seq)) setStatus(null);
         if (!started || delivered > 0) return;
         started = false;
         if (!live(seq)) return;
@@ -718,6 +807,14 @@ export default function Conversation({
 
       const onEvent = (event) => {
         const type = event && typeof event.type === "string" ? event.type : "";
+        if (type === "progress") {
+          // What is being read, right now. A malformed one is dropped rather than
+          // shown as a blank row: ThinkingStatus falls back to the dots for it.
+          const step = typeof event.step === "string" ? event.step.trim() : "";
+          if (!step || !live(seq)) return;
+          setStatus({ step, label: typeof event.label === "string" ? event.label.trim() : "" });
+          return;
+        }
         if (type === "meta") {
           ensure(event);
           return;
@@ -726,6 +823,13 @@ export default function Conversation({
           const text = typeof event.text === "string" ? event.text : "";
           if (!text) return;
           ensure(null);
+          // The answer has started, so the status row's job is over — and it goes
+          // on the first delta, not on `done`, so the phrase is never left sitting
+          // under text that is already arriving. Once, not per delta.
+          if (!statusCleared) {
+            statusCleared = true;
+            if (live(seq)) setStatus(null);
+          }
           delivered += text.length;
           pushDelta(seq, assistantId, text);
           return;
@@ -850,6 +954,8 @@ export default function Conversation({
       if (abortRef.current) abortRef.current.abort();
       clearFlush();
       writerRef.current = { id: 0, seq: 0, text: "", timer: null };
+      // A superseded request's last phrase must not describe the new one's wait.
+      setStatus(null);
       seqRef.current += 1;
       const seq = seqRef.current;
       const controller = new AbortController();
@@ -962,6 +1068,31 @@ export default function Conversation({
     node.scrollTop = node.scrollHeight;
   }, [messages, pending, streamingNow]);
 
+  /**
+   * The follow-up chips, and which message they belong under.
+   *
+   * Only ever the NEWEST answer: chips under an older turn would send a question
+   * about evidence the reader has scrolled past, and a transcript with four rows
+   * of them is a menu rather than a conversation. Nothing is offered while a
+   * request is in flight, or under an error — a failed lookup has no thread to
+   * continue.
+   */
+  const followUps = useMemo(() => {
+    if (pending || streamingNow) return { id: 0, items: [] };
+    const last = messages[messages.length - 1];
+    if (!last || last.role !== "assistant" || last.streaming || last.error) return { id: 0, items: [] };
+    return {
+      id: last.id,
+      items: buildFollowUps({
+        kind: last.kind,
+        target: last.target,
+        evidence: last.evidence,
+        toolCalls: last.toolCalls,
+        tables: last.tables,
+      }),
+    };
+  }, [messages, pending, streamingNow]);
+
   // Messages land already visible under reduced motion — nothing to un-hide.
   const msgInitial = reduce ? { opacity: 1 } : { opacity: 0, y: 8 };
   const msgAnimate = reduce ? { opacity: 1 } : { opacity: 1, y: 0 };
@@ -1020,10 +1151,10 @@ export default function Conversation({
                     </p>
                   ) : null}
                   {message.streaming && !String(message.text ?? "").trim() ? (
-                    // Labelled, but not written yet. The dots stand in for the
-                    // first word and are gone the instant it arrives.
+                    // Labelled, but not written yet. The status row stands in for
+                    // the first word and is gone the instant it arrives.
                     <div className="flex min-h-[24px] items-center">
-                      <Thinking reduce={reduce} />
+                      <ThinkingStatus status={status} reduce={reduce} />
                     </div>
                   ) : (
                     <AnswerBody
@@ -1034,6 +1165,19 @@ export default function Conversation({
                       }`}
                     />
                   )}
+
+                  {/* The rows the answer is about, under the prose that reads
+                      them. Driven entirely by the columns descriptor, so a new
+                      table-producing tool needs nothing here. */}
+                  {message.tables && message.tables.length > 0
+                    ? message.tables.map((table, index) => (
+                        <AnswerTable key={`t-${message.id}-${table.id ?? index}`} table={table} />
+                      ))
+                    : null}
+
+                  {message.id === followUps.id ? (
+                    <FollowUps items={followUps.items} onPick={send} reduce={reduce} />
+                  ) : null}
                 </div>
               </motion.div>
             ),
@@ -1043,7 +1187,7 @@ export default function Conversation({
             <div className="flex gap-3">
               <AssistantAvatar />
               <div className="flex min-h-[28px] items-center">
-                <Thinking reduce={reduce} />
+                <ThinkingStatus status={status} reduce={reduce} />
               </div>
             </div>
           ) : null}
@@ -1062,7 +1206,18 @@ export default function Conversation({
                 key={chip.text}
                 type="button"
                 onClick={() => send(chip.question)}
-                className="group flex items-center gap-2 rounded-full border border-cm-border bg-cm-surface/70 px-4 py-2 text-sm text-cm-subtle transition hover:border-cm-accent/50 hover:text-cm-text"
+                // The tint is an inline style rather than `bg-cm-surface/70`, and
+                // the hover border is full strength rather than `/50`, because the
+                // theme colours are bare `var(--cm-*)` with no `<alpha-value>`
+                // slot: Tailwind cannot build an alpha channel from one, so it
+                // emits NO RULE AT ALL for the slash form. Verified against a
+                // utilities build — `bg-cm-surface/70` and `hover:border-cm-accent/50`
+                // produced zero bytes, so these chips had no background and their
+                // border never moved on hover despite the `transition` promising it.
+                // color-mix keeps the token indirection that a hardcoded rgba
+                // would throw away.
+                style={{ backgroundColor: "color-mix(in srgb, var(--cm-surface) 70%, transparent)" }}
+                className="group flex items-center gap-2 rounded-full border border-cm-border px-4 py-2 text-sm text-cm-subtle transition hover:border-cm-accent hover:text-cm-text"
               >
                 {chip.Icon ? (
                   <chip.Icon
@@ -1089,7 +1244,11 @@ export default function Conversation({
 
       <form
         onSubmit={handleFormSubmit}
-        className="mt-8 flex w-full shrink-0 items-center gap-3 rounded-2xl border border-cm-border bg-cm-surface/60 px-5 py-4 backdrop-blur"
+        // Same dropped-alpha story as the chips above: `bg-cm-surface/60` built to
+        // nothing, which left the composer as a bare outline over whatever the
+        // page put behind it. The blur was doing all the work alone.
+        style={{ backgroundColor: "color-mix(in srgb, var(--cm-surface) 60%, transparent)" }}
+        className="mt-8 flex w-full shrink-0 items-center gap-3 rounded-2xl border border-cm-border px-5 py-4 backdrop-blur"
       >
         <input
           ref={inputRef}
