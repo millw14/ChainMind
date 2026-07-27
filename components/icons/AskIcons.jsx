@@ -140,6 +140,45 @@ export function IconClose({ className = "", size = 16, ...rest }) {
   );
 }
 
+/** Framed grid with a header row. Used by the "see the whole table" chip. */
+export function IconTable({ className = "", size = 16, ...rest }) {
+  return (
+    <Glyph className={className} size={size} {...rest}>
+      <rect x="3.5" y="4.5" width="17" height="15" rx="2" />
+      <path d="M3.5 9.5h17M9.75 9.5v10" />
+    </Glyph>
+  );
+}
+
+/** Two offset sheets. Used by a table's Copy button. */
+export function IconCopy({ className = "", size = 16, ...rest }) {
+  return (
+    <Glyph className={className} size={size} {...rest}>
+      <rect x="9" y="9" width="11" height="11" rx="2" />
+      <path d="M15 6.5V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v7a2 2 0 0 0 2 2h.5" />
+    </Glyph>
+  );
+}
+
+/** Arrow into a tray. Used by a table's Download button. */
+export function IconDownload({ className = "", size = 16, ...rest }) {
+  return (
+    <Glyph className={className} size={size} {...rest}>
+      <path d="M12 3.75v10.5M12 14.25l-3.5-3.5M12 14.25l3.5-3.5" />
+      <path d="M4.75 16.5v1.75a2 2 0 0 0 2 2h10.5a2 2 0 0 0 2-2V16.5" />
+    </Glyph>
+  );
+}
+
+/** Bare tick. The Copy button wears it for a moment after a successful copy. */
+export function IconCheck({ className = "", size = 16, ...rest }) {
+  return (
+    <Glyph className={className} size={size} {...rest}>
+      <path d="M5 12.5 9.75 17.25 19 7.5" />
+    </Glyph>
+  );
+}
+
 /** Four-point sparkle with concave sides. Used for the assistant avatar. */
 export function IconSparkle({ className = "", size = 16, ...rest }) {
   return (
