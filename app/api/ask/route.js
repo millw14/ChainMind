@@ -200,6 +200,13 @@ function streamingResponse(req, { question, target }) {
         target,
         chat: (payload) => completeChat(payload, upstream.signal),
         streamChat: (payload) => streamChat(payload, upstream.signal),
+        // Say what is being read while it is being read. A ticker question is
+        // ~5.6s of measured indexer time, almost all of it before the first word
+        // of the answer exists, and `progress` frames are what the transcript
+        // shows instead of three dots for those five seconds. Frames the client
+        // does not understand are ignored by it, so this is safe to send to an
+        // older bundle sitting in someone's cache.
+        progress: true,
       });
 
       try {
