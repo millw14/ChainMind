@@ -242,11 +242,37 @@ test("a contract whose depth could not be measured never outranks one whose was"
   assert.equal(pickBestMatch([unprobed, measured], "VLAD")?.address, "0x1");
 });
 
-test("with no depth measured on either side, holders is still what is left", () => {
-  // Depth is read for a bounded shortlist only. Below it, and for the equities
-  // where no pool is ever read, the old rung still carries the ranking.
+test("with no depth measured on either side, the indexer's own tracking decides — NOT holders", () => {
+  // THE ORDINARY-TUESDAY CASE, and it used to give the wrong answer. Depth is
+  // read for a bounded shortlist and the probes can simply time out: measured
+  // live, every probe failed in 2 of 4 cold VLAD lookups. This test used to
+  // assert ROBINHOOD — 52,214 airdropped holders sitting behind $1.03 of
+  // realisable WETH — because holders was the next rung down.
+  //
+  // Blockscout publishes a rate only for contracts it can find a market for, and
+  // of the 229 VLAD contracts on this chain that is essentially just this one.
+  // The fixtures carry exactly that: GREEN_BULL has a price, the other two do
+  // not, which is what the live chain returns.
   const pool = [GREEN_BULL, VLADHOODS, ROBINHOOD];
-  assert.equal(pickBestMatch(pool, "VLAD")?.address, ROBINHOOD.address);
+  assert.equal(pickBestMatch(pool, "VLAD")?.address, GREEN_BULL.address);
+});
+
+test("holders still decides when nothing better separates the candidates", () => {
+  // The rung is not gone, just outranked. With no depth, no volume and no rate
+  // on any side there is nothing else to go on, and the equities — where no pool
+  // is ever read — depend on it.
+  const bare = [GREEN_BULL, VLADHOODS, ROBINHOOD].map(({ price, ...c }) => c);
+  assert.equal(pickBestMatch(bare, "VLAD")?.address, ROBINHOOD.address);
+});
+
+test("real trading outranks a bare quote, and both outrank a large holder count", () => {
+  // Volume is the discriminating field: /search rows carry a rate but never a
+  // volume. Neither is a hard signal — a sole liquidity provider wash-trading
+  // pays the fees to themselves — so both sit BELOW depth and above holders only
+  // because holders costs an airdrop.
+  const traded = { ...VLADHOODS, volume24h: 2808.22 };
+  assert.equal(pickBestMatch([GREEN_BULL, traded, ROBINHOOD], "VLAD")?.address, traded.address);
+  assert.equal(pickBestMatch([ROBINHOOD, GREEN_BULL], "VLAD")?.address, GREEN_BULL.address);
 });
 
 test("ISSUER VERIFICATION OUTRANKS THE DEEPEST POOL ON THE CHAIN", () => {
@@ -301,7 +327,10 @@ test("withHolderCounts fills the count the explorer search does not send", async
   });
 
   assert.deepEqual(asked.sort(), ["0x31be", "0xbbdd", "0xfd58"]);
-  assert.equal(pickBestMatch(filled, "VLAD")?.address, ROBINHOOD.address);
+  assert.equal(filled.find((r) => r.address === "0xfd58")?.holders, 52214, "the count is filled in");
+  // The filled counts no longer decide this collision — the indexer's rate does,
+  // one rung above — but they are still what separates candidates that tie there.
+  assert.equal(pickBestMatch(filled, "VLAD")?.address, GREEN_BULL.address);
   assert.equal(rows[0].holders, null, "the caller's own list is not mutated");
 });
 
