@@ -108,9 +108,68 @@ function walletOverviewBody() {
   return { hash: WALLET, is_contract: false, name: "whale", coin_balance: "1000000000000000000", token: null };
 }
 
+/**
+ * What lib/dex-price.js answers for a token nothing trades: a MEASURED absence,
+ * not a failure. The default for every test here, so no test can reach the RPC —
+ * `tokenMarketData` is the one entry in the call seam that is not an indexer call,
+ * and left unstubbed it would open a real connection to chain 4663.
+ */
+function noPool() {
+  return {
+    price: null,
+    marketCap: null,
+    liquidityUsd: null,
+    quoteLiquidityUsd: null,
+    source: "uniswap_v3",
+    quote: null,
+    pool: null,
+    fee: null,
+    asOfBlock: null,
+    priceInQuote: null,
+    priceNative: null,
+    reason: "no_pool",
+    detail: "No Uniswap v3 pool for this token against any verified quote asset on Robinhood Chain.",
+  };
+}
+
+/** VLAD as read live off chain 4663: a real pool price with four dollars behind it. */
+function vladPool() {
+  return {
+    price: 0.00040468946392557093,
+    marketCap: 404689.46392557095,
+    liquidityUsd: 364220.5577297926,
+    quoteLiquidityUsd: 3.921471393954625,
+    // Vladhoods' single position is a hair wide and sits at the market, so its
+    // realisable depth and what it HOLDS are the same figure to the cent — which is
+    // exactly the case the old evidence layer treated as needing no qualification.
+    quoteBalanceUsd: 3.921471393954625,
+    // The RANKING figure is the -2% band; the -10% figure is context beside it.
+    depthIsLowerBound: false,
+    wideDepthUsd: 3.921471393954625,
+    wideDepthIsLowerBound: false,
+    depthBandBps: 200,
+    wideBandBps: 1000,
+    source: "uniswap_v3",
+    quote: {
+      address: "0x0bd7d308f8e1639fab988df18a8011f41eacad73",
+      kind: "native",
+      verifiedBy: "reference_asset",
+      usdPerUnit: 1929.12,
+    },
+    pool: "0xad19a21d400b6381a79e3b676241450ce4159f66",
+    fee: 3000,
+    asOfBlock: 20845278,
+    priceInQuote: 2.0977931073524247e-7,
+    priceNative: 2.0977931073524247e-7,
+    thinLiquidity: true,
+    discovery: "factory",
+  };
+}
+
 /** The five token-path calls, all fast and all successful. */
 function tokenCalls(r, over = {}) {
   return {
+    tokenMarketData: r.call("tokenMarketData", { body: noPool() }),
     getToken: r.call("getToken", { body: tokenBody() }),
     getTokenCounters: r.call("getTokenCounters", { body: { token_holders_count: 28899, transfers_count: 4321 } }),
     getTokenHolders: r.call("getTokenHolders", { body: { items: [{ address: { hash: WALLET }, value: "500000000000000000000" }] } }),
@@ -431,6 +490,600 @@ test("an indexer that could not be asked is 'unavailable', never 'not priced'", 
   assert.equal(res.degraded, true);
 });
 
+/* ---------------------------- the pool fallback ---------------------------- */
+
+/*
+ * Blockscout prices the 94 issuer-verified equities and essentially nothing else,
+ * which meant the app answered "no price available" for exactly the tokens people
+ * trade. The chain itself knows: Uniswap v3 is deployed on 4663 and the pools are
+ * real. lib/dex-price.js reads them; these tests are about what the evidence layer
+ * does with the answer — and, as importantly, when it declines to ask.
+ */
+
+test("a token the indexer does not price is priced from its Uniswap v3 pool", async () => {
+  const r = recorder();
+  const calls = tokenCalls(r, {
+    getToken: r.call("getToken", { body: unpricedTokenBody() }),
+    getAddress: r.call("getAddress", { body: overviewBody({ token: unpricedTokenBody() }) }),
+    tokenMarketData: r.call("tokenMarketData", { body: vladPool() }),
+  });
+
+  const res = await gatherEvidence(TOKEN, { known: KNOWN_TOKEN, calls });
+  const token = res.evidence.token;
+
+  // "not_indexed" is no longer the end of the story: this token is PRICED.
+  assert.equal(token.priceStatus, "pool_priced");
+  assert.equal(token.priceSource, "uniswap_v3");
+  assert.equal(token.priceUsd, 0.00040468946392557093);
+  assert.equal(token.marketCapUsd, 404689.46392557095);
+  // The strings the model copies, not the floats beside them.
+  assert.equal(token.display.price, "$0.0004047");
+  assert.equal(token.display.marketCap, "$404.69K");
+  // A pool has no 24h volume to give, and an absent figure stays absent.
+  assert.equal(token.volume24hUsd, null);
+  assert.equal(token.display.volume24h, null);
+  assert.equal(res.degraded, undefined, "a pool price is not a degraded answer");
+
+  // WHERE IT CAME FROM, on the evidence rather than left to be inferred.
+  assert.equal(token.pool.address, "0xad19a21d400b6381a79e3b676241450ce4159f66");
+  assert.equal(token.pool.fee, 3000);
+  assert.equal(token.pool.feeTier, "0.3%");
+  assert.equal(token.pool.quote.address, "0x0bd7d308f8e1639fab988df18a8011f41eacad73");
+  assert.equal(token.pool.quote.label, "WETH");
+  assert.equal(token.pool.liquidityUsd, 364220.5577297926);
+  assert.equal(token.pool.quoteLiquidityUsd, 3.921471393954625);
+  assert.equal(token.pool.display.quoteLiquidity, "$3.92");
+  assert.match(token.pool.sourceNotice, /derived from the Uniswap v3 pool 0xad19a2/i);
+  assert.match(token.pool.sourceNotice, /against WETH/);
+  assert.match(token.pool.sourceNotice, /not quoted by a price feed/);
+});
+
+test("a pool price with four dollars behind it says so", async () => {
+  const r = recorder();
+  const calls = tokenCalls(r, {
+    getToken: r.call("getToken", { body: unpricedTokenBody() }),
+    getAddress: r.call("getAddress", { body: overviewBody({ token: unpricedTokenBody() }) }),
+    tokenMarketData: r.call("tokenMarketData", { body: vladPool() }),
+  });
+
+  const { pool } = (await gatherEvidence(TOKEN, { known: KNOWN_TOKEN, calls })).evidence.token;
+
+  // 900M tokens against 0.002 WETH: the price is arithmetically right and the
+  // amount of it anybody could realise is four dollars.
+  assert.equal(pool.thinLiquidity, true);
+  assert.match(pool.liquidityNotice, /\$3\.92/);
+  assert.match(pool.liquidityNotice, /a small trade moves it/);
+});
+
+test("a pool whose held and realisable figures are EQUAL is still qualified", async () => {
+  // THE F1-BY-WAY-OF-F2 REGRESSION. The held figure used to be mentioned only when
+  // it exceeded the realisable one by 10%, so the qualification was conditional on a
+  // DISCREPANCY — and a forged pool has none: an attacker who puts everything into
+  // one narrow position at the market has held == realisable exactly. The honest
+  // pool with genuine capital parked out of band carried the caveat and the forgery
+  // carried none, and the sourceNotice then cited depth-based selection as grounds
+  // for trusting it. What was measured is now stated positively, always.
+  const r = recorder();
+  const calls = tokenCalls(r, {
+    getToken: r.call("getToken", { body: unpricedTokenBody() }),
+    getAddress: r.call("getAddress", { body: overviewBody({ token: unpricedTokenBody() }) }),
+    tokenMarketData: r.call("tokenMarketData", { body: vladPool() }),
+  });
+
+  const { pool } = (await gatherEvidence(TOKEN, { known: KNOWN_TOKEN, calls })).evidence.token;
+  assert.equal(pool.quoteBalanceUsd, pool.quoteLiquidityUsd, "the two figures are identical here");
+  // WHAT was measured, and over WHAT BAND — stated whether or not they differ.
+  assert.match(pool.liquidityNotice, /before the price moved 2% against them/);
+  assert.match(pool.liquidityNotice, /integrated over the pool's tick ladder/);
+  // The WIDE band is stated as context and labelled as the place capital can hide.
+  assert.match(
+    pool.liquidityNotice,
+    /out to 10%, where capital can sit without ever being traded through, it is \$3\.92/,
+  );
+  assert.match(pool.liquidityNotice, /The pool HOLDS \$3\.92/, "held is named even when equal");
+
+  // …and the same sentence still names the gap when there IS one.
+  const r2 = recorder();
+  const gapped = tokenCalls(r2, {
+    getToken: r2.call("getToken", { body: unpricedTokenBody() }),
+    getAddress: r2.call("getAddress", { body: overviewBody({ token: unpricedTokenBody() }) }),
+    tokenMarketData: r2.call("tokenMarketData", {
+      body: { ...vladPool(), quoteLiquidityUsd: 1_324.13, quoteBalanceUsd: 69_679.77, thinLiquidity: false },
+    }),
+  });
+  const wide = (await gatherEvidence(TOKEN, { known: KNOWN_TOKEN, calls: gapped })).evidence.token.pool;
+  assert.match(wide.liquidityNotice, /\$1\.32K of WETH realisable/);
+  assert.match(wide.liquidityNotice, /The pool HOLDS \$69\.68K/);
+  assert.match(wide.liquidityNotice, /present and not realisable within it/);
+});
+
+test("an unreadable HELD figure is stated as unknown, never dropped or zeroed", async () => {
+  const r = recorder();
+  const calls = tokenCalls(r, {
+    getToken: r.call("getToken", { body: unpricedTokenBody() }),
+    getAddress: r.call("getAddress", { body: overviewBody({ token: unpricedTokenBody() }) }),
+    tokenMarketData: r.call("tokenMarketData", { body: { ...vladPool(), quoteBalanceUsd: null } }),
+  });
+  const { pool } = (await gatherEvidence(TOKEN, { known: KNOWN_TOKEN, calls })).evidence.token;
+  assert.equal(pool.quoteBalanceUsd, null);
+  assert.match(pool.liquidityNotice, /could not be read, so the gap between held and realisable is unknown/);
+});
+
+test("a market cap towering over its depth never travels naked", async () => {
+  // Measured on chain 4663: The Robinhood posts a $3,855,217 cap on $1.03 of
+  // realisable WETH. The figure is arithmetically correct and a reader given it
+  // without the second one is misled, so the qualifier is built here rather than
+  // left to the model to remember.
+  const r = recorder();
+  const calls = tokenCalls(r, {
+    getToken: r.call("getToken", { body: unpricedTokenBody() }),
+    getAddress: r.call("getAddress", { body: overviewBody({ token: unpricedTokenBody() }) }),
+    tokenMarketData: r.call("tokenMarketData", {
+      body: { ...vladPool(), marketCap: 3_855_217, liquidityUsd: 3_855_000, quoteLiquidityUsd: 1.03 },
+    }),
+  });
+
+  const { pool } = (await gatherEvidence(TOKEN, { known: KNOWN_TOKEN, calls })).evidence.token;
+
+  assert.match(pool.capNotice, /\$3\.86M/);
+  assert.match(pool.capNotice, /\$1\.03/);
+  assert.match(pool.capNotice, /notional/);
+  // TOTAL liquidity is not depth, and the difference is the token valuing itself.
+  assert.match(pool.liquidityNotice, /valuing ITSELF/);
+  assert.match(pool.liquidityNotice, /circular, and not depth/);
+  // And it must not overcorrect into an accusation.
+  assert.match(pool.capNotice, /not evidence of a scam/);
+  assert.doesNotMatch(pool.capNotice, /rug|fraud|manipulat/i);
+});
+
+test("a cap proportionate to its depth gets no qualifier", async () => {
+  // The Green Bull: $238,397 behind $69,583.29. The liquidity notice already
+  // states the depth; a second sentence would only dilute the one that matters.
+  const r = recorder();
+  const calls = tokenCalls(r, {
+    getToken: r.call("getToken", { body: unpricedTokenBody() }),
+    getAddress: r.call("getAddress", { body: overviewBody({ token: unpricedTokenBody() }) }),
+    tokenMarketData: r.call("tokenMarketData", {
+      body: {
+        ...vladPool(),
+        price: 0.00023839681962609913,
+        marketCap: 238_397,
+        liquidityUsd: 101_691,
+        quoteLiquidityUsd: 69_583.29,
+        thinLiquidity: false,
+      },
+    }),
+  });
+
+  const { pool } = (await gatherEvidence(TOKEN, { known: KNOWN_TOKEN, calls })).evidence.token;
+
+  assert.equal(pool.capNotice, null);
+  assert.equal(pool.thinLiquidity, false);
+  assert.match(pool.liquidityNotice, /\$69\.58K/);
+  assert.doesNotMatch(pool.liquidityNotice, /valuing ITSELF/);
+});
+
+test("a pool read nobody supplied a client for blames the caller, not the chain", async () => {
+  // "no_client" is a third fact beside "no pool" and "the RPC failed". Reported as
+  // an absence it would say the chain has nothing; reported as an outage it would
+  // blame an upstream that was never called — and a poolClient that failed to
+  // build would then make every unpriced token on the chain look like a permanent
+  // brownout, forever.
+  const r = recorder();
+  const calls = tokenCalls(r, {
+    getToken: r.call("getToken", { body: unpricedTokenBody() }),
+    getAddress: r.call("getAddress", { body: overviewBody({ token: unpricedTokenBody() }) }),
+    tokenMarketData: r.call("tokenMarketData", {
+      body: {
+        ...noPool(),
+        reason: "no_client",
+        detail: "No RPC client was supplied to the pool reader, so the chain was never asked.",
+      },
+    }),
+  });
+
+  const res = await gatherEvidence(TOKEN, { known: KNOWN_TOKEN, calls });
+  const { pool, priceStatus } = res.evidence.token;
+
+  assert.equal(pool.reason, "no_client");
+  assert.equal(pool.outage, true, "never 'no pool exists' — nobody looked");
+  assert.equal(pool.misconfigured, true, "and it is OUR fault, which is a different sentence");
+  assert.equal(priceStatus, "unavailable", "unknown, not unpriced");
+  assert.ok(res.evidence.unavailable.includes("poolPrice"));
+});
+
+test("depth nobody could measure is neither thin nor deep", async () => {
+  const r = recorder();
+  const calls = tokenCalls(r, {
+    getToken: r.call("getToken", { body: unpricedTokenBody() }),
+    getAddress: r.call("getAddress", { body: overviewBody({ token: unpricedTokenBody() }) }),
+    tokenMarketData: r.call("tokenMarketData", {
+      body: { ...vladPool(), liquidityUsd: null, quoteLiquidityUsd: null, thinLiquidity: null },
+    }),
+  });
+
+  const { pool } = (await gatherEvidence(TOKEN, { known: KNOWN_TOKEN, calls })).evidence.token;
+
+  assert.equal(pool.priced, true, "the price stands; only its depth is unknown");
+  assert.equal(pool.thinLiquidity, null, "null, never false — unmeasured is not deep");
+  assert.match(pool.liquidityNotice, /unmeasured, not deep and not thin/);
+});
+
+test("O2: A BOUND BELOW THE FLOOR IS A CAPPED MEASUREMENT, NOT SILENCE", async () => {
+  // BOTH ARRIVE HERE AS thinLiquidity === null, AND ONLY ONE OF THEM IS SILENCE.
+  // lib/dex-price.js reports null for a depth it could not read AND for a LOWER BOUND
+  // that lands below the floor — the second correctly, because a figure that only
+  // counts upward cannot show a pool is thin. This notice took the same branch for
+  // both and told the reader "the tick ladder did not answer" about a read that DID
+  // answer, discarding a real $31.26 the same block still carries. A measurement
+  // reported as silence is the mirror of an outage reported as an absence.
+  const r = recorder();
+  const calls = tokenCalls(r, {
+    getToken: r.call("getToken", { body: unpricedTokenBody() }),
+    getAddress: r.call("getAddress", { body: overviewBody({ token: unpricedTokenBody() }) }),
+    tokenMarketData: r.call("tokenMarketData", {
+      body: {
+        ...vladPool(),
+        // The griefed 0.01%-tier geometry: 25 dust mints cap $259.06 to $31.26, the
+        // walk covering the 0.2424% nearest the market instead of the full 2%.
+        quoteLiquidityUsd: 31.262561058474652,
+        quoteBalanceUsd: 69_679.77,
+        depthIsLowerBound: true,
+        depthCoveredBandBps: 24.242147821362803,
+        thinLiquidity: null,
+      },
+    }),
+  });
+
+  const { pool } = (await gatherEvidence(TOKEN, { known: KNOWN_TOKEN, calls })).evidence.token;
+
+  assert.equal(pool.thinLiquidity, null, "a bound may not establish thinness");
+  assert.equal(pool.depthIsLowerBound, true);
+  assert.equal(pool.depthCoveredBandBps, 24.242147821362803);
+  // THE FIGURE IS REPORTED, in its "at least" sense.
+  assert.match(pool.liquidityNotice, /at least \$31\.26/);
+  // THE READ IS DESCRIBED AS CAPPED, WITH THE RANGE IT COVERS NAMED.
+  assert.match(pool.liquidityNotice, /LOWER BOUND/);
+  assert.match(pool.liquidityNotice, /covered the 0\.242% nearest the market/);
+  assert.match(pool.liquidityNotice, /short of 2%/);
+  // AND THE SILENCE WORDING IS GONE — that read happened.
+  assert.doesNotMatch(pool.liquidityNotice, /did not answer/);
+  assert.doesNotMatch(pool.liquidityNotice, /unmeasured, not deep and not thin/);
+  assert.match(pool.liquidityNotice, /do NOT say the depth is unknown/);
+  assert.match(pool.liquidityNotice, /Do NOT call this pool thin/);
+  // …AND IT IS STILL NOT AN ACCUSATION. Thin depth is a fact about a pool, and this
+  // is not even that — the sentence must not harden into a claim about anyone.
+  assert.doesNotMatch(pool.liquidityNotice, /rug|fraud|scam|manipulat/i);
+});
+
+test("O2: A READ THAT GENUINELY THREW STILL READS AS SILENCE", async () => {
+  // The other side of the same branch, and it must not move. "The tick ladder did not
+  // answer" is reserved for reads that did not happen — no figure, no bound, nothing
+  // summed — and the reader has to be able to tell the two apart.
+  const r = recorder();
+  const calls = tokenCalls(r, {
+    getToken: r.call("getToken", { body: unpricedTokenBody() }),
+    getAddress: r.call("getAddress", { body: overviewBody({ token: unpricedTokenBody() }) }),
+    tokenMarketData: r.call("tokenMarketData", {
+      body: {
+        ...vladPool(),
+        quoteLiquidityUsd: null,
+        quoteBalanceUsd: null,
+        // A failed read has NO lower bound to report: nothing was integrated.
+        depthIsLowerBound: false,
+        depthCoveredBandBps: null,
+        thinLiquidity: null,
+      },
+    }),
+  });
+
+  const { pool } = (await gatherEvidence(TOKEN, { known: KNOWN_TOKEN, calls })).evidence.token;
+
+  assert.equal(pool.quoteLiquidityUsd, null);
+  assert.match(pool.liquidityNotice, /the tick ladder did not answer/);
+  assert.match(pool.liquidityNotice, /unmeasured, not deep and not thin/);
+  assert.doesNotMatch(pool.liquidityNotice, /at least/, "there is no figure to be 'at least'");
+  assert.doesNotMatch(pool.liquidityNotice, /capped/);
+});
+
+test("O2: an unresolved depth comparison is unread, and is NOT called an outage", async () => {
+  // The reason lib/dex-price.js returns when a pool that sorted below the leader
+  // reported a lower bound. It must count as UNREAD everywhere that asks "may this be
+  // stated as an absence" — it may not — and must NOT be described as a read that
+  // failed, because every pool answered. What is missing is exactness, not data.
+  const r = recorder();
+  const calls = tokenCalls(r, {
+    getToken: r.call("getToken", { body: unpricedTokenBody() }),
+    getAddress: r.call("getAddress", { body: overviewBody({ token: unpricedTokenBody() }) }),
+    tokenMarketData: r.call("tokenMarketData", {
+      body: {
+        ...noPool(),
+        reason: "depth_inconclusive",
+        detail: "…a pool that ranked below the leader reported a LOWER BOUND… Every pool was read.",
+      },
+    }),
+  });
+
+  const res = await gatherEvidence(TOKEN, { known: KNOWN_TOKEN, calls });
+  const { pool, priceStatus, priceStatusReason } = res.evidence.token;
+
+  assert.equal(pool.reason, "depth_inconclusive");
+  assert.equal(pool.outage, true, "never 'no pool exists' — the question is open");
+  assert.equal(pool.misconfigured, false);
+  assert.equal(priceStatus, "unavailable");
+  assert.match(priceStatusReason, /all read but did not settle which is the deepest/);
+  assert.match(priceStatusReason, /unresolved comparison, not an outage/);
+  assert.doesNotMatch(priceStatusReason, /could not be read either/);
+});
+
+test("O2: a bound ABOVE the floor names its covered range too", async () => {
+  // The same qualifier on the path where the pool is not thin: the figure clears the
+  // floor, so `thinLiquidity` is a real false — and the sentence still has to say the
+  // walk was capped and how far it got, or "at least $X" is a claim with no shape.
+  const r = recorder();
+  const calls = tokenCalls(r, {
+    getToken: r.call("getToken", { body: unpricedTokenBody() }),
+    getAddress: r.call("getAddress", { body: overviewBody({ token: unpricedTokenBody() }) }),
+    tokenMarketData: r.call("tokenMarketData", {
+      body: {
+        ...vladPool(),
+        quoteLiquidityUsd: 1_324.13,
+        quoteBalanceUsd: 69_679.77,
+        depthIsLowerBound: true,
+        depthCoveredBandBps: 24.242147821362803,
+        thinLiquidity: false,
+      },
+    }),
+  });
+
+  const { pool } = (await gatherEvidence(TOKEN, { known: KNOWN_TOKEN, calls })).evidence.token;
+  assert.equal(pool.thinLiquidity, false);
+  assert.match(pool.liquidityNotice, /at least \$1\.32K of WETH realisable/);
+  assert.match(pool.liquidityNotice, /capped after the 0\.242% nearest the market/);
+  assert.match(pool.liquidityNotice, /Say “at least”/);
+});
+
+test("an indexer-priced token never touches the pool", async () => {
+  const r = recorder();
+  const res = await gatherEvidence(TOKEN, { known: KNOWN_TOKEN, calls: tokenCalls(r) });
+
+  // The 94 equities keep their feed and pay none of the RPC latency: this is a
+  // fallback, not a replacement, and the common path must not get slower.
+  assert.equal(r.saw("tokenMarketData"), false, "no pool read when the indexer already priced it");
+  assert.equal(res.evidence.token.priceSource, "indexer");
+  assert.equal(res.evidence.token.pool, null);
+  assert.equal(res.evidence.token.priceUsd, "212.5");
+});
+
+test("a pool read that could not answer is 'unavailable', never 'no price'", async () => {
+  const r = recorder();
+  const calls = tokenCalls(r, {
+    getToken: r.call("getToken", { body: unpricedTokenBody() }),
+    getAddress: r.call("getAddress", { body: overviewBody({ token: unpricedTokenBody() }) }),
+    tokenMarketData: r.call("tokenMarketData", {
+      body: {
+        ...noPool(),
+        reason: "discovery_failed",
+        detail: "The pool lookup did not complete — the RPC and the indexer both failed to answer.",
+      },
+    }),
+  });
+
+  const res = await gatherEvidence(TOKEN, { known: KNOWN_TOKEN, calls });
+
+  // Whether this token has a market is now UNKNOWN. Reporting it as unpriced
+  // would be an outage rendered as a fact about the chain.
+  assert.equal(res.evidence.token.priceStatus, "unavailable");
+  assert.match(res.evidence.token.priceStatusReason, /could not be read either/i);
+  assert.match(res.evidence.token.priceStatusReason, /an outage, not a token without a price/i);
+  assert.equal(res.evidence.token.priceUsd, null, "and never zero");
+  assert.ok(res.evidence.unavailable.includes("poolPrice"), "named as a missing source");
+  assert.equal(res.degraded, true);
+});
+
+test("a pool read that throws costs the pool price and nothing else", async () => {
+  const r = recorder();
+  const calls = tokenCalls(r, {
+    getToken: r.call("getToken", { body: unpricedTokenBody() }),
+    getAddress: r.call("getAddress", { body: overviewBody({ token: unpricedTokenBody() }) }),
+    tokenMarketData: r.call("tokenMarketData", { status: 500 }),
+  });
+
+  const res = await gatherEvidence(TOKEN, { known: KNOWN_TOKEN, calls });
+
+  assert.equal(res.ok, true, "the rest of the answer still ships");
+  assert.equal(res.evidence.token.priceStatus, "unavailable");
+  assert.equal(res.evidence.token.pool, null);
+  assert.ok(res.evidence.unavailable.includes("poolPrice"));
+  // Everything the answer actually leads with is untouched.
+  assert.equal(res.evidence.token.holders, 28899);
+  assert.equal(res.evidence.token.totalSupply, "1B ANDY");
+});
+
+test("a pool read that blows its budget is a missing source, not a missing market", async () => {
+  const r = recorder();
+  const calls = tokenCalls(r, {
+    getToken: r.call("getToken", { body: unpricedTokenBody() }),
+    getAddress: r.call("getAddress", { body: overviewBody({ token: unpricedTokenBody() }) }),
+    // A promise nobody resolves, not the `hang` timer: the pool read takes no
+    // AbortSignal, so a 60s timer inside the fake would outlive the deadline it
+    // is meant to demonstrate and hold the test runner open for a full minute.
+    tokenMarketData: () => new Promise(() => {}),
+  });
+
+  const res = await gatherEvidence(TOKEN, {
+    known: KNOWN_TOKEN,
+    calls,
+    deadlines: { essential: 5_000, enrichment: 5_000, pool: 25 },
+  });
+
+  assert.equal(res.ok, true);
+  assert.equal(res.evidence.token.priceStatus, "unavailable");
+  assert.ok(res.evidence.unavailable.includes("poolPrice"));
+});
+
+test("a token with neither feed nor pool says so plainly, once", async () => {
+  const r = recorder();
+  const calls = tokenCalls(r, {
+    getToken: r.call("getToken", { body: unpricedTokenBody() }),
+    getAddress: r.call("getAddress", { body: overviewBody({ token: unpricedTokenBody() }) }),
+  });
+
+  const res = await gatherEvidence(TOKEN, { known: KNOWN_TOKEN, calls });
+
+  assert.equal(res.evidence.token.priceStatus, "not_indexed");
+  assert.equal(res.evidence.token.priceSource, null);
+  assert.match(res.evidence.token.priceStatusReason, /no price feed for this contract/i);
+  assert.match(res.evidence.token.priceStatusReason, /no Uniswap v3 pool/i);
+  assert.match(res.evidence.token.priceStatusReason, /Unpriced is not priced at zero/i);
+  assert.equal(res.evidence.token.priceUsd, null);
+  assert.equal(res.evidence.token.pool.priced, false);
+  assert.equal(res.degraded, undefined, "nothing failed — there is simply no market");
+});
+
+test("the stock block does not contradict the token block about the same contract", async () => {
+  const r = recorder();
+  // The resolver only ever holds the indexer's figures, and the indexer prices
+  // almost nothing outside the 94 equities. Left alone, the block the model reads
+  // FIRST said there was no price while the one below it carried a real one.
+  const calls = tokenCalls(r, {
+    getToken: r.call("getToken", { body: unpricedTokenBody() }),
+    getAddress: r.call("getAddress", { body: overviewBody({ token: unpricedTokenBody() }) }),
+    tokenMarketData: r.call("tokenMarketData", { body: vladPool() }),
+    resolveSymbol: r.call("resolveSymbol", {
+      body: {
+        ok: true,
+        query: "ANDY",
+        match: { address: TOKEN, symbol: "ANDY", name: "Andy", company: "Andy", price: null, marketCap: null, holders: 7635 },
+        official: false,
+        impostors: [],
+      },
+    }),
+  });
+
+  const res = await gatherEvidence("andy", { calls });
+  const { stock, token } = res.evidence;
+
+  assert.equal(stock.price, token.priceUsd);
+  assert.equal(stock.marketCap, token.marketCapUsd);
+  assert.equal(stock.display.price, "$0.0004047");
+  assert.equal(stock.display.marketCap, "$404.69K");
+  assert.equal(stock.priceSource, "uniswap_v3");
+  assert.match(stock.priceSourceNotice, /derived from the Uniswap v3 pool/i);
+  // Volume has no pool equivalent, so it stays absent in both.
+  assert.equal(stock.display.volume24h, null);
+});
+
+test("a token with more than one pool says the figures came from the deepest", async () => {
+  // F1's disclosure half. Anyone may deploy an empty pool for a token they have
+  // nothing to do with, so the pool a price comes from is now a CHOICE — and a
+  // choice the reader is told about rather than left to assume away.
+  const r = recorder();
+  const calls = tokenCalls(r, {
+    getToken: r.call("getToken", { body: unpricedTokenBody() }),
+    getAddress: r.call("getAddress", { body: overviewBody({ token: unpricedTokenBody() }) }),
+    tokenMarketData: r.call("tokenMarketData", { body: { ...vladPool(), poolCount: 2 } }),
+  });
+
+  const { pool } = (await gatherEvidence(TOKEN, { known: KNOWN_TOKEN, calls })).evidence.token;
+  assert.equal(pool.poolCount, 2);
+  assert.match(pool.sourceNotice, /2 Uniswap v3 pools; the figures come from whichever measured the greatest realisable depth/);
+  // THE SENTENCE THAT MUST NOT COME BACK. It used to end by offering the selection
+  // rule — "the choice is made on tradeable depth" — as a reason to trust the
+  // result, while that rule was exactly what an attacker games: a pool with rented
+  // depth would have been chosen the same way. Naming your own defence as grounds
+  // for belief tells the reader something false about what was proved.
+  assert.doesNotMatch(pool.sourceNotice, /the choice is made on tradeable depth/);
+  assert.match(pool.sourceNotice, /not a warrant of authenticity/);
+
+  // …and one pool says nothing extra, because there was no choice to disclose.
+  const r2 = recorder();
+  const single = tokenCalls(r2, {
+    getToken: r2.call("getToken", { body: unpricedTokenBody() }),
+    getAddress: r2.call("getAddress", { body: overviewBody({ token: unpricedTokenBody() }) }),
+    tokenMarketData: r2.call("tokenMarketData", { body: { ...vladPool(), poolCount: 1 } }),
+  });
+  const one = (await gatherEvidence(TOKEN, { known: KNOWN_TOKEN, calls: single })).evidence.token;
+  assert.doesNotMatch(one.pool.sourceNotice, /DEEPEST/);
+});
+
+test("a SOLE indexer-priced contract still cannot quote its cap naked", async () => {
+  // THE F7 REGRESSION. lib/stock-tokens.js withQuoteDepth measures nothing when the
+  // top relevance tier holds ONE contract, so `collision` is null — and the cap
+  // qualifier used to be gated on a collision existing. The commonest shape of the
+  // bug it exists to stop therefore slipped straight through: a lone squatter the
+  // indexer happens to price, reaching the answer with a $3.86M cap and nothing
+  // beside it, while the prompt read the silence as proof of proportionality.
+  const r = recorder();
+  const calls = tokenCalls(r, {
+    getToken: r.call("getToken", { body: unpricedTokenBody() }),
+    getAddress: r.call("getAddress", { body: overviewBody({ token: unpricedTokenBody() }) }),
+    resolveSymbol: r.call("resolveSymbol", {
+      body: {
+        ok: true,
+        query: "SOLO",
+        match: { address: TOKEN, symbol: "SOLO", name: "Solo", company: "Solo", price: 0.004, marketCap: 3_855_217, holders: 52_214 },
+        official: false,
+        impostors: [],
+        // One candidate in the tier: nothing was measured, and null here means
+        // NOT MEASURED rather than "nothing dominates".
+        collision: null,
+      },
+    }),
+  });
+
+  const { stock } = (await gatherEvidence("solo", { calls })).evidence;
+
+  assert.equal(stock.marketCap, 3_855_217);
+  assert.equal(stock.quoteLiquidityUsd, null, "no depth was read, and null says so");
+  assert.ok(stock.capNotice, "the cap may not travel alone just because nobody measured its depth");
+  assert.match(stock.capNotice, /was not measured/);
+  assert.match(stock.capNotice, /never that it is deep and never that it is thin/);
+});
+
+test("an issuer-verified equity is NOT given a caveat about a read nobody made", async () => {
+  // The overcorrection this stays clear of: NVDA never reads a pool, because the
+  // deployer settles its ticker, and hanging "how much of this is realisable was
+  // not measured" off a real equity's cap would be a caveat about nothing.
+  const r = recorder();
+  const calls = tokenCalls(r, {
+    resolveSymbol: r.call("resolveSymbol", {
+      body: {
+        ok: true,
+        query: "AAPL",
+        match: { address: TOKEN, symbol: "AAPL", company: "Apple", price: 240, marketCap: 4_160_816, holders: 28_899 },
+        official: true,
+        impostors: [],
+        collision: null,
+      },
+    }),
+  });
+
+  const { stock } = (await gatherEvidence("aapl", { calls })).evidence;
+  assert.equal(stock.official, true);
+  assert.equal(stock.capNotice, null);
+});
+
+test("the pool read runs alongside the enrichment, not behind it", async () => {
+  const r = recorder();
+  const holders = r.gated("getTokenHolders", { items: [] });
+  const calls = tokenCalls(r, {
+    getToken: r.call("getToken", { body: unpricedTokenBody() }),
+    getAddress: r.call("getAddress", { body: overviewBody({ token: unpricedTokenBody() }) }),
+    getTokenHolders: holders.fn,
+    tokenMarketData: r.call("tokenMarketData", { body: vladPool() }),
+  });
+
+  const pending = gatherEvidence(TOKEN, { known: KNOWN_TOKEN, calls });
+  await flush();
+
+  // The token body is the only thing it waits for — it has to know the indexer
+  // has no quote before it may ask the chain. Everything after that overlaps.
+  assert.equal(r.saw("tokenMarketData"), true, "started while the holder call is still open");
+  holders.release();
+  assert.equal((await pending).evidence.token.priceStatus, "pool_priced");
+});
+
 /* ------------------------------ deadlines ------------------------------ */
 
 test("an enrichment call that misses its deadline is reported unavailable, not empty", async () => {
@@ -478,6 +1131,10 @@ test("every call is handed a deadline signal", async () => {
     getTokenHolders: spy("getTokenHolders"),
     getTokenActivity: spy("getTokenActivity"),
     getAddress: spy("getAddress"),
+    // Not one of the five, and deliberately not spied: it takes no signal because
+    // it is not an indexer call. Stubbed only so this stays offline — an empty
+    // token body reads as unpriced, which is what sends the gather to the pool.
+    tokenMarketData: async () => ({ price: null, source: "uniswap_v3", reason: "no_pool" }),
   };
   // An empty body from getToken/getAddress makes this a "not a token after all"
   // gather; what matters is that all five were called with a signal.

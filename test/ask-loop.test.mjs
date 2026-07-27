@@ -654,6 +654,25 @@ test("a clarification runs alone: a lookup called beside it is answered, not dis
   assert.equal(res.intent, "clarification");
 });
 
+test("a LOOKUP that comes back as a question is labelled a question, not an answer", async () => {
+  // lookup_token hands back the clarification shape when a ticker's collision is
+  // genuinely unsettled — measured live on HOOD: $18.13K, $8.85K and $2.42K of
+  // realisable liquidity under one symbol, and none of them 10× the next. The
+  // tool NAME still says "explain_target"; the turn is a question, and labelling
+  // it as an answer is exactly what CLARIFICATION_INTENT exists to prevent.
+  const { complete } = scripted([
+    toolTurn([{ id: "tok", name: "lookup_token", args: { query: "hood" } }]),
+    proseTurn("Which HOOD do you mean?"),
+  ]);
+  const { dispatch } = recorder({ lookup_token: CLARIFY_RESULT });
+  const res = await runToolLoop({ ...base, complete, dispatch });
+
+  assert.deepEqual(res.toolCalls.map((c) => c.name), ["lookup_token"]);
+  assert.equal(res.kind, "clarification");
+  assert.equal(res.intent, "clarification", "the RESULT decides, not the tool name");
+  assert.deepEqual(res.evidence, CLARIFY_RESULT.evidence);
+});
+
 test("a clarification ends the routing: the very next completion offers no tools", async () => {
   const { complete, payloads } = scripted([
     toolTurn([{ id: "ask", name: "ask_clarification", args: CLARIFY_RESULT.evidence }]),

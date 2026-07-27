@@ -721,3 +721,106 @@ test("the missing-information guidance never speaks in the vocabulary of the plu
   assert.match(MISSING_INFO_GUIDANCE, /not on it/i);
   assert.match(MISSING_INFO_GUIDANCE, /offer/i);
 });
+
+test("the prompt makes a pool-derived price distinguishable from a quoted one", () => {
+  // A price computed off a Uniswap v3 pool and a price published by a feed are
+  // different measurements of different things. The reader has to be able to tell
+  // which one they are looking at, so the rule names the source, the sentence that
+  // carries it, and the quote asset it is denominated against.
+  assert.match(SYSTEM_PROMPT, /pool_priced/);
+  assert.match(SYSTEM_PROMPT, /pool\.sourceNotice/);
+  assert.match(SYSTEM_PROMPT, /quote asset/i);
+  assert.match(SYSTEM_PROMPT, /not published by a price feed/i);
+});
+
+test("the prompt qualifies a pool price by the liquidity under it", () => {
+  assert.match(SYSTEM_PROMPT, /pool\.thinLiquidity/);
+  assert.match(SYSTEM_PROMPT, /pool\.liquidityNotice/);
+  assert.match(SYSTEM_PROMPT, /a small trade moves it/i);
+  // Reported, not editorialised: depth is a figure, never an accusation.
+  assert.match(SYSTEM_PROMPT, /not evidence of a scam, a rug, manipulation or intent/i);
+  // And a depth that is unmeasured — or a lower bound that has not reached the floor
+  // — is neither thin nor deep.
+  assert.match(SYSTEM_PROMPT, /thinness is NOT ESTABLISHED/);
+  assert.match(SYSTEM_PROMPT, /never call the pool thin or deep/i);
+});
+
+test("the prompt never tells the model to assert an unmeasured absence", () => {
+  // THE F3 SENTENCE. "shallow" used to be described as "say plainly that nothing
+  // wearing this ticker has a market of any size" — an instruction to state an
+  // absence, reached on a verdict that could be produced by five failed probes and
+  // one answer. The verdict is now gated on every probe having answered, and the
+  // wording is scoped to what was measured.
+  assert.match(SYSTEM_PROMPT, /"partial" means some probes came back and some did not/);
+  assert.match(SYSTEM_PROMPT, /assert NEITHER dominance NOR absence/);
+  assert.doesNotMatch(SYSTEM_PROMPT, /say plainly that nothing wearing this ticker has a market/i);
+  // The four counts are named, and named as four different things.
+  assert.match(SYSTEM_PROMPT, /"measuredCount" is how many contracts actually produced a figure/);
+  assert.match(SYSTEM_PROMPT, /"failedCount" is how many ran and could not be read/);
+  assert.doesNotMatch(SYSTEM_PROMPT, /"probed", "candidateCount" and "dropped"/);
+});
+
+test("the prompt does not state an unmeasured proportionality as fact", () => {
+  // THE F7 SENTENCE: "Where there is no capNotice the cap is proportionate to its
+  // depth and needs no qualifier" asserted a measurement that, for a sole-candidate
+  // token, nobody had made.
+  assert.doesNotMatch(SYSTEM_PROMPT, /the cap is proportionate to its depth and needs no qualifier/i);
+  assert.match(SYSTEM_PROMPT, /The absence of a capNotice is not itself evidence about the depth/);
+});
+
+test("the prompt keeps realisable depth apart from what a pool merely holds", () => {
+  // F2: balanceOf counts positions parked outside the band, which cannot be
+  // realised there, so "held" and "realisable" are two figures and only one is
+  // depth.
+  assert.match(SYSTEM_PROMPT, /"quoteBalanceUsd" is what the pool HOLDS/);
+  assert.match(SYSTEM_PROMPT, /parked outside both bands/);
+  assert.match(SYSTEM_PROMPT, /only one you may call depth/i);
+  assert.match(SYSTEM_PROMPT, /integrated over the pool's tick ladder/);
+});
+
+test("the prompt says the WIDE band is context and never the depth", () => {
+  // G2: capital one tick-spacing wide at the far edge of a 10% band counts toward
+  // that figure in full and is never traded through — measured, $1,324 placed at
+  // -9.16% matched the honest token's headline figure. The model must not quote the
+  // wide figure as depth just because it is the larger of the two.
+  assert.match(SYSTEM_PROMPT, /"wideDepthUsd" is the same measurement out to the much wider/);
+  assert.match(SYSTEM_PROMPT, /CONTEXT ONLY, never the depth/);
+  assert.match(SYSTEM_PROMPT, /would never be traded through/);
+});
+
+test("the prompt makes a lower-bound depth read as 'at least', never as a measurement", () => {
+  // G1: a truncated tick walk returns a real integral over a shorter range. It can
+  // show that a pool clears a bar; it can never show that one is thin or empty.
+  assert.match(SYSTEM_PROMPT, /A DEPTH MARKED AS A LOWER BOUND IS "AT LEAST", NOT "IS"/);
+  assert.match(SYSTEM_PROMPT, /Write "at least \$X", never a bare "\$X"/);
+  assert.match(SYSTEM_PROMPT, /can never establish that a pool is thin/);
+});
+
+test("the prompt forbids reading held == realisable as a mark of honesty", () => {
+  // The evidence layer used to qualify a pool only when held EXCEEDED realisable,
+  // so a forged pool — everything in one narrow position, held == realisable —
+  // carried no caveat while the honest one did. The model must not re-derive that
+  // inference from the two figures itself.
+  assert.match(SYSTEM_PROMPT, /absence of one signal, not evidence of anything/);
+  assert.match(SYSTEM_PROMPT, /never read it as a mark of a healthy or honest pool/i);
+});
+
+test("the prompt requires two agreeing measurements before a ticker is settled", () => {
+  // Depth is rentable and volume is not, so dominance rests on both legs. The two
+  // verdicts that exist because the legs did NOT agree have to be described.
+  assert.match(SYSTEM_PROMPT, /TWO MEASUREMENTS AGREEING/);
+  assert.match(SYSTEM_PROMPT, /"uncorroborated" means the depth gap is there but the indexer is silent/);
+  assert.match(SYSTEM_PROMPT, /never averaged into a score/);
+  assert.match(SYSTEM_PROMPT, /"ambiguous" and "conflicted" never reach you as an answer/);
+  // …and the absence sentence is withdrawn when the second leg contradicts it.
+  assert.match(SYSTEM_PROMPT, /"tradingContradiction" is true/);
+  assert.match(SYSTEM_PROMPT, /do NOT state the absence/);
+});
+
+test("reading a price off the chain does not loosen the freshness rule", () => {
+  // A pool read is one read of one block. The old rule was written about the
+  // indexer, and a second source must not arrive with an implicit exemption.
+  assert.match(SYSTEM_PROMPT, /THE SAME RULE COVERS A POOL PRICE/);
+  assert.match(SYSTEM_PROMPT, /not a stream and not a feed/i);
+  assert.match(SYSTEM_PROMPT, /Never call a price live, real-time/i);
+});
