@@ -1,5 +1,6 @@
 import Link from "next/link";
 import LiveClock from "@/components/site/LiveClock";
+import WalletMenu from "@/components/wallet/WalletMenu";
 
 /** Three words, not five. The page is the product; the header just orients you. */
 const nav = [
@@ -36,6 +37,10 @@ export function SiteHeader() {
               {item.label}
             </Link>
           ))}
+          {/* The landing overlay asks real questions against the same daily
+              allowance, so the standing has to be visible from here too — a limit
+              a reader only discovers by hitting it is a limit we hid. */}
+          <WalletMenu />
         </nav>
       </div>
     </header>

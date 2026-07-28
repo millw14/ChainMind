@@ -597,6 +597,40 @@ function askRequest(question, stream, signal) {
 }
 
 /**
+ * Re-broadcast the caller's standing, which the gate attaches to every reply.
+ *
+ * The numbers come from the server on the very request that changed them (see
+ * lib/ask-access.js quotaHeaders), so the header widget updates without polling
+ * — and without this component knowing anything about wallets. A reply with no
+ * quota headers (an older deploy, a proxy that strips them) broadcasts nothing at
+ * all rather than a guess: a missing figure must not arrive as a zero.
+ *
+ * @param {Response} res
+ */
+function announceQuota(res) {
+  try {
+    const state = res.headers.get("x-quota-state");
+    if (!state) return;
+    const limit = res.headers.get("x-quota-limit");
+    const remaining = res.headers.get("x-quota-remaining");
+    window.dispatchEvent(
+      new CustomEvent("chainmind:quota", {
+        detail: {
+          state,
+          unlimited: limit === "unlimited",
+          limit: limit && limit !== "unlimited" ? Number(limit) : null,
+          remaining: remaining == null ? null : Number(remaining),
+          resetsAt: res.headers.get("x-quota-reset"),
+          degraded: res.headers.get("x-quota-degraded") === "1",
+        },
+      }),
+    );
+  } catch {
+    /* headers unreadable, or no CustomEvent: the panel still has /api/quota */
+  }
+}
+
+/**
  * Read one SSE body to the end, handing each parsed event to `onEvent`.
  *
  * `reader.cancel()` in `finally` is what releases the socket, and it runs on
@@ -831,6 +865,7 @@ export default function Conversation({
   /** Render a `{ ok, … }` / `{ ok: false, error }` JSON reply as one message. */
   const renderJson = useCallback(
     (res, data, seq) => {
+      announceQuota(res);
       if (!live(seq)) return;
       if (res.ok && data && data.ok) {
         const answer = String(data.answer == null ? "" : data.answer).trim();
@@ -997,6 +1032,8 @@ export default function Conversation({
         // request reports it in the one place the user is looking.
         return "retry";
       }
+
+      announceQuota(res);
 
       const contentType = String(res.headers.get("content-type") ?? "").toLowerCase();
 
