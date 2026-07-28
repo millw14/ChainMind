@@ -604,3 +604,150 @@ test("content delivered as an array of parts is still read as the answer", async
   const res = await runToolLoop({ ...base, complete, dispatch: async () => ({ ok: true }) });
   assert.equal(res.answer, "NVDA is official.");
 });
+
+/* ------------------------------ the clarification partition ------------------------------ */
+/* ask_clarification reads nothing and the question it returns IS the turn, so
+   the loop has to make it run alone and end the routing. Both halves are load
+   bearing: without the first, asking "which did you mean?" would still spend the
+   indexer calls for an answer the prompt then forbids; without the second, the
+   model gets another round of tools after a question it has not had an answer
+   to. */
+
+/** The evidence dispatchTool returns for a well-formed ask_clarification. */
+const CLARIFY_RESULT = {
+  ok: true,
+  kind: "clarification",
+  evidence: {
+    question: "Which of those do you mean by the main benefactor?",
+    options: [{ label: "Who holds the most of it?" }, { label: "Who deployed it?" }],
+  },
+};
+
+test("a clarification runs alone: a lookup called beside it is answered, not dispatched", async () => {
+  const { complete, payloads } = scripted([
+    toolTurn([
+      // Deliberately NOT first: the clarification wins wherever it sits, and the
+      // ordering is what the tool_call_id alignment below is really testing.
+      { id: "holders", name: "token_holders", args: { query: "nvda" } },
+      { id: "ask", name: "ask_clarification", args: CLARIFY_RESULT.evidence },
+    ]),
+    proseTurn("Which of those do you mean?"),
+  ]);
+  const { dispatch, calls } = recorder({ ask_clarification: CLARIFY_RESULT });
+  const res = await runToolLoop({ ...base, complete, dispatch });
+
+  assert.deepEqual(calls.map((c) => c.name), ["ask_clarification"], "the lookup must not cost an indexer call");
+
+  const toolMessages = payloads[1].messages.filter((m) => m.role === "tool");
+  assert.deepEqual(toolMessages.map((m) => m.tool_call_id), ["holders", "ask"], "every id still needs a reply");
+  // The alignment: each result must land on ITS OWN call's id. Reversing these
+  // two would tell the model the holder list is a question and the question is a
+  // holder list, which is the wrong lookup wearing the right name.
+  assert.match(toolMessages[0].content, /Not run/);
+  assert.match(toolMessages[0].content, /ask_clarification/);
+  assert.match(toolMessages[1].content, /main benefactor/);
+
+  // Only the clarification is reported, so the client draws chips and no table.
+  assert.deepEqual(res.toolCalls.map((c) => c.name), ["ask_clarification"]);
+  assert.equal(res.kind, "clarification");
+  assert.deepEqual(res.evidence, CLARIFY_RESULT.evidence);
+  assert.equal(res.intent, "clarification");
+});
+
+test("a LOOKUP that comes back as a question is labelled a question, not an answer", async () => {
+  // lookup_token hands back the clarification shape when a ticker's collision is
+  // genuinely unsettled — measured live on HOOD: $18.13K, $8.85K and $2.42K of
+  // realisable liquidity under one symbol, and none of them 10× the next. The
+  // tool NAME still says "explain_target"; the turn is a question, and labelling
+  // it as an answer is exactly what CLARIFICATION_INTENT exists to prevent.
+  const { complete } = scripted([
+    toolTurn([{ id: "tok", name: "lookup_token", args: { query: "hood" } }]),
+    proseTurn("Which HOOD do you mean?"),
+  ]);
+  const { dispatch } = recorder({ lookup_token: CLARIFY_RESULT });
+  const res = await runToolLoop({ ...base, complete, dispatch });
+
+  assert.deepEqual(res.toolCalls.map((c) => c.name), ["lookup_token"]);
+  assert.equal(res.kind, "clarification");
+  assert.equal(res.intent, "clarification", "the RESULT decides, not the tool name");
+  assert.deepEqual(res.evidence, CLARIFY_RESULT.evidence);
+});
+
+test("a clarification ends the routing: the very next completion offers no tools", async () => {
+  const { complete, payloads } = scripted([
+    toolTurn([{ id: "ask", name: "ask_clarification", args: CLARIFY_RESULT.evidence }]),
+    proseTurn("Which of those do you mean?"),
+  ]);
+  const { dispatch } = recorder({ ask_clarification: CLARIFY_RESULT });
+  const res = await runToolLoop({ ...base, complete, dispatch });
+
+  assert.ok(payloads[0].tools, "round 1 offers tools");
+  // Normally round 2 still offers them so a bad call can be retried. Not here:
+  // the reader has been asked a question and has not answered it, so there is
+  // nothing left to look up this turn.
+  assert.equal(payloads[1].tools, undefined, "no tools after a clarification");
+  assert.equal(payloads[1].tool_choice, undefined);
+  assert.equal(res.completions, 2, "asking costs two completions and no more");
+  // Reported as the one round it actually was, never rounded up to the cap.
+  assert.equal(res.rounds, 1);
+  assert.ok(res.rounds < MAX_TOOL_ROUNDS);
+});
+
+test("a MALFORMED clarification keeps its round to recover in", async () => {
+  // One option is not a clarification, it is a delay — lib/ask-tools.js says so
+  // in a sentence the model can act on, and that recovery needs a round to
+  // happen in. So a failed clarification must NOT end the routing.
+  const { complete, payloads } = scripted([
+    toolTurn([{ id: "bad", name: "ask_clarification", args: { question: "Which?", options: ["Only one"] } }]),
+    toolTurn([{ id: "good", name: "token_holders", args: { query: "nvda" } }]),
+    proseTurn("The top holder sits on most of it."),
+  ]);
+  const { dispatch, calls } = recorder({
+    ask_clarification: { ok: false, error: "A clarification needs at least 2 distinct options" },
+  });
+  const res = await runToolLoop({ ...base, complete, dispatch });
+
+  assert.ok(payloads[1].tools, "the retry round must still offer tools");
+  assert.deepEqual(calls.map((c) => c.name), ["ask_clarification", "token_holders"]);
+  assert.equal(res.rounds, MAX_TOOL_ROUNDS);
+  assert.equal(res.answer, "The top holder sits on most of it.");
+});
+
+test("two clarifications in one turn: one is asked, the other is answered", async () => {
+  const { complete, payloads } = scripted([
+    toolTurn([
+      { id: "a", name: "ask_clarification", args: CLARIFY_RESULT.evidence },
+      { id: "b", name: "ask_clarification", args: { question: "Or this?", options: ["x", "y"] } },
+    ]),
+    proseTurn("Which of those do you mean?"),
+  ]);
+  const { dispatch, calls } = recorder({ ask_clarification: CLARIFY_RESULT });
+  await runToolLoop({ ...base, complete, dispatch });
+
+  assert.equal(calls.length, 1, "one question per turn, never two");
+  const toolMessages = payloads[1].messages.filter((m) => m.role === "tool");
+  assert.deepEqual(toolMessages.map((m) => m.tool_call_id), ["a", "b"]);
+  assert.match(toolMessages[1].content, /Not run/);
+});
+
+test("a streamed clarification is handed back, even after an earlier round failed", async () => {
+  // handBackAfterTools normally waits for every result to be ok. A clarification
+  // asked after a failed lookup would otherwise be written by the loop itself on
+  // an unstreamed completion — the one turn that is nothing but a sentence would
+  // be the one turn that arrives all at once.
+  const { complete } = scripted([
+    toolTurn([{ id: "bad", name: "lookup_token", args: { query: "nope" } }]),
+    toolTurn([{ id: "ask", name: "ask_clarification", args: CLARIFY_RESULT.evidence }]),
+  ]);
+  const { dispatch } = recorder({
+    lookup_token: { ok: false, error: "No token matching \"nope\" was found." },
+    ask_clarification: CLARIFY_RESULT,
+  });
+  const res = await runToolLoop({ ...base, complete, dispatch, handBackAfterTools: true });
+
+  assert.equal(res.ok, true);
+  assert.equal(res.answered, false, "the caller streams the question itself");
+  assert.equal(res.completions, 2, "and the loop spends none writing it");
+  assert.equal(res.kind, "multi", "both results are reported — the failure is not hidden");
+  assert.ok(res.messages.some((m) => m.role === "tool" && /main benefactor/.test(m.content)));
+});
