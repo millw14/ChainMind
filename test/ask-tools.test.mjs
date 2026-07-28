@@ -15,9 +15,11 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
+  CLARIFICATION_TOOL,
   TOOL_NAMES,
   TOOL_SCHEMAS,
   coerceAddressArg,
+  coerceClarification,
   coerceCompareQueries,
   coerceHashArg,
   coerceRankArgs,
@@ -100,6 +102,16 @@ test("every schema is a well-formed OpenAI/Groq function tool", () => {
   }
 });
 
+test("CLARIFICATION_TOOL names a tool that is really in the catalogue", () => {
+  // lib/ask-loop.js partitions a round on this constant — it is what makes
+  // ask_clarification run alone. A name that drifted out of the catalogue would
+  // not throw anywhere: the partition would simply stop matching, and a
+  // clarification would quietly start running lookups beside itself again.
+  assert.equal(typeof CLARIFICATION_TOOL, "string");
+  assert.ok(TOOL_NAMES.includes(CLARIFICATION_TOOL), "the terminal tool must be in TOOL_NAMES");
+  assert.ok(byName(CLARIFICATION_TOOL), "and in the schemas the model is sent");
+});
+
 test("TOOL_NAMES matches the catalogue exactly and is frozen", () => {
   assert.deepEqual([...TOOL_NAMES], TOOL_SCHEMAS.map((s) => s.function.name));
   assert.equal(new Set(TOOL_NAMES).size, TOOL_NAMES.length, "duplicate tool name");
@@ -107,10 +119,11 @@ test("TOOL_NAMES matches the catalogue exactly and is frozen", () => {
   assert.ok(Object.isFrozen(TOOL_SCHEMAS));
 });
 
-test("the catalogue covers all seventeen documented tools", () => {
-  // Seven that answer a whole question, five that go deeper into one token, and
-  // five on the wallet and market side.
+test("the catalogue covers all eighteen documented tools", () => {
+  // Seven that answer a whole question, five that go deeper into one token, five
+  // on the wallet and market side, and one that looks nothing up at all.
   assert.deepEqual([...TOOL_NAMES].sort(), [
+    "ask_clarification",
     "compare_tokens",
     "contract_info",
     "flag_patterns",
@@ -357,7 +370,192 @@ test("coerceCompareQueries leaves the 4-target cap to compareTargets", () => {
   assert.equal(res.value.length, 6);
 });
 
+/* ---------------------------- clarification args ---------------------------- */
+
+test("coerceClarification accepts a bare array of strings as the options", () => {
+  // The likeliest malformed call: the schema asks for objects, and a model sends
+  // the four questions as plain strings. Refusing that would cost a round trip to
+  // learn a shape that carries exactly the same information.
+  const res = coerceClarification({
+    question: "Which of those do you mean?",
+    options: ["Who holds the most?", "Who deployed it?"],
+  });
+  assert.equal(res.ok, true);
+  assert.equal(res.question, "Which of those do you mean?");
+  assert.deepEqual(res.options, [{ label: "Who holds the most?" }, { label: "Who deployed it?" }]);
+});
+
+test("coerceClarification keeps the hint when one is supplied, and only then", () => {
+  const res = coerceClarification({
+    question: "Which reading?",
+    options: [
+      { label: "Who holds the most?", hint: "the ranked holder list" },
+      { label: "Who deployed it?" },
+    ],
+  });
+  assert.deepEqual(res.options, [
+    { label: "Who holds the most?", hint: "the ranked holder list" },
+    { label: "Who deployed it?" },
+  ]);
+});
+
+test("coerceClarification reads the option's halves out of the wrong keys", () => {
+  const res = coerceClarification({
+    ask: "Which reading?",
+    choices: [
+      { text: "Who holds the most?", description: "the holder list" },
+      { question: "Who deployed it?", note: "the minting address" },
+    ],
+  });
+  assert.equal(res.ok, true);
+  assert.equal(res.question, "Which reading?");
+  assert.deepEqual(res.options, [
+    { label: "Who holds the most?", hint: "the holder list" },
+    { label: "Who deployed it?", hint: "the minting address" },
+  ]);
+});
+
+test("coerceClarification drops empty and unusable entries", () => {
+  const res = coerceClarification({
+    question: "Which reading?",
+    options: ["Who holds the most?", "", "   ", null, undefined, {}, { hint: "no label" }, [], "Who deployed it?"],
+  });
+  assert.equal(res.ok, true);
+  assert.deepEqual(res.options.map((o) => o.label), ["Who holds the most?", "Who deployed it?"]);
+});
+
+test("coerceClarification drops a repeated reading rather than offering it twice", () => {
+  const res = coerceClarification({
+    question: "Which reading?",
+    options: ["Who holds the most?", "who holds the most?", "Who deployed it?"],
+  });
+  assert.deepEqual(res.options.map((o) => o.label), ["Who holds the most?", "Who deployed it?"]);
+});
+
+test("coerceClarification caps the options at four", () => {
+  const res = coerceClarification({
+    question: "Which reading?",
+    options: ["one?", "two?", "three?", "four?", "five?", "six?"],
+  });
+  assert.equal(res.ok, true);
+  assert.equal(res.options.length, 4);
+  assert.deepEqual(res.options.map((o) => o.label), ["one?", "two?", "three?", "four?"]);
+});
+
+test("coerceClarification refuses fewer than two options and says to answer instead", () => {
+  // A one-option question is a confirmation dialog in front of an answer the
+  // model already had. The message has to send it to the answer, not to a retry.
+  for (const args of [
+    { question: "Which reading?", options: ["Who holds the most?"] },
+    { question: "Which reading?", options: ["Who holds the most?", "who holds the most?"] },
+    { question: "Which reading?", options: [] },
+    { question: "Which reading?" },
+    { question: "Which reading?", options: "Who holds the most?" },
+  ]) {
+    const res = coerceClarification(args);
+    assert.equal(res.ok, false, `${JSON.stringify(args)} should not be a clarification`);
+    assert.match(res.error, /at least 2 distinct options/);
+    assert.match(res.error, /answer directly/, "the model must be told to answer rather than to retry forever");
+  }
+});
+
+test("coerceClarification refuses a clarification with no question", () => {
+  for (const args of [undefined, null, {}, "", { options: ["a?", "b?"] }, { question: "   ", options: ["a?", "b?"] }]) {
+    const res = coerceClarification(args);
+    assert.equal(res.ok, false);
+    assert.match(res.error, /question/i);
+  }
+});
+
+test("coerceClarification trims over-long strings instead of dropping the option", () => {
+  // Dropping one can push the set under the two-option floor and turn a good
+  // clarification into an error, so the label is cut — at a word boundary, and
+  // with no ellipsis, because it is about to be SENT as the reader's question.
+  const longWords = `${"word ".repeat(40)}end`;
+  const res = coerceClarification({
+    question: longWords,
+    options: [
+      { label: longWords, hint: longWords },
+      { label: "Who deployed it?" },
+    ],
+  });
+  assert.equal(res.ok, true);
+  assert.ok(res.question.length <= 160, `question was ${res.question.length} characters`);
+  assert.ok(res.options[0].label.length <= 80, `label was ${res.options[0].label.length} characters`);
+  assert.ok(res.options[0].hint.length <= 90, `hint was ${res.options[0].hint.length} characters`);
+  for (const text of [res.question, res.options[0].label, res.options[0].hint]) {
+    assert.equal(text.endsWith("…"), false, "a question ending in an ellipsis reads as broken, not as shortened");
+    assert.equal(text, text.trim());
+  }
+  // A label with no spaces in it has no boundary to cut on, and must still fit.
+  const solid = coerceClarification({
+    question: "Which reading?",
+    options: ["x".repeat(300), "Who deployed it?"],
+  });
+  assert.equal(solid.options[0].label.length, 80);
+});
+
+test("coerceClarification flattens newlines and control characters out of a label", () => {
+  const res = coerceClarification({
+    question: "Which\nreading?",
+    options: ["Who holds\tthe\u0000most?", "Who deployed it?"],
+  });
+  assert.equal(res.question, "Which reading?");
+  assert.equal(res.options[0].label, "Who holds the most?");
+});
+
 /* ------------------------------ the dispatcher ------------------------------ */
+
+test("dispatchTool answers ask_clarification without touching the chain", async () => {
+  // TERMINAL: it gathers nothing, so not one data module may be called for it.
+  const { impls, calls } = fakes();
+  const res = await dispatchTool(
+    "ask_clarification",
+    {
+      question: "Which of those do you mean by the main benefactor?",
+      options: [
+        { label: "Who holds the most of it?", hint: "the ranked holder list" },
+        { label: "Who deployed it?", hint: "the minting address" },
+        { label: "Who is most in profit?", hint: "realised gains by address" },
+      ],
+    },
+    impls,
+  );
+  assert.deepEqual(res, {
+    ok: true,
+    kind: "clarification",
+    evidence: {
+      question: "Which of those do you mean by the main benefactor?",
+      options: [
+        { label: "Who holds the most of it?", hint: "the ranked holder list" },
+        { label: "Who deployed it?", hint: "the minting address" },
+        { label: "Who is most in profit?", hint: "realised gains by address" },
+      ],
+    },
+  });
+  assert.deepEqual(calls, [], "a clarification must not spend an indexer call");
+});
+
+test("dispatchTool refuses a one-option clarification, and still calls nothing", async () => {
+  const { impls, calls } = fakes();
+  const res = await dispatchTool("ask_clarification", { question: "Which?", options: ["Who holds the most?"] }, impls);
+  assert.equal(res.ok, false);
+  assert.match(res.error, /answer directly/);
+  assert.deepEqual(calls, []);
+});
+
+test("dispatchTool answers ask_clarification with no test seam at all", async () => {
+  // No fakes, and therefore proof that this path cannot reach the network: the
+  // real data modules are never even assembled for it.
+  const res = await dispatchTool("ask_clarification", {
+    question: "Which reading?",
+    options: ["Who holds the most?", "Who deployed it?"],
+  });
+  assert.equal(res.ok, true);
+  assert.equal(res.kind, "clarification");
+  assert.equal(res.evidence.options.length, 2);
+});
+
 
 test("dispatchTool rejects an unknown tool name and lists the real ones", async () => {
   for (const name of ["lookup_stonks", "", null, undefined, 42, {}, "LOOKUP_TOKEN"]) {
@@ -383,6 +581,81 @@ test("dispatchTool sends a ticker or address straight to gatherEvidence", async 
     assert.equal(res.kind, "token");
     assert.deepEqual(calls.map((c) => c.name), ["gatherEvidence"], `${query} should not need resolving first`);
     assert.deepEqual(calls[0].args, [query], "the query must reach the resolver unchanged");
+  }
+});
+
+/* ---------------- asking when the depth measurement did not settle it ---------------- */
+
+/** A gatherEvidence result carrying a resolver collision verdict. */
+const withCollision = (collision) => ({
+  ok: true,
+  kind: "token",
+  target: "VLAD",
+  evidence: { stock: { symbol: "VLAD", address: "0x31be", collision }, token: {} },
+});
+
+const CONTENDERS = [
+  {
+    address: "0xaaaa000000000000000000000000000000000001",
+    symbol: "DUAL",
+    name: "Alpha",
+    quoteLiquidityUsd: 50_000,
+    label: '0xaaaa…0001 ("Alpha")',
+    display: { quoteLiquidity: "$50.00K", marketCap: "$1.00M" },
+  },
+  {
+    address: "0xbbbb000000000000000000000000000000000002",
+    symbol: "DUAL",
+    name: "Beta",
+    quoteLiquidityUsd: 30_000,
+    label: '0xbbbb…0002 ("Beta")',
+    display: { quoteLiquidity: "$30.00K", marketCap: "$2.00M" },
+  },
+];
+
+test("a lookup whose collision is genuinely ambiguous asks instead of picking", async () => {
+  // Two live markets under one ticker and neither dominates. Quietly answering
+  // about one reports that market's figures as though they were the ticker's.
+  const { impls } = fakes({
+    gatherEvidence: async () =>
+      withCollision({ verdict: "ambiguous", ambiguous: true, symbol: "DUAL", contenders: CONTENDERS }),
+  });
+  const res = await dispatchTool("lookup_token", { query: "dual" }, impls);
+
+  assert.equal(res.ok, true);
+  assert.equal(res.kind, "clarification", "the same terminal shape ask_clarification produces");
+  assert.equal(res.evidence.options.length, 2);
+  // A label is sent back VERBATIM as the reader's next question, so it has to
+  // carry the FULL address — the ticker is exactly what was ambiguous.
+  assert.equal(res.evidence.options[0].label, `What is ${CONTENDERS[0].address}?`);
+  assert.match(res.evidence.options[0].hint, /Alpha/);
+  assert.match(res.evidence.options[0].hint, /\$50\.00K/);
+  assert.match(res.evidence.question, /DUAL/);
+});
+
+test("a collision one contract dominates is answered directly, with no menu", async () => {
+  // VLAD: $69,583.29 against $3.92. A menu for a case this clear-cut would be its
+  // own failure, so the verdict has to reach the answer as an answer.
+  const { impls } = fakes({
+    gatherEvidence: async () =>
+      withCollision({ verdict: "dominant", ambiguous: false, symbol: "VLAD", contenders: [CONTENDERS[0]] }),
+  });
+  const res = await dispatchTool("lookup_token", { query: "vlad" }, impls);
+  assert.equal(res.kind, "token");
+  assert.equal(res.evidence.stock.collision.verdict, "dominant");
+});
+
+test("shallow, unmeasured and absent collisions are all answered, never asked about", async () => {
+  for (const collision of [
+    { verdict: "shallow", ambiguous: false, contenders: [] },
+    { verdict: "unmeasured", ambiguous: false, contenders: [] },
+    // A menu needs two things to choose between; one contender is a delay.
+    { verdict: "ambiguous", ambiguous: true, contenders: [CONTENDERS[0]] },
+    null,
+  ]) {
+    const { impls } = fakes({ gatherEvidence: async () => withCollision(collision) });
+    const res = await dispatchTool("lookup_token", { query: "vlad" }, impls);
+    assert.equal(res.kind, "token", `verdict ${collision?.verdict ?? "null"} must not produce a menu`);
   }
 });
 
@@ -516,7 +789,7 @@ test("dispatchTool never throws on junk arguments, for any tool", async () => {
     { metric: [] },
     { address: "0x" },
     { hash: "0x" },
-    { target: "  " },
+    { target: "\u0000\u0000" },
     { query: "a".repeat(5000) },
     { unexpected: "field" },
   ];
@@ -543,4 +816,5 @@ test("dispatchTool works without the test seam, on argument errors alone", async
   assert.equal((await dispatchTool("lookup_transaction", { hash: NVDA_ADDRESS })).ok, false);
   assert.equal((await dispatchTool("compare_tokens", { queries: "nvda" })).ok, false);
   assert.equal((await dispatchTool("safety_check", {})).ok, false);
+  assert.equal((await dispatchTool("ask_clarification", { question: "which?" })).ok, false);
 });

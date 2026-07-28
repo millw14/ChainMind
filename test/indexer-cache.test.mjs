@@ -7,7 +7,9 @@ import {
   MAX_ENTRIES,
   cacheTtlMs,
   indexerCacheStats,
+  priceCacheTtlMs,
   resetIndexerCache,
+  setIndexerClock,
   withIndexerCache,
 } from "../lib/indexer-cache.js";
 import { getToken, getTokenHolders } from "../lib/blockscout.js";
@@ -16,6 +18,12 @@ import { getToken, getTokenHolders } from "../lib/blockscout.js";
 function withTtl(ms) {
   if (ms === undefined) delete process.env.INDEXER_CACHE_TTL_MS;
   else process.env.INDEXER_CACHE_TTL_MS = String(ms);
+}
+
+/** Set INDEXER_PRICE_CACHE_TTL_MS for one test; undefined restores the default. */
+function withPriceTtl(ms) {
+  if (ms === undefined) delete process.env.INDEXER_PRICE_CACHE_TTL_MS;
+  else process.env.INDEXER_PRICE_CACHE_TTL_MS = String(ms);
 }
 
 /** An upstream that counts its calls and answers with a fresh object. */
@@ -46,11 +54,13 @@ function gate() {
 beforeEach(() => {
   resetIndexerCache();
   withTtl(undefined);
+  withPriceTtl(undefined);
 });
 
 afterEach(() => {
   resetIndexerCache();
   withTtl(undefined);
+  withPriceTtl(undefined);
 });
 
 /* ------------------------------- TTL cache ------------------------------- */
@@ -89,28 +99,136 @@ test("different urls are cached independently", async () => {
   assert.equal(indexerCacheStats().size, 2);
 });
 
-test("the entry expires once the TTL is past", async () => {
+/**
+ * Drive the cache's clock by hand.
+ *
+ * These two tests used real setTimeout sleeps against a real TTL and asserted an
+ * exact upstream call count. That is a flake waiting for a loaded machine: three
+ * 15ms sleeps against a 40ms TTL become four expiries the moment the process is
+ * descheduled, and the assertion fails for a reason that has nothing to do with
+ * the cache. Reproduced by running the suite four times concurrently.
+ *
+ * With the clock injected the timings are exact and the tests are instant.
+ * Returns a tick(ms) to advance it, and registers the restore.
+ */
+function fakeClock(t) {
+  let nowMs = 1_000_000;
+  const restore = setIndexerClock(() => nowMs);
+  t.after(restore);
+  return (ms) => {
+    nowMs += ms;
+  };
+}
+
+test("the entry expires once the TTL is past", async (t) => {
   withTtl(20);
+  const tick = fakeClock(t);
   const up = counter((n) => ({ n }));
   const first = await withIndexerCache("https://x/tokens/1", up.fetcher);
-  await new Promise((r) => setTimeout(r, 40));
+  tick(40);
   const second = await withIndexerCache("https://x/tokens/1", up.fetcher);
   assert.equal(up.calls, 2, "an expired entry must be re-fetched");
   assert.deepEqual(first, { n: 1 });
   assert.deepEqual(second, { n: 2 });
 });
 
-test("a hit refreshes recency but never the expiry", async () => {
+test("a hit refreshes recency but never the expiry", async (t) => {
   withTtl(40);
+  const tick = fakeClock(t);
   const up = counter((n) => ({ n }));
   await withIndexerCache("https://x/tokens/1", up.fetcher);
   // Read it repeatedly across its whole life; it must still expire on schedule
-  // rather than being kept alive forever by being popular.
+  // rather than being kept alive forever by being popular. 3x15ms crosses 40ms
+  // exactly once, so a correct cache fetches twice and a sliding window once.
   for (let i = 0; i < 3; i += 1) {
-    await new Promise((r) => setTimeout(r, 15));
+    tick(15);
     await withIndexerCache("https://x/tokens/1", up.fetcher);
   }
   assert.equal(up.calls, 2, "the sliding-window bug would leave this at 1");
+});
+
+/* --------------------------- per-call TTL override --------------------------- */
+
+test("priceCacheTtlMs defaults to 10s, honours the override and ignores junk", () => {
+  assert.equal(priceCacheTtlMs(), 10_000);
+  withPriceTtl(3_000);
+  assert.equal(priceCacheTtlMs(), 3_000);
+  withPriceTtl(0);
+  assert.equal(priceCacheTtlMs(), 0, "0 is a real setting — every price read goes upstream");
+  for (const bad of ["", "   ", "soon", "-1", "NaN"]) {
+    withPriceTtl(bad);
+    assert.equal(priceCacheTtlMs(), 10_000, `"${bad}" must fall back to the short default`);
+  }
+});
+
+test("a per-call TTL expires early while the default is untouched", async (t) => {
+  const tick = fakeClock(t);
+  const price = counter((n) => ({ n }));
+  const structural = counter((n) => ({ n }));
+
+  // A price-bearing read on a 10s ceiling, and a holder-shaped read on the 60s
+  // default, driven across the same 11 seconds.
+  await withIndexerCache("https://x/tokens/1", price.fetcher, { ttlMs: 10_000 });
+  await withIndexerCache("https://x/holders/1", structural.fetcher);
+  tick(9_000);
+  await withIndexerCache("https://x/tokens/1", price.fetcher, { ttlMs: 10_000 });
+  assert.equal(price.calls, 1, "still inside the short window");
+  tick(2_000);
+  await withIndexerCache("https://x/tokens/1", price.fetcher, { ttlMs: 10_000 });
+  await withIndexerCache("https://x/holders/1", structural.fetcher);
+  assert.equal(price.calls, 2, "past 10s the quote must be read again");
+  assert.equal(structural.calls, 1, "the 60s default must not have moved");
+});
+
+test("an omitted, junk or negative override is exactly the old behaviour", async (t) => {
+  const tick = fakeClock(t);
+  withTtl(100);
+  for (const options of [undefined, {}, { ttlMs: null }, { ttlMs: "soon" }, { ttlMs: -1 }, "nonsense"]) {
+    resetIndexerCache();
+    const up = counter((n) => ({ n }));
+    const url = `https://x/default/${String(options && options.ttlMs)}`;
+    await withIndexerCache(url, up.fetcher, options);
+    tick(50);
+    await withIndexerCache(url, up.fetcher, options);
+    assert.equal(up.calls, 1, `${JSON.stringify(options)} must leave the global TTL in charge`);
+    tick(60);
+    await withIndexerCache(url, up.fetcher, options);
+    assert.equal(up.calls, 2, "and it must still expire on the global TTL");
+  }
+});
+
+test("the override can only shorten, never lengthen", async (t) => {
+  // An operator who tightens the global means everywhere, not "except prices".
+  withTtl(20);
+  const tick = fakeClock(t);
+  const up = counter((n) => ({ n }));
+  await withIndexerCache("https://x/tokens/1", up.fetcher, { ttlMs: 10_000 });
+  tick(40);
+  await withIndexerCache("https://x/tokens/1", up.fetcher, { ttlMs: 10_000 });
+  assert.equal(up.calls, 2, "a 10s override must not resurrect a 20ms global");
+});
+
+test("the override cannot re-enable a cache the operator disabled", async () => {
+  // INDEXER_CACHE_TTL_MS=0 is how you debug a stale body. An endpoint that kept
+  // caching through it would be the worst possible surprise.
+  withTtl(0);
+  const up = counter();
+  await withIndexerCache("https://x/tokens/1", up.fetcher, { ttlMs: 10_000 });
+  await withIndexerCache("https://x/tokens/1", up.fetcher, { ttlMs: 10_000 });
+  assert.equal(up.calls, 2);
+  assert.equal(indexerCacheStats().size, 0);
+});
+
+test("a short-TTL caller will not accept an entry a long-TTL caller stored", async (t) => {
+  // Entries are keyed by URL alone, so freshness is measured from the body's own
+  // age rather than assumed from whoever happened to store it first.
+  const tick = fakeClock(t);
+  const up = counter((n) => ({ n }));
+  await withIndexerCache("https://x/tokens/1", up.fetcher);
+  tick(30_000);
+  const second = await withIndexerCache("https://x/tokens/1", up.fetcher, { ttlMs: 10_000 });
+  assert.equal(up.calls, 2, "a 30s-old body is stale to a 10s caller, however it got there");
+  assert.deepEqual(second, { n: 2 });
 });
 
 test("callers cannot poison the cache by mutating what they got", async () => {
@@ -357,6 +475,49 @@ test("blockscout getters share the cache with no call-site change", async () => 
     // its own call — the key is the request, not the address.
     await getTokenHolders("0x1111111111111111111111111111111111111111");
     assert.equal(f.calls, 2);
+  } finally {
+    f.restore();
+  }
+});
+
+test("the token endpoint ages out faster than the structural ones", async (t) => {
+  // /tokens/{a} is the read that carries exchange_rate, circulating_market_cap
+  // and volume_24h; /holders carries neither a price nor anything that moves in
+  // seconds. A quote a minute old reads as wrong beside any other screen.
+  withPriceTtl(20);
+  const tick = fakeClock(t);
+  const addr = "0x5555555555555555555555555555555555555555";
+  let n = 0;
+  const f = stubFetch(() => {
+    n += 1;
+    return jsonResponse({ n, exchange_rate: "1.23" });
+  });
+  try {
+    await getToken(addr);
+    await getTokenHolders(addr);
+    tick(40);
+    await getToken(addr);
+    await getTokenHolders(addr);
+    // Two token reads, one holders read: 3 requests, not 2 and not 4.
+    assert.equal(f.calls, 3, "the price read expired at 20ms; the holder list is still on 60s");
+  } finally {
+    f.restore();
+  }
+});
+
+test("a burst of identical price reads still costs one request", async () => {
+  // Shorter, never absent: the cache is what stopped this app rate-limiting
+  // itself, and a burst of ~30 requests measured a loss of roughly half.
+  withPriceTtl(0);
+  const g = gate();
+  const f = stubFetch(() => g.promise);
+  try {
+    const all = Promise.all(
+      Array.from({ length: 6 }, () => getToken("0x6666666666666666666666666666666666666666")),
+    );
+    assert.equal(f.calls, 1, "single-flight survives even a zero price TTL");
+    g.resolve(jsonResponse({ symbol: "VLAD" }));
+    await all;
   } finally {
     f.restore();
   }
