@@ -54,14 +54,31 @@ Tokenized stocks and impostors:
   Refresh the snapshot when new tickers list (live verification covers them in
   the meantime, at the cost of one extra call).
 
-Deploy (Vercel):
-  Connect the repo — Vercel detects Next.js. No database, no worker, no cron.
+Deploy (Vercel or Railway):
+  Connect the repo — Vercel detects Next.js. No worker, no cron.
   Required env:  GROQ_API_KEY
   Recommended:   NEXT_PUBLIC_APP_URL (public origin; used for link-preview image
                  URLs and accepted as a same-origin caller by the /api/ask guard)
   Optional:      ROBINHOOD_NETWORK, ROBINHOOD_RPC_URL, ALCHEMY_*, BLOCKSCOUT_*,
                  STOCK_CACHE_TTL_MS — see .env.example.
   Leave Output Directory empty (Next.js builds to .next).
+
+  Turning the wallet gate on adds three requirements, and each one fails closed
+  rather than degrading quietly:
+    SESSION_SECRET            32+ chars. Unset = the auth routes return 503 and
+                              nobody can sign in.
+    NEXT_PUBLIC_APP_URL       (or AUTH_DOMAIN) — the domain baked into the signed
+                              message. It is NEVER read from the Host header, so
+                              unset = sign-in is unavailable, not unsafe.
+    UPSTASH_REDIS_REST_URL    + UPSTASH_REDIS_REST_TOKEN. A shared store. Without
+                              one the daily quota is counted per instance, which
+                              on Vercel means it is not a limit at all —
+                              /api/health reports `quota.enforced: false` and the
+                              server logs a banner at startup saying so.
+  The store speaks Redis over plain HTTPS, so it needs no dependency and behaves
+  the same on Vercel's many short-lived instances and Railway's one long process.
+  Postgres is supported as an alternative (STORE_DATABASE_URL) but needs
+  `npm install pg` in the deployment. See .env.example.
 
 RPC provider (optional — the public RPC works out of the box):
   https://rpc.mainnet.chain.robinhood.com is the zero-config default and is fine

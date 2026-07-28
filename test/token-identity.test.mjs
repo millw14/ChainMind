@@ -320,19 +320,92 @@ test("a genuine equity found by the search fallback is still labelled official",
   }
 });
 
-test("a byte-identical clone the deployer disowns is still unofficial", async () => {
-  // The other direction, so the fix cannot be "call everything official".
+test("a 95th equity the snapshot has never heard of is still labelled official", async () => {
+  // THE INVARIANT THE PAGE WALK USED TO CARRY. Equity membership is now decided
+  // from config/stock-tokens.json, which is 94 rows taken on a particular day — so
+  // an equity listed AFTER that day matches nothing offline and reaches the explorer
+  // search instead. What must not change is the verdict: `official` has always been
+  // a fact about the DEPLOYER and never about which branch found the contract, so
+  // the issuer check on the search branch is what keeps a genuine new listing from
+  // being announced to the reader as an unverified third-party token.
+  const newListing = `0x${"e".repeat(40)}`;
   const chain = stubChain({
     search: () => ({
-      items: [{ address_hash: `0x${"c".repeat(40)}`, name: "NVIDIA • Robinhood Token", symbol: "NVDA", holders_count: "900000" }],
+      items: [{ address_hash: newListing, name: "Snowflake • Robinhood Token", symbol: "SNOW", holders_count: "4211" }],
+    }),
+    // The one thing that decides it: this contract's creator IS the canonical issuer.
+    address: { creator_address_hash: registry.issuer },
+  });
+  try {
+    const res = await resolveSymbol("SNOW", { depthProbe: stubProbe() });
+    assert.equal(res.match.address, newListing);
+    assert.equal(res.official, true, "the deployer settles it, snapshot or no snapshot");
+    assert.equal(res.reason, undefined, "so it must not be described as unverified");
+  } finally {
+    chain.restore();
+  }
+});
+
+test("a clone copying the naming convention is still unofficial when the deployer disowns it", async () => {
+  // The other direction, so the fix cannot be "call everything official".
+  //
+  // THE TICKER IS DELIBERATELY ONE THE SNAPSHOT DOES NOT CARRY. Snowflake is not
+  // tokenized on this chain, so nothing offline answers SNOW and the explorer
+  // search is genuinely the branch that selects this contract — which is the branch
+  // whose issuer check is under test. Asserting it through a ticker that IS in the
+  // snapshot would have tested the snapshot instead, and the snapshot never reaches
+  // verifiedByIssuer at all.
+  const chain = stubChain({
+    search: () => ({
+      items: [{ address_hash: `0x${"c".repeat(40)}`, name: "Snowflake • Robinhood Token", symbol: "SNOW", holders_count: "900000" }],
+    }),
+    address: { creator_address_hash: `0x${"9".repeat(40)}` },
+  });
+  try {
+    const res = await resolveSymbol("SNOW", { depthProbe: stubProbe() });
+    assert.equal(res.match.address, `0x${"c".repeat(40)}`);
+    assert.equal(res.official, false, "the suffix is a naming convention, not a warrant");
+    assert.match(res.reason, /Not an official Robinhood tokenized equity/);
+  } finally {
+    chain.restore();
+  }
+});
+
+test("an equity whose live figures cannot be read still resolves to the REAL contract", async () => {
+  // THE CASE THAT USED TO BE HANDED TO A CLONE. resolveSymbol used to fall through
+  // to the /tokens page walk whenever the matched contract's own token body was
+  // unreadable, and during an indexer brownout that walk comes back empty too — so
+  // "NVDA" was selected from the search results instead, where a clone with 900,000
+  // airdropped holders was sitting. The walk is gone (14.5s cold, and this was the
+  // only thing the fall-through bought), and the snapshot answers the identity
+  // question offline, where nothing upstream can take it away.
+  //
+  // The FIGURES are the thing genuinely lost when the token read fails, and they
+  // stay NULL — unknown, never zero, never quietly filled from a different contract.
+  const realNvda = String(registry.tokens.find((t) => t.symbol === "NVDA").address).toLowerCase();
+  const clone = `0x${"c".repeat(40)}`;
+  const chain = stubChain({
+    // The brownout: /tokens/{address} answers with a body carrying no name, which
+    // is how safeToken spells "unreadable".
+    tokens: { items: [] },
+    search: () => ({
+      items: [{ address_hash: clone, name: "NVIDIA • Robinhood Token", symbol: "NVDA", holders_count: "900000" }],
     }),
     address: { creator_address_hash: `0x${"9".repeat(40)}` },
   });
   try {
     const res = await resolveSymbol("NVDA", { depthProbe: stubProbe() });
-    assert.equal(res.match.address, `0x${"c".repeat(40)}`);
-    assert.equal(res.official, false);
-    assert.match(res.reason, /Not an official Robinhood tokenized equity/);
+    assert.equal(res.match.address, realNvda, "the issuer-verified address is held offline");
+    assert.equal(res.official, true, "and the deployer that settles it cannot go down");
+    assert.equal(res.match.price, null, "a figure nobody read is unknown, not zero");
+    assert.equal(res.match.marketCap, null);
+    assert.equal(res.match.holders, null);
+    assert.equal(res.reason, undefined, "the real NVDA is not described as unverified");
+    assert.deepEqual(
+      res.impostors.map((i) => i.address),
+      [clone],
+      "and the clone is named as one, not resolved to",
+    );
   } finally {
     chain.restore();
   }

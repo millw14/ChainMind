@@ -1,8 +1,36 @@
-import { NextResponse } from "next/server";
+import { NextResponse, after } from "next/server";
 import { getGeoqApiKey, geoqFetch } from "@/lib/geoq.js";
 import { clientIp, isSameOriginRequest, rateLimit } from "@/lib/api-guard.js";
+import { quotaDenial, quotaHeaders, resolveAccess } from "@/lib/ask-access.js";
+import { saveHistoryEntry } from "@/lib/history.js";
+import { SESSION_COOKIE, shortAddress } from "@/lib/session.js";
+import { getStore } from "@/lib/store.js";
 import { GUIDANCE, runAsk, runAskStream } from "@/lib/ask-runner.js";
+import {
+  ASK_BUDGET_MS,
+  clampTimeout,
+  generatorWithBudget,
+  runWithBudget,
+} from "@/lib/request-budget.js";
 
+/**
+ * The platform's kill switch.
+ *
+ * IT MUST BE A LITERAL. Next reads this by static analysis of the module's
+ * segment config, before any import is resolved, so `= MAX_DURATION_S` does not
+ * merely fail at runtime — it fails the BUILD outright with `Unknown identifier
+ * "MAX_DURATION_S" at "maxDuration"`, and no test catches it because the tests
+ * import the module rather than compile it.
+ *
+ * So the number is written in two places, here and in lib/request-budget.js, and
+ * test/request-budget.test.mjs asserts the two agree. That is deliberate: the
+ * failure mode being guarded against is the budget drifting to the WRONG SIDE of
+ * the kill, and a test that fails loudly on drift buys that safety without the
+ * import the compiler forbids. Measured before the budget existed: a memecoin
+ * ticker took 49.0s cold and a ticker collision 31.3s against this 30s ceiling,
+ * and the platform's answer to both was a 504 that discarded every second of work
+ * already done.
+ */
 export const maxDuration = 30;
 export const runtime = "nodejs";
 
@@ -77,12 +105,18 @@ async function streamChat(payload, signal) {
  * forwarding the client's abort signal on its own would quietly remove the only
  * thing that stops a stalled upstream from holding the route open until the
  * platform kills it. 700 output tokens arrive in a few seconds; 20s is a stall.
+ *
+ * Capped by the request's remaining time as well, against its HARD end: this is the
+ * turn the answer reserve was held back for, so it may spend the rest of the budget
+ * and not a millisecond past it. A stream cut short still delivers every word that
+ * arrived — see lib/ask-runner.js streamCompletion — which is the whole point of
+ * bounding it here rather than letting the platform do it.
  */
 const STREAM_TIMEOUT_MS = 20_000;
 
 /** The caller's abort signal, still carrying geoqFetch's timeout. */
 function withDeadline(signal) {
-  const deadline = AbortSignal.timeout(STREAM_TIMEOUT_MS);
+  const deadline = AbortSignal.timeout(clampTimeout(STREAM_TIMEOUT_MS, { hard: true }));
   if (!signal) return deadline;
   // AbortSignal.any landed in Node 20.3. On anything older the client's own
   // signal is the better half to keep — a hung-up client is the common case.
@@ -171,7 +205,7 @@ const SSE_HEADERS = Object.freeze({
  *  - throw. A rejection inside `start` would tear the response down with no
  *    explanation, so the last resort is an `error` frame.
  */
-function streamingResponse(req, { question, target }) {
+function streamingResponse(req, { question, target, headers = {}, record = null }) {
   // One controller for the whole request: the client hanging up must cancel the
   // routing completion and the streamed one, not just whichever is in flight.
   const upstream = new AbortController();
@@ -195,23 +229,51 @@ function streamingResponse(req, { question, target }) {
         }
       };
 
-      const events = runAskStream({
-        question,
-        target,
-        chat: (payload) => completeChat(payload, upstream.signal),
-        streamChat: (payload) => streamChat(payload, upstream.signal),
-        // Say what is being read while it is being read. A ticker question is
-        // ~5.6s of measured indexer time, almost all of it before the first word
-        // of the answer exists, and `progress` frames are what the transcript
-        // shows instead of three dots for those five seconds. Frames the client
-        // does not understand are ignored by it, so this is safe to send to an
-        // older bundle sitting in someone's cache.
-        progress: true,
-      });
+      // THE BUDGET IS OPENED AROUND THE GENERATOR, NOT AROUND THE CALL THAT MAKES
+      // IT. A generator body runs on whoever calls `next()`, so wrapping the
+      // construction would attach the deadline for exactly as long as it took to
+      // reach the first `yield` and lose it for every second after that — which is
+      // all of the seconds that matter. generatorWithBudget re-enters the context
+      // per step, so every indexer read, pool probe and completion below inherits
+      // the same clock. See lib/request-budget.js.
+      const events = generatorWithBudget(() =>
+        runAskStream({
+          question,
+          target,
+          chat: (payload) => completeChat(payload, upstream.signal),
+          streamChat: (payload) => streamChat(payload, upstream.signal),
+          // Say what is being read while it is being read. A ticker question is
+          // ~5.6s of measured indexer time, almost all of it before the first word
+          // of the answer exists, and `progress` frames are what the transcript
+          // shows instead of three dots for those five seconds. Frames the client
+          // does not understand are ignored by it, so this is safe to send to an
+          // older bundle sitting in someone's cache.
+          //
+          // AND THEY DO NOT PROTECT THE REQUEST. A progress frame goes out before
+          // the lookups start, so the response has genuinely begun — but the
+          // platform still kills the invocation at maxDuration, the client sees a
+          // stream that ended without a single `delta`, discards the empty bubble
+          // and RETRIES on the plain JSON route (components/ask/Conversation.jsx
+          // runStream -> "retry"). That retry pays the whole cost again and is the
+          // 504 the user actually sees. Streaming buys perceived speed; only the
+          // budget above stops the kill.
+          progress: true,
+        }),
+        { totalMs: ASK_BUDGET_MS },
+      );
 
       try {
         for await (const event of events) {
           if (upstream.signal.aborted) break;
+          // The saved-history copy is taken from the SAME events the reader gets,
+          // as they go past: the answer is assembled by the runner and only the
+          // `done` frame holds it whole. Recording it here costs nothing and adds
+          // no round trip — the write itself happens after the response, see the
+          // `after()` in POST.
+          if (record) {
+            if (event?.type === "done" && typeof event.answer === "string") record.answer = event.answer;
+            else if (event?.type === "meta" && typeof event.intent === "string") record.intent = event.intent;
+          }
           send(event);
           if (!open) break;
         }
@@ -245,7 +307,29 @@ function streamingResponse(req, { question, target }) {
     },
   });
 
-  return new Response(body, { status: 200, headers: SSE_HEADERS });
+  return new Response(body, { status: 200, headers: { ...SSE_HEADERS, ...headers } });
+}
+
+/**
+ * Write one turn into the asker's saved history.
+ *
+ * Called from `after()`, which runs once the response has been delivered, so a
+ * store write never sits between the answer and the reader. Failures are logged
+ * and dropped: history not being saved is a disappointment, not an error worth
+ * failing an answer that already arrived over.
+ *
+ * The address comes from the session resolved at the top of POST — never from the
+ * body — so there is no request field that could aim this write at someone else's
+ * history.
+ */
+async function rememberAnswer({ address, question, answer, intent }) {
+  if (!address || !String(answer ?? "").trim()) return;
+  try {
+    const store = await getStore();
+    await saveHistoryEntry({ store, address, question, answer, intent });
+  } catch (e) {
+    console.warn(`[history] save failed for ${shortAddress(address)} — ${String(e?.message ?? e)}`);
+  }
 }
 
 export async function POST(req) {
@@ -303,15 +387,69 @@ export async function POST(req) {
     return NextResponse.json({ ok: false, error: String(e?.message ?? e) }, { status: 500 });
   }
 
+  // THE GATE. Last of the guards and first of the costs, in that order on purpose:
+  // everything above is free, everything below spends upstream tokens and indexer
+  // reads, and a caller who is out of questions must be turned away before any of
+  // it. It is also the only guard that can say anything about a WALLET, which is
+  // why nothing here is taken from the body — the address comes from the signed
+  // cookie and the balance from our own RPC client (see lib/ask-access.js).
+  const access = await resolveAccess({
+    sessionCookie: req.cookies.get(SESSION_COOKIE)?.value ?? null,
+    ip: clientIp(req),
+  });
+  const gateHeaders = quotaHeaders(access.quota);
+  if (!access.quota.allowed) {
+    // 429 with the STATE in it. "Rate limited" tells someone who would happily
+    // connect a wallet nothing they can act on; this says which tier they are in,
+    // when it resets, and what would lift it.
+    return NextResponse.json(quotaDenial(access), { status: 429, headers: gateHeaders });
+  }
+
   // Streaming is opt-in and changes nothing above it: every guard has already
   // run, in the same order, with the same limits. A request that does not ask for
   // a stream gets exactly the JSON reply it always got.
   if (body?.stream === true) {
-    return streamingResponse(req, { question, target });
+    // Filled by the frame loop as the answer streams past, read by `after()` once
+    // the stream has closed. Registered here, in the handler's own scope, because
+    // that is where `after` is defined to be callable.
+    const record = { answer: "", intent: null };
+    if (access.address) {
+      after(() =>
+        rememberAnswer({
+          address: access.address,
+          question,
+          answer: record.answer,
+          intent: record.intent,
+        }),
+      );
+    }
+    return streamingResponse(req, { question, target, headers: gateHeaders, record });
   }
 
   // runAsk returns its failures rather than throwing them, so there is nothing
   // left to catch: every outcome is already a { status, body } this can send.
-  const { status, body: payload } = await runAsk({ question, target, chat: completeChat });
-  return NextResponse.json(payload, { status });
+  //
+  // Inside the budget, which is what turns "the platform killed us and the client
+  // got a bodyless 504" into "here is the answer, with the fields nobody had time
+  // to read named as unavailable". This is also the path the client RETRIES on when
+  // a streamed attempt dies, so it is the one that must not be able to overrun.
+  const { status, body: payload } = await runWithBudget(
+    () => runAsk({ question, target, chat: completeChat }),
+    { totalMs: ASK_BUDGET_MS },
+  );
+
+  // After the response, never before it: a signed-in user's history is worth one
+  // store write, and it is not worth a millisecond of the answer's latency.
+  if (access.address && payload?.ok) {
+    after(() =>
+      rememberAnswer({
+        address: access.address,
+        question,
+        answer: payload.answer,
+        intent: payload.intent,
+      }),
+    );
+  }
+
+  return NextResponse.json(payload, { status, headers: gateHeaders });
 }

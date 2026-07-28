@@ -1,5 +1,9 @@
 import { NextResponse } from "next/server";
 import { getChainConfig, getPublicClient } from "@/lib/chain.js";
+import { gateStatus } from "@/lib/entitlement.js";
+import { freeDailyAllowance } from "@/lib/quota.js";
+import { isSessionConfigured } from "@/lib/session.js";
+import { storeStatus } from "@/lib/store.js";
 
 export const maxDuration = 10;
 export const runtime = "nodejs";
@@ -14,6 +18,67 @@ function deadline(ms) {
   return new Promise((_, reject) => {
     setTimeout(() => reject(new Error(`RPC health check exceeded ${ms}ms.`)), ms);
   });
+}
+
+/**
+ * What the app is standing on for state, without opening a connection.
+ *
+ * Reported here because the memory adapter's damage is invisible in normal
+ * operation: everything responds 200 while quotas count per-instance and sign-in
+ * nonces go missing between lambdas. A startup log line can scroll away; this is
+ * the page an operator actually loads when something is odd.
+ *
+ * It does NOT change the status code. Liveness here means "can this process reach
+ * the chain" — the explorer answers questions with no store at all, and a monitor
+ * paging someone at 3am over a feature that is merely unconfigured is a monitor
+ * people learn to ignore.
+ */
+function statefulFeatures() {
+  const store = storeStatus();
+  return {
+    store: {
+      driver: store.driver,
+      durable: store.durable,
+      shared: store.shared,
+      timeoutMs: store.timeoutMs,
+      ...(store.warnings.length ? { warnings: store.warnings } : {}),
+    },
+    // SAID SEPARATELY, IN ONE WORD, BECAUSE IT IS THE THING THAT GOES WRONG
+    // SILENTLY. "driver: memory" only means "quotas are decorative" to someone
+    // who already knows that; `enforced: false` means it to everyone. A quota
+    // that looks enforced while counting per instance is worse than no quota,
+    // because nobody goes looking for it.
+    quota: {
+      enforced: store.enforced,
+      freeDaily: freeDailyAllowance(),
+      ...(store.enforced
+        ? {}
+        : {
+            hint:
+              "The daily free-question limit is NOT enforced: no shared counter is configured, so each instance counts on its own. " +
+              "Set UPSTASH_REDIS_REST_URL + UPSTASH_REDIS_REST_TOKEN (nothing to install) or STORE_DATABASE_URL with `pg` installed.",
+          }),
+    },
+    walletSignIn: isSessionConfigured()
+      ? { configured: true }
+      : { configured: false, hint: "SESSION_SECRET is not set; wallet sign-in is disabled." },
+    // The gate, because "nobody can be verified as a holder" is invisible from the
+    // outside: the app answers 200, sign-in works, and every single visitor is
+    // quietly capped at the free allowance. The token and threshold are public by
+    // nature (they are on chain), so there is nothing here worth withholding.
+    tokenGate: (() => {
+      const gate = gateStatus();
+      return gate.configured
+        ? { configured: true, token: gate.token, minTokens: gate.minTokens, freeDaily: freeDailyAllowance() }
+        : {
+            configured: false,
+            freeDaily: freeDailyAllowance(),
+            hint:
+              gate.error ??
+              "GATE_TOKEN_ADDRESS is not set; nobody can be verified as a holder and everyone gets the free daily allowance.",
+          };
+    })(),
+  };
 }
 
 /**
@@ -37,13 +102,14 @@ export async function GET() {
         chainId,
         expectedChainId: cfg.id,
         blockNumber: blockNumber.toString(),
+        ...statefulFeatures(),
         ...(ok ? {} : { hint: "RPC chain id does not match the configured network." }),
       },
       { status: ok ? 200 : 503 },
     );
   } catch (e) {
     return NextResponse.json(
-      { ok: false, network: cfg.name, error: String(e?.message ?? e) },
+      { ok: false, network: cfg.name, ...statefulFeatures(), error: String(e?.message ?? e) },
       { status: 503 },
     );
   }

@@ -2,6 +2,7 @@
 import Link from "next/link";
 import { useState } from "react";
 import { ChainMindLogo } from "@/components/ChainMindLogo";
+import WalletMenu from "@/components/wallet/WalletMenu";
 
 export function ConsoleHeader() {
   const [open, setOpen] = useState(false);
@@ -35,25 +36,33 @@ export function ConsoleHeader() {
           <Link href="/" className="rounded-md px-3 py-2 text-cm-muted hover:bg-cm-row-hover hover:text-cm-text">
             Home
           </Link>
+          {/* The gate lives in the header because it is where a visitor looks for
+              "who am I here" — and because the quota it shows applies to every
+              question asked from any surface below it. */}
+          <WalletMenu />
         </nav>
 
-        {/* Mobile: hamburger */}
-        <button
-          type="button"
-          className="sm:hidden flex items-center justify-center h-10 w-10 rounded-md text-cm-muted hover:bg-cm-row-hover hover:text-cm-text"
-          onClick={() => setOpen(o => !o)}
-          aria-label="Menu"
-        >
-          {open ? (
-            <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
-              <path d="M2 2l14 14M16 2L2 16" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
-            </svg>
-          ) : (
-            <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
-              <path d="M2 4h14M2 9h14M2 14h14" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
-            </svg>
-          )}
-        </button>
+        {/* Mobile: the wallet stays out of the hamburger. A daily allowance the
+            reader cannot see is one they only learn about by hitting it. */}
+        <div className="flex items-center gap-2 sm:hidden">
+          <WalletMenu />
+          <button
+            type="button"
+            className="flex items-center justify-center h-10 w-10 rounded-md text-cm-muted hover:bg-cm-row-hover hover:text-cm-text"
+            onClick={() => setOpen(o => !o)}
+            aria-label="Menu"
+          >
+            {open ? (
+              <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
+                <path d="M2 2l14 14M16 2L2 16" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+              </svg>
+            ) : (
+              <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
+                <path d="M2 4h14M2 9h14M2 14h14" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+              </svg>
+            )}
+          </button>
+        </div>
       </div>
 
       {/* Mobile dropdown */}
