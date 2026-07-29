@@ -1,4 +1,5 @@
 import { ImageResponse } from "next/og";
+import { LOGO_MARK_DATA_URI } from "@/lib/logo-mark.js";
 
 export const runtime = "nodejs";
 export const alt = "ChainMind — AI explorer for Robinhood Chain";
@@ -27,15 +28,10 @@ export default function Image() {
           padding: "72px",
         }}
       >
-        <div style={{ display: "flex", alignItems: "center", gap: "16px" }}>
-          <div
-            style={{
-              width: 18,
-              height: 18,
-              borderRadius: 9999,
-              backgroundColor: "#10b981",
-            }}
-          />
+        <div style={{ display: "flex", alignItems: "center", gap: "20px" }}>
+          {/* The mark, not a plain dot: this card IS the link preview, so it is
+              the first and often only thing anyone sees of the brand. */}
+          <img src={LOGO_MARK_DATA_URI} width={64} height={64} alt="" />
           <div
             style={{
               fontSize: 24,
