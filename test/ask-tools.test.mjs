@@ -55,6 +55,8 @@ function fakes(overrides = {}) {
     tokenHolders: log("tokenHolders", { ok: true, kind: "holders", evidence: { holders: [] } }),
     tokenTransfers: log("tokenTransfers", { ok: true, kind: "transfers", evidence: { transfers: [] } }),
     flagPatterns: log("flagPatterns", { ok: true, kind: "patterns", evidence: { findings: [] } }),
+    holderHoldTime: log("holderHoldTime", { ok: true, kind: "holdTime", evidence: { medianDisplay: null } }),
+    bundleCheck: log("bundleCheck", { ok: true, kind: "bundle", evidence: { found: false } }),
     contractInfo: log("contractInfo", { ok: true, kind: "contract", evidence: { deployer: null } }),
     searchTokens: log("searchTokens", { ok: true, kind: "search", evidence: { results: [] } }),
     walletPortfolio: log("walletPortfolio", { ok: true, kind: "portfolio", evidence: { holdings: [] } }),
@@ -119,14 +121,16 @@ test("TOOL_NAMES matches the catalogue exactly and is frozen", () => {
   assert.ok(Object.isFrozen(TOOL_SCHEMAS));
 });
 
-test("the catalogue covers all eighteen documented tools", () => {
-  // Seven that answer a whole question, five that go deeper into one token, five
-  // on the wallet and market side, and one that looks nothing up at all.
+test("the catalogue covers all twenty documented tools", () => {
+  // Seven that answer a whole question, seven that go deeper into one token,
+  // five on the wallet and market side, and one that looks nothing up at all.
   assert.deepEqual([...TOOL_NAMES].sort(), [
     "ask_clarification",
+    "bundle_check",
     "compare_tokens",
     "contract_info",
     "flag_patterns",
+    "holder_hold_time",
     "lookup_token",
     "lookup_transaction",
     "lookup_wallet",
