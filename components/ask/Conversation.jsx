@@ -8,6 +8,7 @@ import { collectTables } from "@/lib/table-shape";
 import { buildFollowUps } from "@/lib/follow-ups";
 import AnswerTable from "@/components/ask/AnswerTable";
 import ThinkingStatus from "@/components/ask/ThinkingStatus";
+import { ResearchNotice } from "@/components/research/ResearchNotice";
 import {
   IconCompare,
   IconRank,
@@ -857,6 +858,7 @@ export default function Conversation({
         toolCalls: [],
         kind: null,
         target: null,
+        research: null,
         ...message,
       }),
     );
@@ -879,6 +881,9 @@ export default function Conversation({
           toolCalls: Array.isArray(data.toolCalls) ? data.toolCalls : [],
           kind: typeof data.kind === "string" ? data.kind : null,
           target: typeof data.target === "string" ? data.target : null,
+          // A deep investigation the server started (or explained why it did not) for
+          // this question. It is not part of the answer and never changes it.
+          research: isPlainObject(data.research) ? data.research : null,
           ...(answer ? {} : { error: true }),
         });
         return;
@@ -905,6 +910,21 @@ export default function Conversation({
       let delivered = 0; // characters of answer handed over
       let finished = false; // done or error already rendered
       let statusCleared = false; // the waiting row has already been taken down
+      /**
+       * The investigation block, which can arrive BEFORE the assistant message exists.
+       *
+       * The server sends it the moment the submission settles and never waits for the
+       * answer, so on a slow first token it genuinely does arrive first. Holding it here
+       * and applying it whenever the message appears is what stops that ordering from
+       * dropping it on the floor.
+       */
+      let research = null;
+
+      /** Attach the block to this turn, whenever both halves exist. */
+      const applyResearch = () => {
+        if (!research || !started || !live(seq)) return;
+        setMessages((prev) => prev.map((m) => (m.id === assistantId ? { ...m, research } : m)));
+      };
 
       /** Create the assistant message. Called by `meta`, or by the first delta. */
       const ensure = (meta) => {
@@ -930,6 +950,7 @@ export default function Conversation({
             toolCalls: Array.isArray(meta && meta.toolCalls) ? meta.toolCalls : [],
             kind: typeof (meta && meta.kind) === "string" ? meta.kind : null,
             target: typeof (meta && meta.target) === "string" ? meta.target : null,
+            research,
           }),
         );
       };
@@ -987,6 +1008,14 @@ export default function Conversation({
         }
         if (type === "meta") {
           ensure(event);
+          return;
+        }
+        if (type === "research") {
+          // Its own frame rather than a field on `meta`, because it settles on a
+          // different clock: the answer must never wait for it, so it cannot be part of
+          // the event that opens the answer.
+          research = isPlainObject(event.block) ? event.block : null;
+          applyResearch();
           return;
         }
         if (type === "delta") {
@@ -1391,6 +1420,12 @@ export default function Conversation({
                     disabled={message.id !== activeClarifyId}
                     reduce={reduce}
                   />
+
+                  {/* The half of the answer that is not in this request: a deep
+                      investigation that was started, or the reason one was not. Under the
+                      answer because it does not change it — the chain half above stands
+                      on its own whatever the job eventually reports. */}
+                  {message.research ? <ResearchNotice block={message.research} /> : null}
 
                   {message.id === followUps.id ? (
                     <FollowUps items={followUps.items} onPick={send} reduce={reduce} />

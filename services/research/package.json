@@ -1,0 +1,19 @@
+{
+  "name": "chainmind-research",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Deep-research service for ChainMind — a bounded agentic investigation of a URL or a contract, submitted as a job and delivered as a sourced report",
+  "license": "MIT",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "start": "node server.js",
+    "test": "node --test test",
+    "investigate": "node scripts/investigate.mjs"
+  },
+  "dependencies": {
+    "viem": "^2.55.5"
+  }
+}

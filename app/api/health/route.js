@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { getChainConfig, getPublicClient } from "@/lib/chain.js";
 import { gateStatus } from "@/lib/entitlement.js";
 import { freeDailyAllowance } from "@/lib/quota.js";
+import { researchAllowance, RESEARCH_TIER } from "@/lib/research-access.js";
+import { researchServiceStatus } from "@/lib/research-client.js";
 import { isSessionConfigured } from "@/lib/session.js";
 import { storeStatus } from "@/lib/store.js";
 
@@ -59,6 +61,29 @@ function statefulFeatures() {
               "Set UPSTASH_REDIS_REST_URL + UPSTASH_REDIS_REST_TOKEN (nothing to install) or STORE_DATABASE_URL with `pg` installed.",
           }),
     },
+    // Deep investigations, because "not configured" is a STATE this product is supposed
+    // to say out loud rather than a button that quietly does nothing. A rejected setting
+    // is reported separately from an absent one: they have the same effect and entirely
+    // different fixes.
+    research: (() => {
+      const status = researchServiceStatus();
+      if (status.configured) {
+        return {
+          configured: true,
+          dailyJobs: {
+            signedIn: researchAllowance(RESEARCH_TIER.SIGNED_IN),
+            holder: researchAllowance(RESEARCH_TIER.HOLDER),
+          },
+        };
+      }
+      return {
+        configured: false,
+        ...(status.problem ? { error: status.problem } : {}),
+        hint:
+          status.problem ??
+          `${status.missing ?? "RESEARCH_SERVICE_URL and RESEARCH_SHARED_SECRET"} not set; deep investigations are unavailable and the app says so in words. See services/research/README.md.`,
+      };
+    })(),
     walletSignIn: isSessionConfigured()
       ? { configured: true }
       : { configured: false, hint: "SESSION_SECRET is not set; wallet sign-in is disabled." },
