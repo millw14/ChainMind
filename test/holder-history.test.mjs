@@ -45,6 +45,12 @@ const addr = (prefix) => `0x${prefix}${"0".repeat(40 - prefix.length)}`;
 
 const TOKEN = addr("31be8f7485");
 const POOL = addr("8f450b8ee3");
+/**
+ * The Uniswap v4 PoolManager singleton, as measured on chain 4663. It is here as a
+ * fixture and never as a rule: lib/dex-price.js resolveV4PoolManager establishes the
+ * identity by BEHAVIOUR, and these tests inject its verdict rather than the address.
+ */
+const V4_MANAGER = "0x8366a39cc670b4001a1121b8f6a443a643e40951";
 const H_EARLY_A = addr("42607b2e4f");
 const H_EARLY_B = addr("875813ae0a");
 const H_EARLY_C = addr("71f2f1c2dc");
@@ -136,6 +142,27 @@ const poolNone = async () => ({ found: null, pools: [], reason: "no_pool", poolC
 /** Nobody could look. Not the same fact, and the module must not conflate them. */
 const poolUnread = async () => ({ found: null, pools: [], reason: "discovery_failed", poolCount: 0 });
 
+/**
+ * The three v4 verdicts, in the shape lib/dex-price.js resolveV4PoolManager returns.
+ *
+ * "rejected" is the DEFAULT for the measured fixture, because that fixture is about a
+ * v3 pool and a settled negative is what leaves `unavailable` empty. Unread is a
+ * separate fact and gets its own tests: an unresolved check must caveat, never pass.
+ */
+const v4Rejected = async () => ({
+  address: null,
+  candidate: V4_MANAGER,
+  status: "rejected",
+  reason: "the address answers token0()/token1(), so it is not the v4 PoolManager singleton",
+});
+const v4Confirmed = async () => ({ address: V4_MANAGER, candidate: V4_MANAGER, status: "confirmed", reason: null });
+const v4Unread = async () => ({
+  address: null,
+  candidate: V4_MANAGER,
+  status: "unread",
+  reason: "neither extsload(bytes32) nor protocolFeeController() answered",
+});
+
 function runMeasured(overrides = {}) {
   const { calls, seen } = fakeIndexer({ transfers: MEASURED_HISTORY, ...overrides.indexer });
   return holderFirstAcquisition(TOKEN, {
@@ -143,6 +170,7 @@ function runMeasured(overrides = {}) {
     calls,
     now: NOW,
     resolvePool: poolFound,
+    resolveV4PoolManager: v4Rejected,
     ...overrides.options,
   }).then((analysis) => ({ analysis, seen }));
 }
@@ -309,6 +337,73 @@ test("a chain that answered \"no pool\" carries no caveat", async () => {
   assert.equal(analysis.poolStatus, "none");
   assert.equal(analysis.unavailable.length, 0);
   assert.equal(holdTimeSummary(analysis).poolCaveat, null);
+});
+
+/* --------------------------- the v4 PoolManager --------------------------- */
+
+test("the Uniswap v4 PoolManager is labelled a pool, not a holder, and kept out of the figures", async () => {
+  // THE REPRODUCED COMPLAINT, one layer down from where it was seen: this address has
+  // no token0(), so no factory sweep can ever put it in `pools`, and it held 50.5% of
+  // PIPECAT's supply while being presented as the most interesting wallet in an overlap.
+  const { analysis } = await runMeasured({
+    options: {
+      holders: [{ address: V4_MANAGER, percent: 50.5 }, ...TOP_HOLDERS],
+      resolveV4PoolManager: v4Confirmed,
+    },
+    indexer: { transfers: { ...MEASURED_HISTORY, [V4_MANAGER]: history({ oldestBlock: 21_538_348, agoDays: 1.2 }) } },
+  });
+
+  const row = rowFor(analysis, V4_MANAGER);
+  assert.equal(row.role, HOLDER_ROLES.POOL);
+  assert.equal(row.poolVersion, "v4");
+  assert.match(row.roleReason, /Uniswap v4 PoolManager/);
+  assert.match(row.roleReason, /pooled liquidity rather than a position/);
+  assert.equal(analysis.v4PoolManager, V4_MANAGER);
+  assert.equal(analysis.v4Status, "confirmed");
+  // And a confirmed check is not a gap: nothing goes in `unavailable` for it.
+  assert.ok(!analysis.unavailable.includes("v4_pool_identification"));
+
+  const summary = holdTimeSummary(analysis);
+  // It is EXCLUDED from the statistics and still LISTED, the same treatment the v3
+  // pool gets — its 1.2 days is liquidity's age and would be the minimum otherwise.
+  assert.ok(summary.excluded.some((e) => e.address === V4_MANAGER && e.poolVersion === "v4"));
+  assert.ok(summary.minDays > 1.2, "the v4 manager must not set the minimum hold time");
+  assert.match(summary.reading, /the Uniswap v4 PoolManager — pooled liquidity, not conviction/);
+  // Named as the singleton and NOT as "the Uniswap pool", which would imply this
+  // token's own pool rather than the one contract that holds every pool on the chain.
+  assert.equal(summary.v4Caveat, null);
+});
+
+test("a v4 check that did not settle is a stated caveat, never a silent holder", async () => {
+  const { analysis } = await runMeasured({
+    options: {
+      holders: [{ address: V4_MANAGER, percent: 50.5 }, ...TOP_HOLDERS],
+      resolveV4PoolManager: v4Unread,
+    },
+    indexer: { transfers: { ...MEASURED_HISTORY, [V4_MANAGER]: history({ oldestBlock: 21_538_348, agoDays: 1.2 }) } },
+  });
+
+  assert.equal(analysis.v4Status, "unread");
+  assert.ok(analysis.unavailable.includes("v4_pool_identification"));
+  // Unlabelled, because nothing established what it is — and the summary says so
+  // rather than quietly implying every row below is somebody's position.
+  assert.equal(rowFor(analysis, V4_MANAGER).role, HOLDER_ROLES.HOLDER);
+  const summary = holdTimeSummary(analysis);
+  assert.match(summary.v4Caveat, /was not established/);
+  assert.match(summary.reading, /v4 keeps every pool in one contract/);
+});
+
+test("the v3 sweep and the v4 check are separate verdicts and are reported separately", async () => {
+  const { analysis } = await runMeasured({
+    options: { resolvePool: poolUnread, resolveV4PoolManager: v4Confirmed },
+  });
+  assert.equal(analysis.poolStatus, "unread");
+  assert.equal(analysis.v4Status, "confirmed");
+  assert.ok(analysis.unavailable.includes("pool_identification"));
+  assert.ok(!analysis.unavailable.includes("v4_pool_identification"));
+  // With the v3 sweep already caveating every unlabelled row, the v4 clause is not
+  // repeated — one gap, one sentence.
+  assert.equal(holdTimeSummary(analysis).v4Caveat, null);
 });
 
 test("a pool sweep that declined to pick a winner still labels its candidates", async () => {
