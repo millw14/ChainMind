@@ -2,6 +2,7 @@ import { NextResponse, after } from "next/server";
 import { getGeoqApiKey, geoqFetch } from "@/lib/geoq.js";
 import { clientIp, isSameOriginRequest, rateLimit } from "@/lib/api-guard.js";
 import { quotaDenial, quotaHeaders, resolveAccess } from "@/lib/ask-access.js";
+import { publicResearchBlock, researchForAsk } from "@/lib/research-job.js";
 import { saveHistoryEntry } from "@/lib/history.js";
 import { SESSION_COOKIE, shortAddress } from "@/lib/session.js";
 import { getStore } from "@/lib/store.js";
@@ -206,7 +207,7 @@ const SSE_HEADERS = Object.freeze({
  *  - throw. A rejection inside `start` would tear the response down with no
  *    explanation, so the last resort is an `error` frame.
  */
-function streamingResponse(req, { question, target, headers = {}, record = null }) {
+function streamingResponse(req, { question, target, headers = {}, record = null, research = null }) {
   // One controller for the whole request: the client hanging up must cancel the
   // routing completion and the streamed one, not just whichever is in flight.
   const upstream = new AbortController();
@@ -229,6 +230,28 @@ function streamingResponse(req, { question, target, headers = {}, record = null 
           open = false;
         }
       };
+
+      // THE INVESTIGATION FRAME, SENT WHENEVER IT LANDS AND NEVER WAITED FOR.
+      //
+      // Attached with `.then` rather than awaited because the answer must not be held
+      // back by one millisecond for a job that is not part of it — this is the whole
+      // "never block the request on the job" rule, expressed in the one place it could
+      // be broken. A frame that arrives after the stream has closed is dropped by
+      // `send`, which is the right outcome: the job is running either way, and the
+      // JSON reply and the report page both still carry it.
+      //
+      // An older client bundle sitting in somebody's cache ignores a frame type it does
+      // not know, so this is safe to send to every version.
+      if (research) {
+        research
+          .then((block) => {
+            const payload = publicResearchBlock(block);
+            if (payload) send({ type: "research", block: payload });
+          })
+          .catch(() => {
+            /* researchForAsk answers its own failures; nothing to report here */
+          });
+      }
 
       // THE BUDGET IS OPENED AROUND THE GENERATOR, NOT AROUND THE CALL THAT MAKES
       // IT. A generator body runs on whoever calls `next()`, so wrapping the
@@ -411,6 +434,36 @@ export async function POST(req) {
   // response so it costs the answer nothing. Failures inside are swallowed.
   after(() => recordSearch({ question, target, ip: clientIp(req), address: access.address }));
 
+  /**
+   * A QUESTION THAT WANTS AN INVESTIGATION GETS ONE STARTED, IN PARALLEL WITH THE ANSWER.
+   *
+   * "Is this a larp", "check this project out properly", "full diligence on X" are asking
+   * for something a 24-second budget structurally cannot produce: one page, one pass, no
+   * way to decide what to look at next. Answering them inside this request answers a
+   * smaller question without saying so. So the chain half is answered here, now, exactly
+   * as it always was, and the web half is submitted to the research service as a job the
+   * reader collects in minutes.
+   *
+   * STARTED HERE AND AWAITED WITH THE ANSWER, never before it: `researchForAsk` is one
+   * bounded 202 and returns a named block for every failure, including "this deployment
+   * has no research service", so the answer's latency is unchanged and no branch of it
+   * can fail because of this. It spends a DIFFERENT allowance from the question — see
+   * lib/research-access.js — and spends nothing at all when the question was not asking
+   * for one.
+   */
+  const research = researchForAsk({
+    question,
+    target,
+    sessionCookie: req.cookies.get(SESSION_COOKIE)?.value ?? null,
+    ip: clientIp(req),
+  }).catch((e) => {
+    // It is written never to throw. If it does, the answer is unaffected and the
+    // investigation simply did not start — which is reported as nothing rather than as a
+    // failure of the subject.
+    console.error(`[research] ask-path submission failed: ${String(e?.stack ?? e)}`);
+    return null;
+  });
+
   // Streaming is opt-in and changes nothing above it: every guard has already
   // run, in the same order, with the same limits. A request that does not ask for
   // a stream gets exactly the JSON reply it always got.
@@ -429,7 +482,7 @@ export async function POST(req) {
         }),
       );
     }
-    return streamingResponse(req, { question, target, headers: gateHeaders, record });
+    return streamingResponse(req, { question, target, headers: gateHeaders, record, research });
   }
 
   // runAsk returns its failures rather than throwing them, so there is nothing
@@ -439,10 +492,19 @@ export async function POST(req) {
   // got a bodyless 504" into "here is the answer, with the fields nobody had time
   // to read named as unavailable". This is also the path the client RETRIES on when
   // a streamed attempt dies, so it is the one that must not be able to overrun.
-  const { status, body: payload } = await runWithBudget(
-    () => runAsk({ question, target, chat: completeChat }),
-    { totalMs: ASK_BUDGET_MS },
-  );
+  //
+  // The investigation block is awaited ALONGSIDE the answer rather than after it, so the
+  // two clocks overlap and the reply is no later than it would have been without it.
+  const [{ status, body: payload }, researchBlock] = await Promise.all([
+    runWithBudget(() => runAsk({ question, target, chat: completeChat }), { totalMs: ASK_BUDGET_MS }),
+    research,
+  ]);
+
+  // Attached to whatever the answer turned out to be, including a failure: "your question
+  // could not be answered, and a deep investigation of the URL in it is running" is a
+  // true and useful pair of sentences.
+  const researchPayload = publicResearchBlock(researchBlock);
+  if (researchPayload && payload && typeof payload === "object") payload.research = researchPayload;
 
   // After the response, never before it: a signed-in user's history is worth one
   // store write, and it is not worth a millisecond of the answer's latency.

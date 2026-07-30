@@ -1,5 +1,11 @@
-# The Docker build context is the repository root (see services/render/Dockerfile), so
-# this file decides what a hostile-browser container is allowed to have a copy of.
+# The Docker build context is the repository root — for BOTH service Dockerfiles
+# (services/render and services/research) — so this file decides what either container is
+# allowed to have a copy of.
+#
+# THE TWO IMAGES NEED DIFFERENT THINGS AND THIS FILE IS SHARED, so the rule it follows is:
+# exclude what NEITHER needs, and let each Dockerfile's own COPY lines decide the rest. A
+# path left in the context but never COPYed costs a few bytes of upload and reaches no
+# image. A path excluded here that one Dockerfile COPYs is a hard build failure.
 #
 # THE FIRST THREE LINES ARE THE SECURITY ONES. A .env that reached the image would put
 # chain keys, the LLM key and the Redis credentials inside the process that runs the
@@ -10,9 +16,14 @@
 .git
 .github
 
-# Nothing the render service needs, and all of it large.
+# Nothing either service needs, and all of it large. Each `node_modules` is listed
+# explicitly because a .dockerignore pattern without a slash matches only at the context
+# root — a locally-installed services/research/node_modules would otherwise be copied over
+# the one the image just built, which is how a Linux image ends up with a Windows binary in
+# it.
 node_modules
 services/render/node_modules
+services/research/node_modules
 .next
 out
 dist
@@ -22,10 +33,15 @@ coverage
 *.db-shm
 *.db-wal
 
-# The Next.js app. It is deployed on Vercel and has no business in this image.
+# The Next.js app. It is deployed on Vercel and has no business in either image.
+#
+# `config` IS NOT ON THIS LIST, and that is not an oversight. lib/stock-tokens.js and
+# lib/market-evidence.js import config/stock-tokens.json at module load, so the research
+# service's chain leg does not even PARSE without it — see services/research/Dockerfile,
+# which COPYs it. Excluding it here would fail that build outright. It never reaches the
+# render image, because services/render/Dockerfile does not copy it.
 app
 components
-config
 schema
 scripts
 test

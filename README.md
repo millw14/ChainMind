@@ -86,25 +86,45 @@ worst thing a tool like this can produce:
 ## Layout
 
 ```
-app/            App Router pages + /api/ask, /api/health
+app/            App Router pages + /api/ask, /api/health, /api/research
 components/     landing, ask overlay, stocks, icons, site chrome
 lib/            chain access, evidence gathering, tools, the answer loop
 config/         stock-tokens.json — issuer-verified equity registry
 test/           node:test suites (all offline)
 services/       deployables that are NOT part of the Next.js app
   render/       headless-browser render service (separate Railway deployment)
+  research/     deep-research job service (separate Railway deployment)
 ```
 
-The Next.js app deploys to **Vercel**. `services/render/` is a **separate Railway
-deployment** with its own `package.json` and Dockerfile — `railway.json` at the repository
-root points Railway at it, and `.vercelignore` keeps it out of the Vercel build.
+The Next.js app deploys to **Vercel**. Each directory under `services/` is a **separate
+Railway deployment** with its own `package.json`, Dockerfile and `railway.json` — both build
+from the repository root so they import the app's *real* modules rather than copies that
+would drift, and `.vercelignore` keeps them out of the Vercel build.
 
-It exists because an HTTP GET cannot read a client-rendered site. Measured through this
-repo's own `lib/safe-fetch.js`: `https://eska.fun/` returns 5,782 bytes of HTML containing
-**four characters** of visible text. Rendered in a browser, the same URL yields 76,266
-bytes and 343 characters, in 2.2 s. See [`services/render/README.md`](services/render/README.md)
-for the deployment steps, the security model, and the TLS chain finding behind
-`www.ponsfamily.com`.
+**`services/render/`** exists because an HTTP GET cannot read a client-rendered site.
+Measured through this repo's own `lib/safe-fetch.js`: `https://eska.fun/` returns 5,782
+bytes of HTML containing **four characters** of visible text. Rendered in a browser, the
+same URL yields 76,266 bytes and 343 characters, in 2.2 s. See
+[`services/render/README.md`](services/render/README.md) for the deployment steps, the
+security model, and the TLS chain finding behind `www.ponsfamily.com`.
+
+**`services/research/`** exists because a diligence report is a **loop**, not an answer.
+`lib/site-analysis.js` reads one page inside a 24-second budget and cannot decide what to
+look at next; the research service submits a job, works it for minutes, and delivers a
+structured sourced report. Measured against `https://htmx.org/`: page → repository (found in
+an `href`) → file tree → commit count → **repository-wide search** → source file →
+conclusion, in 7 steps and 56 s. See
+[`services/research/README.md`](services/research/README.md) for the tool set, the boundary
+that stops a page steering its own investigation, the caps, and the Railway steps.
+
+The app reaches it through `lib/research-client.js`, gates it in `lib/research-access.js`
+(sign-in required, its own small daily allowance, capped for holders too — a job is minutes
+of somebody else's bandwidth), and renders the finished report at `/research/<id>`, readable
+only by the wallet that started it. A question that clearly asks for diligence starts a job
+from the ask path and says so, without the answer waiting on it. **With
+`RESEARCH_SERVICE_URL` and `RESEARCH_SHARED_SECRET` unset the app behaves exactly as it did
+before and says so in words** — no button that fails when pressed, no job that silently
+never runs.
 
 ## Provenance
 

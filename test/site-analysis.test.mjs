@@ -37,6 +37,7 @@ import {
   compareResponses,
   contradictionsFrom,
   domainRegistration,
+  extractLinks,
   extractMetadata,
   findDirectives,
   fingerprintFrom,
@@ -750,4 +751,57 @@ test("what was NOT checked is listed as loudly as what was", async () => {
   assert.match(list, /quoted, never verified/i);
   assert.match(list, /NOT FOUND BY SEARCHING FOR THE TOKEN'S NAME/i);
   assert.match(list, /source code/i);
+});
+
+/* ---------------------- outbound links, read from the markup ---------------------- */
+//
+// THE MEASUREMENT THAT MADE THESE NECESSARY. A site that links its source repository writes
+// `<a href="https://github.com/owner/repo">GitHub</a>`: the anchor TEXT is the word "GitHub"
+// and the repository is in the ATTRIBUTE, which stripToText removes before anything reads
+// the page as prose. Live against https://htmx.org/, the stripped text contains no
+// github.com URL anywhere — so a reader working from the prose concludes the page names no
+// repository, and anything it then goes and looks at is a repository nobody named. Exactly
+// the reason extractAddressMentions reads the raw HTML rather than the text.
+
+test("a link in an href is found even when the anchor text never says the URL", () => {
+  const html = '<p>Open source.</p><a href="https://github.com/acme/app">GitHub</a>';
+  assert.equal(stripToText(html).text.includes("github.com"), false, "the premise: stripping removes the href");
+  const links = extractLinks(html, "https://acme.example/");
+  assert.deepEqual(links.map((l) => l.url), ["https://github.com/acme/app"]);
+  assert.equal(links[0].text, "GitHub", "the anchor's own words are how a page says WHAT it is linking");
+  assert.equal(links[0].firstParty, false);
+});
+
+test("first-party links are labelled, and www is not a different site", () => {
+  const html = '<a href="https://www.acme.example/about">About</a><a href="https://docs.acme.example/x">Docs</a><a href="https://elsewhere.test/y">Y</a>';
+  const links = extractLinks(html, "https://acme.example/");
+  assert.deepEqual(links.map((l) => l.firstParty), [true, true, false]);
+});
+
+test("fragments are dropped, duplicates collapse, and non-http schemes never appear", () => {
+  const html =
+    '<a href="https://acme.example/docs#install">a</a><a href="https://acme.example/docs#usage">b</a>' +
+    '<a href="mailto:x@acme.example">c</a><a href="/relative">d</a><a href="javascript:alert(1)">e</a>';
+  const links = extractLinks(html, "https://other.test/");
+  assert.deepEqual(links.map((l) => l.url), ["https://acme.example/docs"], "an anchor within one document is not a different page");
+});
+
+test("the link list is capped, and a page with no page URL still yields links", () => {
+  const many = Array.from({ length: 80 }, (_, i) => `<a href="https://h${i}.example/">l${i}</a>`).join("");
+  assert.equal(extractLinks(many, null).length, 40);
+  assert.deepEqual(extractLinks("", "https://x.test/"), []);
+  assert.deepEqual(extractLinks(null, null), []);
+});
+
+test("links are OPT-IN on analyzeSite: a caller that cannot follow one is not charged for them", async () => {
+  const url = "https://acme.example.org/";
+  const html = '<html><body><h1>Acme</h1><p>A project with a page of prose on it, long enough to clear the shell test comfortably.</p><a href="https://github.com/acme/app">GitHub</a></body></html>';
+  const opts = { fetcher: fetcherFrom({ [url]: { body: html } }), robots: ALLOW_ALL, checkDomain: false };
+
+  const without = await analyzeSite(url, opts);
+  assert.equal(without.status, "read");
+  assert.equal(Object.hasOwn(without.content, "links"), false, "the ask route shares an evidence budget and has no use for a list it cannot follow");
+
+  const withLinks = await analyzeSite(url, { ...opts, collectLinks: true });
+  assert.deepEqual(withLinks.content.links.map((l) => l.url), ["https://github.com/acme/app"]);
 });

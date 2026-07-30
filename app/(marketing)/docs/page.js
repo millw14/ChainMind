@@ -21,6 +21,7 @@ const V4_POOL_MANAGER = "0x8366a39cc670b4001a1121b8f6a443a643e40951";
 /** Anchors, in reading order. Drives the index and nothing else. */
 const SECTIONS = [
   { id: "ask", label: "What you can ask" },
+  { id: "research", label: "Deep investigations" },
   { id: "reading", label: "How to read an answer" },
   { id: "limits", label: "What it will not do" },
   { id: "accounts", label: "Accounts & limits" },
@@ -155,6 +156,45 @@ const GROUPS = [
     tools: ["project_profile", "ask_clarification"],
     bound:
       "It produces observations, never a verdict and never intent. A launchpad deployment is an ordinary, cheap way to launch a token and is not evidence of dishonesty; being new, small, thinly traded or concentrated is not either. Links found in the launch calldata are self-declared by whoever launched the token and are not fetched or verified.",
+  },
+];
+
+/**
+ * The deep-research half. Written as rule + consequence, because every one of these is
+ * a limit somebody will otherwise discover by being surprised by it.
+ */
+const RESEARCH_RULES = [
+  {
+    title: "It is a job, not an answer",
+    body: "A question is answered inside 24 seconds. An investigation runs for minutes: it reads a page, then decides what to look at next from what it found — a repository named in the markup, an API endpoint, the chain record — and keeps going until it has something to say or hits a cap. You get an id and a link; the report appears there when it is done. Nothing waits on it, and the chain half of your answer arrives immediately either way.",
+  },
+  {
+    title: "Every source says how it was reached",
+    body: "A URL you pasted, a link declared on chain in the launch transaction, a link found in the project's own marketing and a path the model guessed at are four different strengths of evidence, and the report prints which on every line. A finding resting only on the subject's own pages is labelled as the subject's account of itself, whatever its figures are.",
+  },
+  {
+    title: "A page cannot steer the investigation",
+    body: "Content decides what happens next, so a page that says “full audit at …” is proposing a target. Every discovered URL is re-screened exactly as if you had pasted it, and one named in the same text as instructions addressed at an automated reviewer is refused outright — with the attempt and the refusal both printed. Imperative text found in a page is a finding, never an instruction.",
+  },
+  {
+    title: "It will not find a project by name",
+    body: "The subject is a URL or a 0x address and nothing else. There is no search engine and no “find this project's website”, permanently: reporting on a business that merely shares a name with a token would be reporting on the wrong people.",
+  },
+  {
+    title: "A run that stopped at a cap says so",
+    body: "Steps, tool calls, bytes fetched, wall clock and model tokens all have ceilings, all are printed, and any figure that hit one is shown as a bound rather than a measurement. A repository search that did not read every file cannot be used to state an absence, and a commit count that ran out of pages reads “at least N”.",
+  },
+  {
+    title: "Findings with sources, never a verdict",
+    body: "The report will not print scam, fraud, rug or LARP as a conclusion — the words are redacted from anything the model wrote, whatever the prompt said, and the redaction is listed so the edit is visible. Anonymous founders, a young domain, a small treasury and a launchpad deployment are facts a reader weighs. None of them is evidence of dishonesty and none is framed as such.",
+  },
+  {
+    title: "Politeness is not optional",
+    body: "robots.txt is honoured for pages and for endpoint probes; a disallowed path is not fetched and the report says that was the operator's stated wish rather than a finding. Requests are rate-limited per host, reads are cached so one question costs a third party once, and the crawler identifies itself honestly so it can be blocked if it is not wanted.",
+  },
+  {
+    title: "Signing in, and a small daily number",
+    body: "A job is attached to a wallet: only the wallet that started one can read its report. Non-holders get one a day by default and verified holders five — capped rather than unlimited, because the cost of a runaway lands on somebody else's server and a token balance is not their consent. Where no research service is configured, the app says so plainly instead of offering a button that cannot work.",
   },
 ];
 
@@ -328,6 +368,16 @@ const ENV_ROWS = [
     "The browser render service. With neither set, the client reports “not configured” and says in words that the absence is a fact about this deployment and not about any site.",
   ],
   [
+    "RESEARCH_SERVICE_URL + RESEARCH_SHARED_SECRET",
+    "Optional, both or neither",
+    "The deep-research service. With neither set, deep investigations are not offered at all: /api/research answers configured false, the ask path says this deployment cannot run one, and no button appears that would fail when pressed. The secret is a different value from the render service's.",
+  ],
+  [
+    "RESEARCH_DAILY_JOBS / RESEARCH_HOLDER_DAILY_JOBS",
+    "Optional",
+    "Deep investigations per UTC day for a signed-in caller and for a verified holder. Defaults 1 and 5. Metered separately from questions, and capped for holders too — a job is minutes of somebody else's bandwidth, and a token balance is not their consent to be crawled. 0 switches off one tier without switching off the other.",
+  ],
+  [
     "TRUSTED_PROXY_HOPS / TRUSTED_IP_HEADER",
     "Optional",
     "How the caller's IP is derived. X-Forwarded-For is a list each proxy appends to, so the entry that means anything is counted from the right. Default 1 hop, which is the truth on Vercel, Railway, Fly and Render.",
@@ -341,6 +391,8 @@ const ENDPOINT_ROWS = [
   ["POST /api/auth/nonce · /verify", "Issue a single-use challenge; redeem a signature for a session."],
   ["GET /api/auth/session · POST /api/auth/logout", "Read the current session; end it."],
   ["GET · POST · DELETE /api/history", "A signed-in wallet's saved questions. Delete means delete."],
+  ["GET · POST /api/research", "Whether deep investigations are available here and what you have left; start one."],
+  ["GET /api/research/[id]", "Poll one investigation and collect its report. Readable only by the wallet that started it."],
 ];
 
 /* -------------------------------------------------------------------------- */
@@ -525,6 +577,44 @@ export default function DocsPage() {
                     </tbody>
                   </table>
                 </Scroller>
+              </div>
+            </Section>
+
+            {/* ---------------------------- RESEARCH --------------------------- */}
+            <Section
+              id="research"
+              eyebrow="Diligence"
+              title="When a question wants an investigation"
+              lede="“Check this project out properly”, “full diligence on X”, “is this a larp — https://…” are asking for something a 24-second budget cannot produce: one page, one pass, and no way to decide what to look at next. Those questions can start a bounded investigation instead — the chain half answered now, the web half delivered as a sourced report minutes later."
+            >
+              <ol className="mt-10 space-y-px border border-cm-border bg-cm-border">
+                {RESEARCH_RULES.map((r, i) => (
+                  <li key={r.title} className="bg-cm-elevated/60 p-5 sm:p-6">
+                    <div className="flex gap-4">
+                      <span
+                        aria-hidden="true"
+                        className="font-[family-name:var(--font-mono)] text-[11px] tabular-nums text-cm-accent-dim"
+                      >
+                        {String(i + 1).padStart(2, "0")}
+                      </span>
+                      <div className="min-w-0">
+                        <h3 className="text-base font-semibold text-cm-text">{r.title}</h3>
+                        <p className="mt-2 text-sm leading-relaxed text-cm-muted">{r.body}</p>
+                      </div>
+                    </div>
+                  </li>
+                ))}
+              </ol>
+
+              <div className="mt-8 border border-cm-border bg-cm-card p-5 sm:p-6">
+                <h3 className="text-sm font-semibold text-cm-text">What the report is made of</h3>
+                <p className="mt-2 text-sm leading-relaxed text-cm-muted">
+                  Findings grouped and each carrying its evidence, every source with the URL it came from and how that
+                  URL became a target; everything the run actually read; everything it refused to follow and which rule
+                  each one broke; what it did not check, stated as loudly as what it did; and what it cost, in model
+                  calls, tokens and bytes of somebody else&apos;s bandwidth. Anything quoted from the subject is marked
+                  as the subject&apos;s own words rather than set in the report&apos;s voice.
+                </p>
               </div>
             </Section>
 
