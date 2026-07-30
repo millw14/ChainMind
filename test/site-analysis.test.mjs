@@ -436,6 +436,34 @@ test("hidden-element stripping that truncates says so, and stops claiming the te
   assert.doesNotMatch(clean.note, /TRUNCATED/i);
 });
 
+test("the reading never calls an uncorroborated pairing precise", () => {
+  // This shipped as a self-contradicting sentence: "treat the pairing of this site
+  // with this contract as unverified — a precise pairing, not a guess." The phrase
+  // was appended unconditionally, so the one rung that most needed the caveat
+  // undercut it in the same breath. It is true of the chain-derived rungs, where
+  // the launcher wrote the URL into the launch transaction, and false of a URL that
+  // merely arrived with the request.
+  const supplied = webSourceLadder({
+    supplied: "https://planted.example.org/",
+    declaredLinks: { websiteCandidates: [], found: true },
+    deployer: "0xa5aab3f0c6eeadf30ef1d3eb997108e976351feb",
+    address: "0x0eb9960654d3661d551a4536d7d425184ec81756",
+    pages: launchpadPages(),
+  });
+  assert.match(supplied.reading, /unverified/i);
+  assert.doesNotMatch(supplied.reading, /precise pairing/i, "an uncorroborated URL was called a precise pairing");
+
+  // On the chain-derived rung the claim IS earned, so it must still be made.
+  const declared = webSourceLadder({
+    declaredLinks: { websiteCandidates: ["https://declared.example.org/"], found: true },
+    deployer: "0xa5aab3f0c6eeadf30ef1d3eb997108e976351feb",
+    address: "0x0eb9960654d3661d551a4536d7d425184ec81756",
+    pages: launchpadPages(),
+  });
+  assert.match(declared.reading, /precise pairing from chain data/i);
+  assert.doesNotMatch(declared.reading, /unverified/i);
+});
+
 test("a supplied URL is never described as coming from the user", () => {
   // The model fills tool arguments, so a page under investigation can plant a URL and
   // have it passed back. Calling that "user_supplied" would turn a model slip into a
