@@ -134,9 +134,27 @@ test("a URL this app would never fetch is refused before the service is called",
 test("a misconfigured RENDER_SERVICE_URL is refused rather than fetched", async () => {
   // Our own deployment variable is still an input. A typo pointing this at the metadata
   // endpoint would turn the app's configuration into an SSRF, and the check is free.
-  for (const bad of ["http://169.254.169.254", "not a url", "http://localhost:8080"]) {
+  //
+  // But the check is NOT validateUrl, which is the policy for an investigated TARGET.
+  // Measured, that policy refuses http://127.0.0.1:8391 and
+  // http://render.railway.internal:8080 on code `port` — the normal shape of an internal
+  // service, and of Railway's private networking. Applying it here forced the service
+  // onto the public internet or blocked the deployment, and reported either as
+  // "not_configured", telling an operator to set a variable they had already set.
+  for (const bad of ["http://169.254.169.254", "not a url", "ftp://render.internal"]) {
     const r = await render("https://eska.fun/", { env: { ...ENV, RENDER_SERVICE_URL: bad } });
-    assert.equal(r.status, "not_configured", `${bad} was accepted as a service URL`);
+    assert.equal(r.status, "misconfigured", `${bad} was accepted as a service URL`);
+  }
+
+  // A private host on a non-default port is where an internal service actually lives,
+  // so it must be accepted — that is the whole point of the separate policy.
+  for (const good of ["http://localhost:8080", "http://render.railway.internal:8080", "http://127.0.0.1:8391"]) {
+    const r = await render("https://eska.fun/", {
+      env: { ...ENV, RENDER_SERVICE_URL: good },
+      fetcher: serviceReturning(renderedEnvelope()),
+    });
+    assert.notEqual(r.status, "misconfigured", `${good} was refused as a service URL`);
+    assert.notEqual(r.status, "not_configured", `${good} was reported as absent`);
   }
 });
 
@@ -288,4 +306,43 @@ test("a service outage is NEVER cached — one bad minute must not become fiftee
   await renderPage(url, { env: ENV, fetcher: outage });
   await renderPage(url, { env: ENV, fetcher: outage });
   assert.equal(calls, 2, "a capacity refusal was cached, which would turn an outage into an absence");
+});
+
+test("a rejected RENDER_SERVICE_URL reads as misconfigured, never as not configured", async () => {
+  // These were one branch, and it told an operator to set the variable they HAD set.
+  // The page-level consequence is the same — no render — but the fix is the opposite.
+  const notSet = await renderPage("https://example.org/", { env: {} });
+  assert.equal(notSet.status, "not_configured");
+  assert.match(notSet.reading, /RENDER_SERVICE_URL and RENDER_SHARED_SECRET not set/);
+
+  const bad = await renderPage("https://example.org/", {
+    env: { RENDER_SERVICE_URL: "ftp://render.internal", RENDER_SHARED_SECRET: "x".repeat(40) },
+  });
+  assert.equal(bad.status, "misconfigured");
+  assert.match(bad.reading, /must be http or https/);
+
+  const metadata = await renderPage("https://example.org/", {
+    env: { RENDER_SERVICE_URL: "http://169.254.169.254", RENDER_SHARED_SECRET: "x".repeat(40) },
+  });
+  assert.equal(metadata.status, "misconfigured");
+  assert.match(metadata.reading, /cloud metadata endpoint/);
+});
+
+test("an internal service URL on a non-default port is ACCEPTED", async () => {
+  // Measured: validateUrl (the policy for an investigated TARGET) refuses
+  // http://render.railway.internal:8080 on code `port`, which is the normal shape of
+  // Railway private networking. Applying the target policy to our own service would
+  // force this traffic onto the public internet or block the deployment outright.
+  let asked = null;
+  const fetcher = async (u, init) => {
+    asked = String(u);
+    return { ok: true, status: 200, json: async () => ({ ok: true, status: "rendered", content: { text: "hi", textChars: 2 } }) };
+  };
+  const out = await renderPage("https://example.org/", {
+    fetcher,
+    cache: false,
+    env: { RENDER_SERVICE_URL: "http://render.railway.internal:8080", RENDER_SHARED_SECRET: "x".repeat(40) },
+  });
+  assert.notEqual(out.status, "misconfigured", out.reading);
+  assert.match(String(asked), /^http:\/\/render\.railway\.internal:8080\//);
 });
