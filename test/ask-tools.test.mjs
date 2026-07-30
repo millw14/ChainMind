@@ -121,11 +121,15 @@ test("TOOL_NAMES matches the catalogue exactly and is frozen", () => {
   assert.ok(Object.isFrozen(TOOL_SCHEMAS));
 });
 
-test("the catalogue covers all twenty-two documented tools", () => {
+test("the catalogue covers all twenty-six documented tools", () => {
   // Seven that answer a whole question, seven that go deeper into one token, two
   // that span TOKENS (holder_overlap, co_holdings — the relation the app was
   // missing when it answered a two-token question about one token), five on the
-  // wallet and market side, and one that looks nothing up at all.
+  // wallet and market side, one that assembles the whole chain-side diligence
+  // picture for a project (project_profile), THREE that read SWAPS rather than
+  // transfers (recent_trades, real_volume, swap_detail — the first lookups here
+  // that can say somebody BOUGHT or SOLD rather than that something moved), and
+  // one that looks nothing up at all.
   assert.deepEqual([...TOOL_NAMES].sort(), [
     "ask_clarification",
     "bundle_check",
@@ -139,9 +143,13 @@ test("the catalogue covers all twenty-two documented tools", () => {
     "lookup_transaction",
     "lookup_wallet",
     "market_overview",
+    "project_profile",
     "rank_stocks",
+    "real_volume",
+    "recent_trades",
     "safety_check",
     "search_tokens",
+    "swap_detail",
     "token_holders",
     "token_transfers",
     "top_movers",
