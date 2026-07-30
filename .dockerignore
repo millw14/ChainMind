@@ -1,0 +1,38 @@
+# The Docker build context is the repository root (see services/render/Dockerfile), so
+# this file decides what a hostile-browser container is allowed to have a copy of.
+#
+# THE FIRST THREE LINES ARE THE SECURITY ONES. A .env that reached the image would put
+# chain keys, the LLM key and the Redis credentials inside the process that runs the
+# investigated party's JavaScript — the exact thing services/render is designed to hold
+# none of. .git would carry every secret ever committed and then removed.
+.env
+.env.*
+.git
+.github
+
+# Nothing the render service needs, and all of it large.
+node_modules
+services/render/node_modules
+.next
+out
+dist
+data
+coverage
+*.db
+*.db-shm
+*.db-wal
+
+# The Next.js app. It is deployed on Vercel and has no business in this image.
+app
+components
+config
+schema
+scripts
+test
+public
+next.config.mjs
+postcss.config.mjs
+tailwind.config.mjs
+jsconfig.json
+instrumentation.js
+vercel.json

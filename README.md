@@ -91,7 +91,20 @@ components/     landing, ask overlay, stocks, icons, site chrome
 lib/            chain access, evidence gathering, tools, the answer loop
 config/         stock-tokens.json — issuer-verified equity registry
 test/           node:test suites (all offline)
+services/       deployables that are NOT part of the Next.js app
+  render/       headless-browser render service (separate Railway deployment)
 ```
+
+The Next.js app deploys to **Vercel**. `services/render/` is a **separate Railway
+deployment** with its own `package.json` and Dockerfile — `railway.json` at the repository
+root points Railway at it, and `.vercelignore` keeps it out of the Vercel build.
+
+It exists because an HTTP GET cannot read a client-rendered site. Measured through this
+repo's own `lib/safe-fetch.js`: `https://eska.fun/` returns 5,782 bytes of HTML containing
+**four characters** of visible text. Rendered in a browser, the same URL yields 76,266
+bytes and 343 characters, in 2.2 s. See [`services/render/README.md`](services/render/README.md)
+for the deployment steps, the security model, and the TLS chain finding behind
+`www.ponsfamily.com`.
 
 ## Provenance
 

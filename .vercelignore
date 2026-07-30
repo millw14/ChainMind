@@ -9,6 +9,10 @@ data
 .env.*
 !.env.example
 config/watchlist.json
+# The render service is a SEPARATE Railway deployment (see railway.json). Vercel has no
+# use for it, cannot run a headless browser inside a serverless function anyway, and
+# uploading it would put a 400MB Playwright dependency tree in the app's build context.
+services
 *.db
 *.db-shm
 *.db-wal

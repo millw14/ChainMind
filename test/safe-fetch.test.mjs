@@ -35,6 +35,7 @@ import {
   safeFetch,
   userAgent,
   validateUrl,
+  describeSocketError,
 } from "../lib/safe-fetch.js";
 
 /* ========================= 1. address classification ========================= */
@@ -380,5 +381,81 @@ test("a refusal always carries a sentence, never a bare boolean", async () => {
     assert.equal(r.ok, false);
     assert.equal(typeof r.refusal, "string");
     assert.ok(r.refusal.length > 40, `refusal too terse: ${r.refusal}`);
+  }
+});
+
+/* ================ 6. why a socket failed, and whether reading it a
+                       different way would help ================ */
+
+// MEASURED, AND THAT IS WHY THIS SECTION EXISTS. https://www.ponsfamily.com/ refuses this
+// fetcher with UNABLE_TO_GET_ISSUER_CERT_LOCALLY while loading fine in a browser, and
+// https://incomplete-chain.badssl.com/ does it every time. The site is not broken and the
+// fetcher is not broken: the server sends an INCOMPLETE CHAIN, browsers download the
+// missing certificate themselves (AIA chasing), and Node verifies only what the peer
+// sent. Confirmed against the render service, which drives Chromium: it renders
+// incomplete-chain.badssl.com and still refuses expired, wrong-host and untrusted-root.
+//
+// So the ONE thing this classifier has to get right is the difference between a failure a
+// browser-based read would fix and a failure that is a real fact about the site.
+
+test("an incomplete certificate chain is named as such, and flagged as fixable by a browser read", () => {
+  for (const code of ["UNABLE_TO_GET_ISSUER_CERT_LOCALLY", "UNABLE_TO_VERIFY_LEAF_SIGNATURE", "UNABLE_TO_GET_ISSUER_CERT"]) {
+    const r = describeSocketError("www.ponsfamily.com", { code });
+    assert.equal(r.code, "tls", `${code} was not classified as TLS`);
+    assert.equal(r.tlsCode, code);
+    assert.equal(r.chainFixable, true, `${code} should be fixable by a browser read`);
+    assert.match(r.refusal, /incomplete/i);
+    assert.match(r.refusal, /www\.ponsfamily\.com/);
+  }
+  assert.match(describeSocketError("x.com", { code: "UNABLE_TO_GET_ISSUER_CERT_LOCALLY" }).refusal, /AIA chasing/);
+});
+
+test("a certificate problem that no amount of re-reading fixes is NOT flagged as fixable", () => {
+  // The distinction that matters: an expired certificate is a real fact about how a site
+  // is operated, and reporting it as "we could not read the page" would lose a finding.
+  const cases = [
+    ["CERT_HAS_EXPIRED", /EXPIRED/],
+    ["CERT_NOT_YET_VALID", /not valid yet/],
+    ["ERR_TLS_CERT_ALTNAME_INVALID", /does not cover this host name/],
+    ["DEPTH_ZERO_SELF_SIGNED_CERT", /SELF-SIGNED/],
+    ["SELF_SIGNED_CERT_IN_CHAIN", /no public trust store/],
+    ["CERT_REVOKED", /REVOKED/],
+  ];
+  for (const [code, why] of cases) {
+    const r = describeSocketError("expired.badssl.com", { code });
+    assert.equal(r.code, "tls");
+    assert.equal(r.chainFixable, false, `${code} must not be advertised as fixable`);
+    assert.match(r.refusal, why);
+    assert.equal(/A browser-based read of this URL would very likely succeed/.test(r.refusal), false, `${code} should not promise a browser would fix it`);
+  }
+});
+
+test("every TLS refusal says that verification was not disabled", () => {
+  // The one thing that must never be done about a certificate failure. A page read over a
+  // connection that did not verify could not be attributed to the site it names.
+  for (const code of Object.keys({ UNABLE_TO_GET_ISSUER_CERT_LOCALLY: 1, CERT_HAS_EXPIRED: 1, SELF_SIGNED_CERT_IN_CHAIN: 1 })) {
+    assert.match(describeSocketError("x.com", { code }).refusal, /NOT DISABLED AND WILL NOT BE/);
+  }
+});
+
+test("DNS, timeout and everything else keep their own distinct codes and sentences", () => {
+  assert.equal(describeSocketError("nope.example", { code: "ENOTFOUND" }).code, "dns");
+  assert.match(describeSocketError("nope.example", { code: "ENOTFOUND" }).refusal, /does not resolve/);
+  assert.equal(describeSocketError("slow.example", { code: "ETIMEDOUT" }).code, "network");
+  assert.match(describeSocketError("slow.example", { message: "timeout" }).refusal, /did not answer in time/);
+  const other = describeSocketError("x.example", { code: "ECONNRESET" });
+  assert.equal(other.code, "network");
+  assert.match(other.refusal, /ECONNRESET/);
+  // A TLS failure must never fall into the generic bucket, and a generic failure must
+  // never claim to be a certificate problem.
+  assert.equal(other.tlsCode, undefined);
+  assert.equal(other.chainFixable, undefined);
+});
+
+test("an unrecognised failure still produces a sentence rather than an empty string", () => {
+  for (const err of [{}, null, undefined, { message: "something odd" }]) {
+    const r = describeSocketError("x.example", err);
+    assert.equal(r.code, "network");
+    assert.ok(r.refusal.length > 40);
   }
 });

@@ -1,0 +1,19 @@
+{
+  "name": "chainmind-render",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Headless-browser render service for ChainMind — returns what a browser sees, behind an egress boundary that reuses the app's SSRF primitives",
+  "license": "MIT",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "start": "node server.js",
+    "test": "node --test test",
+    "probe": "node scripts/probe.mjs"
+  },
+  "dependencies": {
+    "playwright": "1.62.1"
+  }
+}
