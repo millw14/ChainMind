@@ -1,5 +1,6 @@
 import { Inter, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
+import VisitBeacon from "@/components/VisitBeacon";
 
 const inter = Inter({
   subsets: ["latin"],
@@ -46,7 +47,10 @@ export const viewport = {
 export default function RootLayout({ children }) {
   return (
     <html lang="en" className={`${inter.variable} ${jetbrains.variable}`}>
-      <body className="font-[family-name:var(--font-inter)]">{children}</body>
+      <body className="font-[family-name:var(--font-inter)]">
+        {children}
+        <VisitBeacon />
+      </body>
     </html>
   );
 }
