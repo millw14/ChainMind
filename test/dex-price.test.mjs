@@ -16,6 +16,7 @@ import assert from "node:assert/strict";
 import { resetIndexerCache } from "../lib/indexer-cache.js";
 import {
   DEFAULT_FACTORY,
+  DEFAULT_V4_POOL_MANAGER,
   DEFAULT_WETH,
   bigRatioToNumber,
   ethUsd,
@@ -24,6 +25,7 @@ import {
   priceFromSqrtX96,
   resetDexCache,
   resolvePool,
+  resolveV4PoolManager,
   supplyToNumber,
   tokenMarketData,
 } from "../lib/dex-price.js";
@@ -1468,4 +1470,113 @@ test("a failed read is never cached", async () => {
   const healthy = fakeClient(spec);
   const good = await priceFromPool(VLAD, { client: healthy, calls: fakeCalls() });
   assert.equal(good.ok, true, "a cached failure would have made this fail too");
+});
+
+/* --------------------------- the v4 PoolManager --------------------------- */
+
+/**
+ * A client shaped like the v4 singleton, or like something that is not it.
+ *
+ * Four selectors decide the verdict — extsload and protocolFeeController must answer,
+ * token0/token1 must not — so the fake takes exactly those four as switches. Nothing
+ * here is keyed on the ADDRESS, which is the point: the identity is behavioural, so a
+ * test that could only fail by naming the wrong address would not be testing it.
+ */
+function v4Client({ extsload = true, controller = true, token0 = false, token1 = false } = {}) {
+  const calls = [];
+  const answers = { extsload, protocolFeeController: controller, token0, token1 };
+  return {
+    calls,
+    async readContract({ address, functionName }) {
+      calls.push(`${String(address).toLowerCase()}:${functionName}`);
+      if (!answers[functionName]) throw new Error(`the contract function "${functionName}" reverted`);
+      if (functionName === "extsload") return `0x${"0".repeat(64)}`;
+      return "0x2bad8182c09f50c8318d769245bea52c32be46cd";
+    },
+  };
+}
+
+test("the v4 PoolManager is confirmed by BEHAVIOUR: extsload and protocolFeeController, no token0", async () => {
+  const client = v4Client();
+  const res = await resolveV4PoolManager({ client });
+  assert.equal(res.status, "confirmed");
+  assert.equal(res.address, DEFAULT_V4_POOL_MANAGER.toLowerCase());
+  assert.equal(res.reason, null);
+  // All four selectors were actually asked. A check that only probed the positives
+  // would confirm any v3 pool that happened to be at the configured address.
+  for (const fn of ["extsload", "protocolFeeController", "token0", "token1"]) {
+    assert.ok(client.calls.some((c) => c.endsWith(`:${fn}`)), `${fn} must be probed`);
+  }
+});
+
+test("something that answers token0() is REJECTED, however v4 the rest of it looks", async () => {
+  // A per-pool contract at the configured address. Labelling it the singleton would
+  // put every token's liquidity behind one address that only holds one pair.
+  const res = await resolveV4PoolManager({ client: v4Client({ token0: true, token1: true }) });
+  assert.equal(res.status, "rejected");
+  assert.equal(res.address, null);
+  assert.match(res.reason, /token0\(\)/);
+});
+
+test("a chain that answered nothing is UNREAD, and is never reported as rejected", async () => {
+  // An outage and a wrong address look identical from here, so neither is asserted.
+  const res = await resolveV4PoolManager({ client: v4Client({ extsload: false, controller: false }) });
+  assert.equal(res.status, "unread");
+  assert.equal(res.address, null);
+  assert.match(res.reason, /unknown/);
+});
+
+test("half an answer is UNREAD too — one selector is not an identification", async () => {
+  const res = await resolveV4PoolManager({ client: v4Client({ extsload: false }) });
+  assert.equal(res.status, "unread");
+  assert.equal(res.address, null);
+  assert.match(res.reason, /only one of/);
+});
+
+test("no client is a programming error, not an outage, and never a confirmation", async () => {
+  const res = await resolveV4PoolManager({});
+  assert.equal(res.status, "unread");
+  assert.equal(res.address, null);
+  assert.match(res.reason, /no RPC client was supplied/);
+});
+
+test("an unread verdict is NOT cached, so a brownout cannot harden into a fact", async () => {
+  const down = await resolveV4PoolManager({ client: v4Client({ extsload: false, controller: false }) });
+  assert.equal(down.status, "unread");
+  // Same module state, a chain that now answers.
+  const healthy = v4Client();
+  const up = await resolveV4PoolManager({ client: healthy });
+  assert.equal(up.status, "confirmed");
+  assert.ok(healthy.calls.length > 0, "the retry has to reach the chain");
+});
+
+test("a settled verdict is resolved ONCE for the process, not once per holder", async () => {
+  const client = v4Client();
+  await resolveV4PoolManager({ client });
+  const first = client.calls.length;
+  assert.ok(first > 0);
+  client.calls.length = 0;
+  // Sixty holders asking about the singleton must not be sixty round trips.
+  await Promise.all(Array.from({ length: 60 }, () => resolveV4PoolManager({ client })));
+  assert.equal(client.calls.length, 0, "a confirmed singleton must come from the fact cache");
+});
+
+test("the candidate address is env-overridable, and the override still has to earn it", async () => {
+  const other = "0x1111111111111111111111111111111111111111";
+  process.env.UNISWAP_V4_POOL_MANAGER = other;
+  try {
+    const confirmed = await resolveV4PoolManager({ client: v4Client() });
+    assert.equal(confirmed.candidate, other);
+    assert.equal(confirmed.address, other);
+
+    resetDexCache();
+    resetIndexerCache();
+    // Pointed at something that is not the manager, the override cannot mislabel it.
+    const rejected = await resolveV4PoolManager({ client: v4Client({ token0: true }) });
+    assert.equal(rejected.candidate, other);
+    assert.equal(rejected.status, "rejected");
+    assert.equal(rejected.address, null);
+  } finally {
+    delete process.env.UNISWAP_V4_POOL_MANAGER;
+  }
 });

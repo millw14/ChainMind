@@ -497,7 +497,9 @@ test("an indexer-quoted cap is still qualified by the depth the collision probe 
       symbol: "VLAD",
       verdict: "dominant",
       contenders: [],
-      measuredRows: [{ address: GREEN_BULL, quoteLiquidityUsd: 1.03 }],
+      // The VENUE travels on the row, because a band depth is the same integral on
+      // either Uniswap and the number cannot say which instrument produced it.
+      measuredRows: [{ address: GREEN_BULL, quoteLiquidityUsd: 1.03, depthSource: "uniswap_v3" }],
     },
   });
 

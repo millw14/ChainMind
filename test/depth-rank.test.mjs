@@ -176,30 +176,86 @@ test("a failed depth probe is NEVER cached, so the next lookup asks again", asyn
   assert.equal(first, null, "the failure is reported as unmeasured");
 
   const second = await probeQuoteDepth(GREEN_BULL, { client, marketData: market.read });
-  assert.deepEqual(second, { depthUsd: 69_583.29, lowerBound: false }, "a cached failure would have made this null too");
+  // The venue travels with the figure — see depth-rank probeQuoteDepth. A band depth is
+  // the same integral on either venue, so the number alone cannot say which produced it.
+  assert.deepEqual(
+    second,
+    { depthUsd: 69_583.29, lowerBound: false, source: "uniswap_v3" },
+    "a cached failure would have made this null too",
+  );
   assert.equal(market.calls, 2, "and it really did go back to the chain");
 });
 
 test("a successful depth read IS cached — the invariant is about failures only", async () => {
   const market = flakyMarket(0);
   const client = { readContract: async () => null };
-  const want = { depthUsd: 69_583.29, lowerBound: false };
+  const want = { depthUsd: 69_583.29, lowerBound: false, source: "uniswap_v3" };
   assert.deepEqual(await probeQuoteDepth(GREEN_BULL, { client, marketData: market.read }), want);
   assert.deepEqual(await probeQuoteDepth(GREEN_BULL, { client, marketData: market.read }), want);
   assert.equal(market.calls, 1, "the second call is served from the cache");
 });
 
-test("a chain-confirmed 'no pool' is a measurement of zero, not a failed read", async () => {
+test("a chain-confirmed 'no pool' on BOTH venues is a measurement of zero, not a failed read", async () => {
   // The one zero in this module that is a fact: the chain answered and this token
-  // has no Uniswap v3 market, so its tradeable depth really is nothing. Without
-  // this, a field where most squatters have no pool at all would be permanently
-  // "partial" and could never be reported as shallow.
+  // has no market, so its tradeable depth really is nothing. Without this, a field
+  // where most squatters have no pool at all would be permanently "partial" and
+  // could never be reported as shallow.
+  //
+  // THE FIXTURE NOW CARRIES A V4 VERDICT, and that is the invariant narrowing rather
+  // than the test being appeased. A v3 `no_pool` alone establishes only that nothing
+  // trades this token ON V3 — see isMeasuredAbsence for the measured case where that
+  // was false and a wrong zero was asserted.
+  const client = { readContract: async () => null };
+  const depth = await probeQuoteDepth(ROBINHOOD, {
+    client,
+    marketData: async () => ({ quoteLiquidityUsd: null, reason: "no_pool", v4: { status: "none" } }),
+  });
+  // Labelled "both_venues" and NOT "uniswap_v3": the zero was established by the pair of
+  // them, and crediting one instrument with it would overstate what that one showed.
+  assert.deepEqual(
+    depth,
+    { depthUsd: 0, lowerBound: false, source: "both_venues" },
+    "a figure, and an EXACT one",
+  );
+});
+
+test("a v3 'no pool' is NOT a zero when the token has Uniswap v4 pools", async () => {
+  // The ranking half of D3, measured: PIPECAT has no v3 pool and eight v4 pools, one
+  // carrying $45.90 of realisable depth. Recorded as a measured zero that is not a
+  // missing figure but a wrong one, asserted — and a zero cannot be beaten, so it
+  // would settle a ticker collision against the contract that actually has the market.
+  const client = { readContract: async () => null };
+  const depth = await probeQuoteDepth(ROBINHOOD, {
+    client,
+    marketData: async () => ({
+      quoteLiquidityUsd: null,
+      reason: "no_pool",
+      v4: { status: "found_unpriced", poolCount: 8 },
+    }),
+  });
+  assert.equal(depth, null, "unmeasured, which loses every comparison rather than winning one");
+});
+
+test("a v3 'no pool' is NOT a zero when the v4 read could not be made", async () => {
+  const client = { readContract: async () => null };
+  for (const status of ["unread", "skipped"]) {
+    const depth = await probeQuoteDepth(ROBINHOOD, {
+      client,
+      marketData: async () => ({ quoteLiquidityUsd: null, reason: "no_pool", v4: { status } }),
+    });
+    assert.equal(depth, null, `${status} may not harden into a swept absence`);
+  }
+});
+
+test("a v3 'no pool' with no v4 verdict at all is unmeasured, not a swept absence", async () => {
+  // Nobody asked about v4, so nothing about v4 may be concluded — the same rule this
+  // file applies to a probe that never ran.
   const client = { readContract: async () => null };
   const depth = await probeQuoteDepth(ROBINHOOD, {
     client,
     marketData: async () => ({ quoteLiquidityUsd: null, reason: "no_pool" }),
   });
-  assert.deepEqual(depth, { depthUsd: 0, lowerBound: false }, "a figure, and an EXACT one");
+  assert.equal(depth, null);
 });
 
 test("a probe with no client at all is unmeasured, and never zero", async () => {
