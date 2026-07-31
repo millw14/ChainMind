@@ -180,7 +180,7 @@ test("an anonymous caller is told what would change it, and that signing moves n
     await consumeQuestion({ store, ip });
     const denied = await consumeQuestion({ store, ip });
     assert.equal(denied.allowed, false);
-    assert.equal(denied.state, QUOTA_STATE.ANONYMOUS);
+    assert.equal(denied.state, "anonymous");
 
     const message = quotaMessage(denied, below);
     assert.match(message, /free question/i);
@@ -286,7 +286,7 @@ test("the address comes from a signed cookie — a forged one is simply anonymou
     const forged = Buffer.from(JSON.stringify({ v: 1, address: ADDRESS.toLowerCase() })).toString("base64url") + ".not-a-mac";
     const fake = await resolveAccess({ sessionCookie: forged, ip: freshIp(), store });
     assert.equal(fake.address, null);
-    assert.equal(fake.quota.state, QUOTA_STATE.ANONYMOUS);
+    assert.equal(fake.quota.state, "anonymous");
 
     // A cookie signed with somebody else's secret is no better.
     const wrongKey = await withEnv({ SESSION_SECRET: "another-secret-that-is-long-enough-here" }, () =>
@@ -439,4 +439,27 @@ test("a verified holder is not counted at all, so the gate costs them no store c
   const spent = await consumeQuestion({ store, address: ADDRESS, entitlement, ip: freshIp() });
   assert.equal(spent.unlimited, true);
   assert.equal(spent.degraded, false);
+});
+
+test("with no gate configured, the denial does not advertise holding a token", () => {
+  // Measured live: /api/health reported tokenGate.configured false while a 429 from
+  // /api/ask told the visitor to "Hold the gating token in a connected wallet to ask
+  // without a daily limit" — a door that does not exist on that deployment. The wallet
+  // menu already gated this on gate.configured; this path repeated the promise from
+  // memory, which is the usual shape of the bug.
+  const quota = { state: "anonymous", limit: 5, used: 5, remaining: 0, resetsAt: new Date(Date.now() + 3_600_000).toISOString() };
+  const line = quotaMessage(quota, { state: "unverified", reason: "not-configured" });
+
+  assert.doesNotMatch(line, /hold .*token .*without a daily limit/i, "an unconfigured gate was advertised as a way to lift the limit");
+  assert.doesNotMatch(line, /\bnull\b/, "a null holding line was interpolated into the sentence");
+  assert.match(line, /not configured/i, "the reader is not told why connecting will not lift the limit");
+  // The signature reassurance is the reason people connect at all — it must survive.
+  assert.match(line, /SIGN a message/);
+});
+
+test("with a gate configured, the denial still says what to hold", () => {
+  const quota = { state: "anonymous", limit: 5, used: 5, remaining: 0, resetsAt: new Date(Date.now() + 3_600_000).toISOString() };
+  const line = quotaMessage(quota, { state: "below", thresholdTokens: "1,000", symbol: "CMIND" });
+  assert.match(line, /1,000 CMIND/);
+  assert.match(line, /without a daily limit/i);
 });
