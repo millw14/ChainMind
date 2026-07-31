@@ -32,7 +32,7 @@ import {
  * and the platform's answer to both was a 504 that discarded every second of work
  * already done.
  */
-export const maxDuration = 30;
+export const maxDuration = 60;
 export const runtime = "nodejs";
 
 // This route is the GUARD and the ADAPTER, nothing else.
