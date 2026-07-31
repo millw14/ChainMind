@@ -42,8 +42,19 @@ ENV NODE_ENV=production \
 WORKDIR /app
 
 # Dependencies first, so a change to the service's source does not reinstall them.
-COPY services/research/package.json services/research/package-lock.json* ./services/research/
-RUN cd services/research && npm install --omit=dev --no-audit --no-fund
+# DEPENDENCIES INSTALL AT /app, NOT AT /app/services/research, AND THAT IS THE WHOLE POINT.
+#
+# Node resolves a bare specifier by walking UP from the IMPORTING file. The service imports
+# lib/project-profile.js, which imports lib/ask-evidence.js, which imports "viem" — and that
+# import is resolved from /app/lib/, so Node looks in /app/lib/node_modules and then
+# /app/node_modules. It never looks in /app/services/research/node_modules.
+#
+# Installing under services/research therefore BUILT CLEANLY and crashed at boot with
+# "Cannot find package viem imported from /app/lib/ask-evidence.js" — a failure that only
+# appears at run time, on the platform, after a green build. services/render never hit it
+# because it copies only two lib/ files and neither imports a package.
+COPY services/research/package.json services/research/package-lock.json* ./
+RUN npm install --omit=dev --no-audit --no-fund
 
 # THE APP'S REAL MODULES, not copies. See the header for why this is the whole directory
 # here and two files in services/render.
