@@ -9,4 +9,8 @@ out/
 .vercel
 config/watchlist.json
 
+# scripts/route-bench.mjs writes its call log and summary here. Measurements of a
+# paid upstream at a point in time — reproducible by re-running, not worth a diff.
+.route-bench/
+
 node_modules/

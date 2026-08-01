@@ -1,5 +1,7 @@
 import Link from "next/link";
 
+import { CAPABILITY_GROUPS } from "@/lib/docs-capabilities";
+
 export const metadata = {
   title: "Docs",
   description:
@@ -37,127 +39,16 @@ const FACTS = [
 ];
 
 /**
- * The capability groups, ordered the way somebody arriving from a link thinks
- * rather than the way the tool file is organised. `asks` are verbatim from the
- * tool descriptions in lib/ask-tools.js — they are phrasings the router was
- * built and tested against, not invented examples.
+ * The capability groups the "What you can ask" section renders.
+ *
+ * Held in lib/docs-capabilities.js rather than here so a TEST can read them: the
+ * page tells a reader which lookups answer each phrasing, and
+ * test/routing-corpus.test.mjs fails if a phrasing listed here has no measured
+ * row in scripts/routing-corpus.mjs or routes outside the group it sits in. A
+ * page that promises behaviour the router does not deliver is the same class of
+ * defect as an answer that promises data the chain does not have.
  */
-const GROUPS = [
-  {
-    id: "identity",
-    title: "Identity & safety",
-    lede: "Which contract is the real one, who deployed it, and how many others are wearing the same ticker.",
-    asks: [
-      "is this the real NVDA",
-      "is 0x465… safe",
-      "who deployed this",
-      "is the contract verified",
-      "whats that nvidia one called",
-      "es real este token",
-    ],
-    tools: ["lookup_token", "safety_check", "contract_info", "search_tokens"],
-    bound:
-      "A safety check answers on one contract at a time and prints addresses in full so you can compare them character by character. Search is paginated: it reads at most 25 rows and, when there are more upstream, reports “at least N” — it can never list every impostor.",
-  },
-  {
-    id: "market",
-    title: "Price, market & the board",
-    lede: "One token, two side by side, or the whole tokenized-equity market as it stands right now.",
-    asks: [
-      "hows nvda doin",
-      "how much apple",
-      "tsla vs nvda which is better",
-      "top 3",
-      "whats moving",
-      "whats good today",
-      "que es nvda",
-    ],
-    tools: ["lookup_token", "compare_tokens", "rank_stocks", "top_movers", "market_overview"],
-    bound:
-      "Only the equities the indexer published a figure for can be ranked; the rest come back counted as unmeasured, which is missing data and not zero activity. Aggregates say how many entries they cover.",
-  },
-  {
-    id: "holders",
-    title: "Holders & distribution",
-    lede: "Who owns it, how long they have held, whether they arrived together, and what else that crowd holds.",
-    asks: [
-      "who holds nvda",
-      "is this concentrated",
-      "how long have holders held",
-      "did they just buy",
-      "was this bundled",
-      "does this look organised",
-      "who holds both 0x31ba… and 0xa15c…",
-      "what else do these holders hold",
-    ],
-    tools: [
-      "token_holders",
-      "holder_hold_time",
-      "bundle_check",
-      "flag_patterns",
-      "holder_overlap",
-      "co_holdings",
-    ],
-    bound:
-      "Hold times and bundle checks read the top addresses by balance, never the whole holder base. The pool, the burn address and the token contract itself are labelled and left out of the figures — none of them is a holder.",
-  },
-  {
-    id: "flow",
-    title: "Flow, trades & one transaction",
-    lede: "What moved, and separately, who actually bought or sold — at a price, for a fee.",
-    asks: [
-      "whats moving in nvda",
-      "whos dumping nvda",
-      "who is selling right now",
-      "is the volume real",
-      "why did my swap eat 97% of my bag",
-      "what happened here 0xdead…",
-    ],
-    tools: [
-      "lookup_transaction",
-      "token_transfers",
-      "whale_moves",
-      "recent_trades",
-      "real_volume",
-      "swap_detail",
-    ],
-    bound:
-      "A transfer says something moved; a swap says somebody bought or sold. Swaps are read over a block window, so the only negative that can be stated is “no sell was observed in the N blocks read”. Uniswap v3 and v4 are read over different windows and their counts are never added.",
-  },
-  {
-    id: "wallets",
-    title: "Wallets",
-    lede: "What one address holds, what it has done in one token, and who it deals with.",
-    asks: [
-      "whats in 0xabc…",
-      "is this a whale",
-      "has this wallet ever sold nvda",
-      "is this guy accumulating",
-      "who does this wallet trade with",
-      "cuanto tiene 0xabc…",
-    ],
-    tools: ["lookup_wallet", "wallet_portfolio", "trace_wallet", "wallet_counterparties"],
-    bound:
-      "A trace walks at most 150 transfers over three pages, so “no sale in the transfers read” is the honest answer and “never sold” is not. A portfolio total covers the priced holdings only; an unpriced token is unquoted, never worthless.",
-  },
-  {
-    id: "projects",
-    title: "A whole project",
-    lede: "One lookup for the question people actually ask about a token they were sent. A bare pasted address with no question attached is this one.",
-    asks: [
-      "is this project real",
-      "is this a larp",
-      "check this out for me",
-      "whats the deal with this one",
-      "wen moon or is it fake",
-      "0x31be…bf81",
-      "这个项目是真的吗",
-    ],
-    tools: ["project_profile", "ask_clarification"],
-    bound:
-      "It produces observations, never a verdict and never intent. A launchpad deployment is an ordinary, cheap way to launch a token and is not evidence of dishonesty; being new, small, thinly traded or concentrated is not either. Links found in the launch calldata are self-declared by whoever launched the token and are not fetched or verified.",
-  },
-];
+const GROUPS = CAPABILITY_GROUPS;
 
 /**
  * The deep-research half. Written as rule + consequence, because every one of these is
