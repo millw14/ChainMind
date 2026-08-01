@@ -63,6 +63,7 @@
  */
 
 import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { ROUTING_TEMPERATURE } from "../lib/ask-loop.js";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -174,7 +175,9 @@ function loadEnvLocal() {
 function parseArgs(argv) {
   const args = {
     n: 3,
-    temps: [0.2],
+    // Seeded EMPTY so the default below can be the shipped temperature. Seeding it
+    // with a value meant the fallback at the end of parseArgs was unreachable.
+    temps: [],
     only: null,
     gates: true,
     recover: true,
@@ -231,7 +234,14 @@ function parseArgs(argv) {
         process.exit(2);
     }
   }
-  if (!args.temps.length) args.temps = [0.2];
+  // THE DEFAULT IS WHAT THE PRODUCT SHIPS, not what it used to.
+  // This defaulted to 0.2, which was the routing temperature before the fix. Routing
+  // now runs at ROUTING_TEMPERATURE (0) as a parameter separate from the prose turn,
+  // so a bare `npm run route:bench` was about to spend ~$5 measuring a configuration
+  // the product no longer uses — and the number it returned would have looked like a
+  // regression against the 96.5% recorded at 0. Pass --temp 0.2 to measure the old one
+  // deliberately.
+  if (!args.temps.length) args.temps = [ROUTING_TEMPERATURE];
   return args;
 }
 
