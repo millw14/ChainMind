@@ -33,7 +33,8 @@
     "build": "next build",
     "start": "next start",
     "test": "node --test",
-    "flex:check": "node scripts/check-intent-flex.mjs"
+    "flex:check": "node scripts/check-intent-flex.mjs",
+    "route:bench": "node scripts/route-bench.mjs"
   },
   "dependencies": {
     "dotenv": "^16.4.7",

@@ -47,27 +47,37 @@ configuration. See [`.env.example`](.env.example) for the full list.
 | --- | --- |
 | `npm run dev` | development server |
 | `npm run build` / `npm start` | production |
-| `npm test` | 219 unit tests — offline, no network, no API key |
+| `npm test` | 1,418 unit tests — offline, no network, no API key |
 | `npm run flex:check` | how many messy phrasings the keyword fallback can route |
+| `npm run route:bench` | scores the model's routing against a 106-question corpus. Costs money and needs the network, so it is not in `npm test`; it prints the bill and refuses to spend without `--yes` |
 
 ## How a question gets answered
 
 1. **Fast path** — a pasted `0x` address, tx hash or `$TICKER` names exactly one thing, so it
    skips straight to evidence gathering on a single model completion.
-2. **Model routing** — everything else. The model reads the question and picks from the tools
-   in [`lib/ask-tools.js`](lib/ask-tools.js): `lookup_token`, `lookup_wallet`,
-   `lookup_transaction`, `rank_stocks`, `compare_tokens`, `market_overview`, `safety_check`.
-   No keyword list decides what `"hows nvda doin"` is asking for — which is why lowercase,
-   typos, slang and other languages all work.
+2. **Model routing** — everything else. The model reads the question and picks one of the 26
+   lookups in [`lib/ask-tools.js`](lib/ask-tools.js). No keyword list decides what
+   `"hows nvda doin"` is asking for — which is why lowercase, typos, slang and other languages
+   all work. That turn is scored rather than assumed: `npm run route:bench` runs 106 sourced
+   questions past the real model and prints accuracy, the confusion pairs, and how often the
+   same question routed two different ways.
 3. **Keyword fallback** — if the endpoint or model cannot do tool calling, it degrades to a
    regex router rather than failing. `npm run flex:check` shows exactly what that fallback
-   can and cannot handle (by design: 10/10 on canonical shapes, 0/16 on real speech).
+   can and cannot handle (by design: 10/10 on canonical shapes, 0/16 on real speech). It is a
+   last resort, not a shrug: a tool call the API refuses to serialize is read back out of the
+   error and run, because the model did choose and throwing that choice away is how a question
+   routed to `project_profile` used to arrive on screen looking like `lookup_token`.
 
 ### Honesty rules baked into the pipeline
 
 These are enforced in code and covered by tests, because a confidently wrong number is the
 worst thing a tool like this can produce:
 
+- **A question naming a contract, a hash or a ticker is never answered without a lookup.** The
+  routing turn runs at temperature 0 because picking a tool is a classification, not prose; if it
+  picks nothing anyway it is asked again with the option of picking nothing removed, then routed
+  from the identifier itself. If even that fails the answer says it has not read the chain, rather
+  than writing about the contract from memory.
 - **Unknown values sort last in both directions**, so a token the indexer never priced can
   never be reported as "the cheapest".
 - **Aggregates report how many entries lacked data** rather than counting `null` as zero.

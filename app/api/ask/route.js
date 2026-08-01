@@ -142,7 +142,15 @@ async function postCompletion(payload, signal) {
     const detail = await res.text().catch(() => "");
     const err = new Error(`Groq ${res.status}`);
     err.status = res.status;
-    err.detail = detail.slice(0, 500);
+    // NOT 500 CHARACTERS ANY MORE, AND THE REASON IS A MEASUREMENT. A 400 with
+    // `tool_use_failed` carries the model's whole tool call in `failed_generation`,
+    // and lib/ask-loop.js recoverRefusedToolCalls reads it back out rather than
+    // throwing the routing decision away. Measured over 48 real refusals those
+    // bodies ran 269–495 characters, so 500 was one long URL away from cutting the
+    // call in half and turning a recoverable route into a silent degradation.
+    // Nothing downstream renders this to a user — ask-loop re-slices it for its own
+    // error field — so the only cost of the wider cap is log volume on a failure.
+    err.detail = detail.slice(0, 4_000);
     throw err;
   }
   return res;
