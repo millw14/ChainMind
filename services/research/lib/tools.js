@@ -698,6 +698,10 @@ export function createToolbox({ ledger, budget, dossier, repo, config, deps = {}
 
   return {
     schemas: toolSchemas({ renderAvailable: config.renderAvailable }),
+    // The names this toolbox will actually dispatch. Exposed so the loop can hand them to
+    // lib/ask-loop.js recoverRefusedToolCalls, which validates a recovered name against a
+    // list rather than trusting whatever a 400 body happened to contain.
+    names: Object.keys(tools),
     verifySource,
     sources: () => [...sources.values()],
     async dispatch(name, args) {

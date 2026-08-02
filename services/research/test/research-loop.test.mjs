@@ -386,3 +386,46 @@ test("an unknown tool name and unparseable arguments both come back as usable se
   });
   assert.equal(outcome.status, "concluded", "a bad tool call must not end the investigation");
 });
+
+test("a REFUSED tool call is recovered, not treated as the model being down", async () => {
+  // Measured live: a job on htmx.org died 4.3 seconds in, after ONE model call, with
+  // "The model endpoint answered HTTP 400" and zero findings. Groq answers a MALFORMED
+  // tool call with 400 and puts the model's own output in `failed_generation` — the model
+  // had chosen a tool and the choice was thrown away. The main app had the identical
+  // defect and it cost 8.7% of its routing.
+  let calls = 0;
+  const complete = async () => {
+    calls += 1;
+    if (calls === 1) {
+      const e = new Error("The model endpoint answered HTTP 400");
+      e.status = 400;
+      e.detail = JSON.stringify({
+        error: { code: "tool_use_failed", failed_generation: '<function=conclude {"summary":"s","notChecked":["x"]}</function>' },
+      });
+      throw e;
+    }
+    return { choices: [{ message: { role: "assistant", content: "", tool_calls: [] } }], usage: {} };
+  };
+  const out = await runInvestigation({ subject: { given: "https://example.org/", kind: "url" }, config: config(), complete });
+  const o = out.outcome ?? out;
+  assert.equal(o.recoveredToolCalls, 1, "the refused call was not recovered");
+  assert.notEqual(o.status, "model_unavailable", "a refused call was reported as an outage");
+  assert.ok(calls > 1, "the investigation stopped at the first refusal");
+});
+
+test("a genuine outage still ends the run honestly", async () => {
+  // The recovery must not swallow real failures. 401/403/429/5xx are outages, and a 400
+  // with nothing recoverable in it is one too.
+  for (const status of [500, 429, 400]) {
+    const complete = async () => {
+      const e = new Error(`The model endpoint answered HTTP ${status}`);
+      e.status = status;
+      e.detail = status === 400 ? '{"error":{"message":"bad request"}}' : "";
+      throw e;
+    };
+    const out = await runInvestigation({ subject: { given: "https://example.org/", kind: "url" }, config: config(), complete });
+    const o = out.outcome ?? out;
+    assert.equal(o.status, "model_unavailable", `HTTP ${status} did not end the run`);
+    assert.match(o.reading, /OUTAGE OF THIS SERVICE, NOT A FACT ABOUT THE SUBJECT/);
+  }
+});
