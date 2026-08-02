@@ -74,7 +74,7 @@ import {
   parseTextToolCalls,
   recoverRefusedToolCalls,
 } from "../lib/ask-loop.js";
-import { isOffChainKnowledge, isSmallTalk } from "../lib/ask-intent.js";
+import { detectForeignVenue, isOffChainKnowledge, isSmallTalk, isUnroutableDistress } from "../lib/ask-intent.js";
 import { SYSTEM_PROMPT, resolveModel } from "../lib/ask-runner.js";
 import { TOOL_NAMES, TOOL_SCHEMAS } from "../lib/ask-tools.js";
 import { getChainConfig } from "../lib/chain.js";
@@ -250,7 +250,7 @@ function parseArgs(argv) {
 /**
  * What lib/ask-runner.js would do with this question BEFORE the model.
  *
- * Mirrors answerQuestion's first three branches in the same order it runs them.
+ * Mirrors answerQuestion's first five branches in the same order it runs them.
  * It is a mirror rather than a call because answerQuestion needs a chat client, a
  * dispatch table and a network; the branch conditions are three exported pure
  * functions and those are what decide whether the model is asked at all.
@@ -262,6 +262,12 @@ function gateRoute(question, target) {
   const t = String(target ?? "").trim();
   if (q && !t && isSmallTalk(q)) return { gate: "smallTalk", outcome: [] };
   if (q && !t && isOffChainKnowledge(q)) return { gate: "offChain", outcome: [] };
+  // A question naming a chain this does not read. It is modelled here BECAUSE it
+  // should never fire on this corpus: every row is a question the router is meant
+  // to answer, so a hit shows up as a row that suddenly resolves to no tool, which
+  // is exactly the alarm a scope check that over-triggers should set off.
+  if (q && !t && detectForeignVenue(q)) return { gate: "foreignChain", outcome: [] };
+  if (q && !t && isUnroutableDistress(q)) return { gate: "distress", outcome: [] };
   const fast = fastPathRoute(q, t);
   if (fast) return { gate: "fastPath", outcome: fast.toolCalls.map((c) => c.name) };
   return null;
