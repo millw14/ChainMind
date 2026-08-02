@@ -86,7 +86,10 @@ function keywordOutcome(question) {
   const comparable = t.addresses.length + t.symbols.length;
 
   if (intent === INTENTS.UNKNOWN) {
-    return { intent, targets, routes: false, why: "400 — couldn't tell what to look up" };
+    // `routes: false` still means "no lookup ran", which is what this script
+    // measures. It is no longer a 400: lib/ask-runner.js answers it with the
+    // conversational turn instead of the template that used to live here.
+    return { intent, targets, routes: false, why: "no lookup — conversational reply" };
   }
   if (intent === INTENTS.COMPARE && comparable < 2) {
     return { intent, targets, routes: false, why: `400 — compare with ${comparable} target(s)` };

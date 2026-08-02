@@ -1,8 +1,7 @@
 "use client";
 
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useRef } from "react";
 import Conversation, { AskGreeting } from "@/components/ask/Conversation";
-import { INTENTS, classifyIntent, isSmallTalk } from "@/lib/ask-intent";
 import {
   IconCompare,
   IconRank,
@@ -61,10 +60,6 @@ const SUGGESTIONS = [
   },
 ];
 
-/** Shown when a `?q=` handoff arrives as something the router cannot place. */
-const HANDOFF_NOTE =
-  "I could not tell what that one is asking for — it is in the box below, so edit it and send. Name a ticker (NVDA), ask for a ranking (\"most holders\"), compare two stocks, or paste a 0x address.";
-
 /** The `?q=` value, read defensively: no query string is the normal case. */
 function handoffQuestion() {
   try {
@@ -75,8 +70,6 @@ function handoffQuestion() {
 }
 
 export function AskChat() {
-  const [note, setNote] = useState(null);
-
   // The handoff runs once, on the conversation's own terms: it hands back
   // `ask`/`prefill` when it is ready, which keeps this page out of the business
   // of owning transcript state it does not render.
@@ -86,16 +79,13 @@ export function AskChat() {
     handledRef.current = true;
     const question = handoffQuestion();
     if (!question) return;
-    // "Actionable" means the router recognises it, not that it carries a 0x — a
-    // ranking or a market question answers itself with no target at all, and a
-    // greeting is answered without a lookup. Only a question nothing matches is
-    // prefilled instead of sent.
-    if (isSmallTalk(question) || classifyIntent(question).intent !== INTENTS.UNKNOWN) {
-      api.ask(question);
-      return;
-    }
-    api.prefill(question);
-    setNote(HANDOFF_NOTE);
+    // EVERY handoff is sent now. This used to prefill instead of send whenever
+    // lib/ask-intent.js could not place the question, and show a note asking the
+    // user to rewrite it as a ticker — the client-side twin of the "I couldn't
+    // tell what to look up" template the server no longer emits. There is no
+    // longer a question the endpoint cannot answer, so there is nothing left to
+    // hold back: an unroutable one gets the conversational turn.
+    api.ask(question);
   }, []);
 
   return (
@@ -108,7 +98,6 @@ export function AskChat() {
         className="min-h-0 flex-1"
         suggestions={SUGGESTIONS}
         greeting={<AskGreeting as="h1" />}
-        note={note}
         onReady={onReady}
         autoFocus
         footer={

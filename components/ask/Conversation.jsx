@@ -212,6 +212,10 @@ const INTENT_LABELS = {
   [INTENTS.SAFETY_CHECK]: "safety",
   [INTENTS.EXPLAIN_CHAIN]: "chain",
   [INTENTS.SMALL_TALK]: "",
+  // No tag, for the same reason small talk has none: nothing was looked up, so
+  // there is no lookup to label and "conversation" would only be the product
+  // narrating itself.
+  [INTENTS.CONVERSATION]: "",
 };
 
 function intentLabel(intent) {

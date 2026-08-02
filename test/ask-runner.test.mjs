@@ -323,18 +323,57 @@ test("a reply with neither a tool call nor any text falls back to keyword routin
   assert.equal(payloads[1].tools, undefined, "the fallback path never offers tools");
 });
 
-test("a silent model on a question the keyword router cannot route is a 400, still not a 500", async () => {
-  // The honest floor of the degraded path: "hows nvda doin" is exactly what the
-  // keyword router gets wrong, so falling back to it cannot answer this. What
-  // matters is that the failure is the old, explicit 400 rather than a crash.
-  const { chat } = scriptedChat([emptyTurn()]);
+test("a silent model on a question the keyword router cannot route is ANSWERED, not rejected", async () => {
+  // WHAT THIS TEST USED TO ASSERT, AND WHY IT CHANGED. It asserted a 400 whose
+  // body was `I couldn't tell what to look up. Try ${GUIDANCE}.` — the same
+  // sentence for every unroutable question, which is the defect this path now
+  // exists to fix. "hows nvda doin" is exactly what the keyword router gets
+  // wrong, so falling back to it still cannot ROUTE this; what it can do is
+  // answer it. The floor of the degraded path is now a reply, not a rejection.
+  const { chat, payloads } = scriptedChat([
+    emptyTurn(),
+    proseTurn("Sounds like you want NVDA — send it over and I'll pull the token."),
+  ]);
   const res = await runAsk({ question: "hows nvda doin", chat, model: MODEL, deps: { dispatch: async () => ({ ok: true }) } });
 
-  assert.equal(res.status, 400);
-  assert.equal(res.body.ok, false);
-  assert.equal(res.body.intent, INTENTS.UNKNOWN);
-  assert.match(res.body.error, /I couldn't tell what to look up/);
-  assert.ok(res.body.error.includes(GUIDANCE), "the error quotes the shapes that do work");
+  assert.equal(res.status, 200);
+  assert.equal(res.body.ok, true);
+  assert.equal(res.body.intent, INTENTS.CONVERSATION);
+  assert.equal(res.body.answer, "Sounds like you want NVDA — send it over and I'll pull the token.");
+  assert.equal(res.body.evidence, null, "nothing was looked up, so no evidence card may render");
+  assert.deepEqual(res.body.toolCalls, []);
+  assert.equal(payloads[1].tools, undefined, "the conversational turn is never offered tools");
+  assert.ok(
+    !JSON.stringify(payloads[1].messages).includes("I couldn't tell what to look up"),
+    "the template is gone from the path entirely, not merely unreachable",
+  );
+});
+
+test("the guidance template is no longer any answer's text", async () => {
+  // GUIDANCE still exists — app/api/ask/route.js quotes it for an EMPTY request,
+  // which is a genuine client error and the one place a syntax hint belongs.
+  // What must never come back is that string as the answer to a question someone
+  // actually asked. Two questions, and the reply must differ between them.
+  // Both are intercepted before routing and spend their one completion on the
+  // conversational turn. See test/ask-conversation.test.mjs for why each one is.
+  const rugged = await runAsk({
+    question: "I got rugged",
+    chat: scriptedChat([proseTurn("Send me the contract and I'll show you who held it and who sold.")]).chat,
+    model: MODEL,
+    deps: { dispatch: async () => assert.fail("nothing was named, so nothing may be dispatched") },
+  });
+  const solana = await runAsk({
+    question: "Which wallet bought catecoin on Solana 2hrs ago",
+    chat: scriptedChat([proseTurn("I read Robinhood Chain only, so Solana is outside what I can see.")]).chat,
+    model: MODEL,
+    deps: { dispatch: async () => assert.fail("a Solana question must not reach a lookup") },
+  });
+
+  for (const res of [rugged, solana]) {
+    assert.equal(res.status, 200);
+    assert.ok(!String(res.body.answer).includes(GUIDANCE), "the template is never the answer");
+  }
+  assert.notEqual(rugged.body.answer, solana.body.answer, "two different questions, two different replies");
 });
 
 test("a model that keeps asking for tools still terminates with an answer", async () => {
@@ -823,4 +862,39 @@ test("reading a price off the chain does not loosen the freshness rule", () => {
   assert.match(SYSTEM_PROMPT, /THE SAME RULE COVERS A POOL PRICE/);
   assert.match(SYSTEM_PROMPT, /not a stream and not a feed/i);
   assert.match(SYSTEM_PROMPT, /Never call a price live, real-time/i);
+});
+
+test("scope refuses foreign chains without refusing our own vocabulary", async () => {
+  const { detectForeignVenue } = await import("../lib/ask-intent.js");
+
+  // FALSE REFUSAL IS THE WORSE DIRECTION. The alias+noun branch has no locative to
+  // disambiguate it, and these aliases are ordinary English. "base token" and "quote
+  // token" are what lib/tick-depth.js calls the two sides of a pool — the product's own
+  // words. Measured live, the old noun list answered "what is the base token of this
+  // pair" with "You're asking about Base, which is not a chain I have access to."
+  for (const q of [
+    "what is the base token of this pair",
+    "whats the quote token here",
+    "base contract address please",
+    "the sol tokens i hold",
+    "blast contracts",
+    "scroll tokens",
+  ]) {
+    assert.equal(detectForeignVenue(q), null, `refused our own vocabulary: ${q}`);
+  }
+
+  // And it must never refuse a question about THIS chain, however it is abbreviated.
+  for (const q of ["whats on the rh chain", "whats on the hood chain", "wut is robinhud chain"]) {
+    assert.equal(detectForeignVenue(q), null, `refused our own chain: ${q}`);
+  }
+
+  // A genuine foreign chain is still named, including one nobody listed.
+  for (const [q, want] of [
+    ["which wallet bought catecoin on Solana", "Solana"],
+    ["who bought this on the zorp chain", "Zorp"],
+  ]) {
+    const v = detectForeignVenue(q);
+    assert.ok(v, `missed a foreign chain: ${q}`);
+    assert.equal(v.venue ?? v, want);
+  }
 });
