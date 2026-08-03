@@ -1,7 +1,10 @@
 import { AskChat } from "@/components/ask/AskChat";
 
 export const metadata = {
-  title: "Ask — Robinhood Chain AI explorer",
+  // Short, because the (app) layout now appends "· ChainMind". The old standalone
+  // string would render "Ask — Robinhood Chain AI explorer · ChainMind", which says the
+  // product name twice and truncates in a tab.
+  title: "Ask",
   description:
     "Ask about a ticker, a ranking, two stocks side by side, or any 0x address on Robinhood Chain. Answers stream in, grounded in live chain data.",
 };
