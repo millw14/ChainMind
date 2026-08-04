@@ -6,6 +6,7 @@ import { publicResearchBlock, researchForAsk } from "@/lib/research-job.js";
 import { saveHistoryEntry } from "@/lib/history.js";
 import { SESSION_COOKIE, shortAddress } from "@/lib/session.js";
 import { getStore } from "@/lib/store.js";
+import { recordSearch } from "@/lib/usage.js";
 import { GUIDANCE, runAsk, runAskStream } from "@/lib/ask-runner.js";
 import {
   ASK_BUDGET_MS,
@@ -435,6 +436,11 @@ export async function POST(req) {
     // when it resets, and what would lift it.
     return NextResponse.json(quotaDenial(access), { status: 429, headers: gateHeaders });
   }
+
+  // Usage tracking for the admin page: one record per ACCEPTED question, past the
+  // gate so denied and rate-limited attempts never enter it, and after the
+  // response so it costs the answer nothing. Failures inside are swallowed.
+  after(() => recordSearch({ question, target, ip: clientIp(req), address: access.address }));
 
   /**
    * A QUESTION THAT WANTS AN INVESTIGATION GETS ONE STARTED, IN PARALLEL WITH THE ANSWER.
