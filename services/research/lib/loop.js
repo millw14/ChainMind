@@ -1,4 +1,4 @@
-import { parseToolCalls, parseTextToolCalls, stripToolSyntax } from "../../../lib/ask-loop.js";
+import { parseToolCalls, parseTextToolCalls, recoverRefusedToolCalls, stripToolSyntax } from "../../../lib/ask-loop.js";
 import { createBudget } from "./budget.js";
 import { createDossier, FINDING_GROUPS } from "./dossier.js";
 import { createRepoReader } from "./repo.js";
@@ -159,14 +159,38 @@ export async function runInvestigation({ subject, config, complete, deps = {}, o
       outcome.modelCalls += 1;
     } catch (e) {
       /**
-       * A MODEL OUTAGE IS AN OUTAGE OF OUR INFRASTRUCTURE AND MUST NEVER REACH THE READER
-       * AS A FINDING ABOUT THE SUBJECT. On the first turn it ends the run with nothing;
-       * later it ends the run with whatever was already established, which is a partial
-       * report and says so.
+       * A REFUSED TOOL CALL IS NOT AN OUTAGE — recover it before treating it as one.
+       *
+       * Groq answers a MALFORMED tool call with HTTP 400 and puts the model's own output in
+       * `failed_generation`. This path treated every 400 as the endpoint being down and
+       * ended the investigation. Measured live: a job on htmx.org died 4.3 seconds in,
+       * after ONE model call, with "The model endpoint answered HTTP 400" and zero
+       * findings — the model had chosen a tool and the choice was thrown away.
+       *
+       * The main app had the identical defect and it cost 8.7% of its routing; the fix
+       * there is lib/ask-loop.js recoverRefusedToolCalls, and this calls THAT function
+       * rather than carrying a second copy of a parser that runs on hostile-shaped input.
+       * The tool names are passed in because this service has its own eleven.
+       *
+       * Only a 400 is worth trying: 401/403/429/5xx are real outages, and attempting a
+       * parse on them would be pretending an error body is a decision.
        */
-      outcome.status = outcome.steps === 1 ? "model_unavailable" : "model_failed_midway";
-      outcome.reading = `The model endpoint failed${e?.status ? ` (HTTP ${e.status})` : ""}: ${String(e?.message ?? e).slice(0, 200)}. THIS IS AN OUTAGE OF THIS SERVICE, NOT A FACT ABOUT THE SUBJECT. ${outcome.steps === 1 ? "Nothing was examined." : `${dossier.digest().findings} finding(s) had already been recorded and are below; everything else is unexamined.`}`;
-      break;
+      const refused = Number(e?.status) === 400 ? recoverRefusedToolCalls(e?.detail ?? e?.message, toolbox.names) : [];
+      if (refused.length) {
+        body = { choices: [{ message: { role: "assistant", content: "", tool_calls: refused } }], usage: {} };
+        outcome.modelCalls += 1;
+        outcome.recoveredToolCalls = (outcome.recoveredToolCalls ?? 0) + refused.length;
+      } else {
+        /**
+         * A MODEL OUTAGE IS AN OUTAGE OF OUR INFRASTRUCTURE AND MUST NEVER REACH THE READER
+         * AS A FINDING ABOUT THE SUBJECT. On the first turn it ends the run with nothing;
+         * later it ends the run with whatever was already established, which is a partial
+         * report and says so.
+         */
+        outcome.status = outcome.steps === 1 ? "model_unavailable" : "model_failed_midway";
+        outcome.reading = `The model endpoint failed${e?.status ? ` (HTTP ${e.status})` : ""}: ${String(e?.message ?? e).slice(0, 200)}. THIS IS AN OUTAGE OF THIS SERVICE, NOT A FACT ABOUT THE SUBJECT. ${outcome.steps === 1 ? "Nothing was examined." : `${dossier.digest().findings} finding(s) had already been recorded and are below; everything else is unexamined.`}`;
+        break;
+      }
     }
 
     const usage = body?.usage ?? {};
