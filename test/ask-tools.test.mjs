@@ -532,7 +532,7 @@ test("dispatchTool answers ask_clarification without touching the chain", async 
       options: [
         { label: "Who holds the most of it?", hint: "the ranked holder list" },
         { label: "Who deployed it?", hint: "the minting address" },
-        { label: "Who is most in profit?", hint: "realised gains by address" },
+        { label: "Who has taken the most out?", hint: "the largest recent sells" },
       ],
     },
     impls,
@@ -545,7 +545,7 @@ test("dispatchTool answers ask_clarification without touching the chain", async 
       options: [
         { label: "Who holds the most of it?", hint: "the ranked holder list" },
         { label: "Who deployed it?", hint: "the minting address" },
-        { label: "Who is most in profit?", hint: "realised gains by address" },
+        { label: "Who has taken the most out?", hint: "the largest recent sells" },
       ],
     },
   });

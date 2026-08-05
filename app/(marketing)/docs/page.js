@@ -190,6 +190,11 @@ const NOT_DOING = [
   },
   {
     kind: "Gap",
+    title: "No profit and loss",
+    body: "Whether a wallet is up or down, what it paid, its entry price or its realised gains — none of that is computed here. It is not one fact on the chain but a whole trade history priced at the moment of every trade, and nothing assembles that yet. What you can get for an address is what it holds now and what that is worth, whether it has ever sold, and what it has traded recently. Asked for profit, ChainMind says it cannot work it out — it will not tell you a history failed to load, because that would be an outage that did not happen.",
+  },
+  {
+    kind: "Gap",
     title: "No mempool",
     body: "This reads settled blocks on a sequencer-ordered L2. A transaction appearing earlier in a block proves it was ordered earlier and nothing about whether anyone saw another transaction — so ordering is reported as ordering, and never as front-running or sandwiching.",
   },
@@ -437,7 +442,7 @@ export default function DocsPage() {
                 <h3 className="text-sm font-semibold text-cm-text">When a question has two readings, it asks you back</h3>
                 <p className="mt-2 text-sm leading-relaxed text-cm-muted">
                   &ldquo;Who is the main benefactor of this coin&rdquo; can mean the largest holder, the deployer who
-                  minted it, or the address most in profit. Rather than silently picking one, ChainMind returns one short
+                  minted it, or the address that has taken the most out. Rather than silently picking one, ChainMind returns one short
                   question and two to four pressable options, worded in your own voice and your own language. It will not
                   do this when a sensible default exists, when both readings are cheap to answer, over spelling or
                   phrasing, or twice in a row.

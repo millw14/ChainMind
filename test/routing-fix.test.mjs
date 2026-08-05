@@ -29,6 +29,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
   CHAIN_NOT_READ_NOTE,
+  PNL_NOT_COMPUTED_NOTE,
   ROUTING_TEMPERATURE,
   fastPathRoute,
   floorToolCalls,
@@ -444,6 +445,75 @@ test("a budget-starved question that names nothing on chain is untouched", async
 
   assert.equal(res.chainNotRead, undefined);
   assert.ok(!payloads[0].messages.some((m) => m.content === CHAIN_NOT_READ_NOTE));
+});
+
+/* ---------------------------- profit and loss ---------------------------- */
+
+test("a question about profit carries the note that says nothing computes it", async () => {
+  // MEASURED TWICE. First the invented outage: "I could not read the wallet's
+  // transaction history for every token it holds, so whether it is in profit is
+  // unknown" — a failure that never happened, on a history that reads in one call.
+  // Then, with the rule added to SYSTEM_PROMPT and nothing else, a live run
+  // answered a DIFFERENT question instead: "This wallet holds 50.28 MEMECAT and 30
+  // catcall…", every figure true, profit never mentioned. One bullet among a
+  // hundred did not survive a wallet full of real data, so the note rides next to
+  // the question the way CHAIN_NOT_READ_NOTE does.
+  const { complete, payloads } = scripted([
+    toolTurn([{ name: "wallet_portfolio", args: { address: ADDRESS } }]),
+    proseTurn("Working out whether this address is up or down is not something I can do."),
+  ]);
+  const { dispatch, calls } = recorder();
+
+  await runToolLoop({ ...base, question: `whats the pnl for ${ADDRESS}`, complete, dispatch });
+
+  const note = payloads[0].messages.find((m) => m.role === "system" && m.content === PNL_NOT_COMPUTED_NOTE);
+  assert.ok(note, "the note must be present on the FIRST payload, so it shapes routing too");
+  // And the lookups still run. The refusal is about profit, not about the address:
+  // suppressing the wallet read would answer less than before the fix.
+  assert.equal(calls.length, 1, "the wallet is still read");
+  assert.equal(calls[0].name, "wallet_portfolio");
+});
+
+test("the note says the capability is missing and never that a read failed", () => {
+  // The exact inversion that produced the bug. Anything resembling "could not read"
+  // sends the reader off to retry code that works perfectly.
+  assert.match(PNL_NOT_COMPUTED_NOTE, /Nothing here computes that/);
+  assert.match(PNL_NOT_COMPUTED_NOTE, /Missing capability, not missing data/);
+  assert.match(PNL_NOT_COMPUTED_NOTE, /Never say a transaction history, a page or a balance could not be read/);
+  // It must also require the rest of the answer, or the fix trades an invented
+  // excuse for a bare refusal and the reader loses the figures they could have had.
+  assert.match(PNL_NOT_COMPUTED_NOTE, /Then answer the rest normally/);
+  assert.match(PNL_NOT_COMPUTED_NOTE, /airdrop/i);
+});
+
+test("the note tells the model not to recite it, or to name a tool to the reader", () => {
+  // MEASURED, on the first version of this note: the model printed it back
+  // verbatim — "THIS QUESTION ASKS FOR PROFIT, LOSS OR WHAT A POSITION COST, AND
+  // NOTHING HERE COMPUTES THAT." — capitals and all, then closed with "use
+  // wallet_portfolio", handing the reader the name of an internal function. A note
+  // written as a finished sentence gets copied as one, so it now says what to do
+  // rather than what to write.
+  assert.match(PNL_NOT_COMPUTED_NOTE, /THIS NOTE IS AN INSTRUCTION, NOT A DRAFT/);
+  assert.match(PNL_NOT_COMPUTED_NOTE, /do not copy any sentence from this note/i);
+  assert.match(PNL_NOT_COMPUTED_NOTE, /Never name a tool, a lookup or a function to the reader/);
+  // The note opens as prose about the reader, not as a headline the model can lift.
+  assert.doesNotMatch(PNL_NOT_COMPUTED_NOTE.slice(0, 90), /^[A-Z ,]{40,}/);
+});
+
+test("a question that names no profit is left alone", async () => {
+  // The scoping test. "how much is this wallet worth" is answered by
+  // wallet_portfolio and must not pick up a refusal about cost basis.
+  const { complete, payloads } = scripted([
+    toolTurn([{ name: "wallet_portfolio", args: { address: ADDRESS } }]),
+    proseTurn("It holds 50.28 MEMECAT."),
+  ]);
+  await runToolLoop({
+    ...base,
+    question: `how much is ${ADDRESS} worth`,
+    complete,
+    dispatch: recorder().dispatch,
+  });
+  assert.ok(!payloads[0].messages.some((m) => m.content === PNL_NOT_COMPUTED_NOTE));
 });
 
 /* ------------- the fast path must not swallow another script ------------- */
