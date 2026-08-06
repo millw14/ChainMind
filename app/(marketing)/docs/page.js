@@ -189,9 +189,9 @@ const NOT_DOING = [
     body: "Figures are current. There is no series to plot, no “price 30 days ago”, and no backtest.",
   },
   {
-    kind: "Gap",
-    title: "No profit and loss",
-    body: "Whether a wallet is up or down, what it paid, its entry price or its realised gains — none of that is computed here. It is not one fact on the chain but a whole trade history priced at the moment of every trade, and nothing assembles that yet. What you can get for an address is what it holds now and what that is worth, whether it has ever sold, and what it has traded recently. Asked for profit, ChainMind says it cannot work it out — it will not tell you a history failed to load, because that would be an outage that did not happen.",
+    kind: "Choice",
+    title: "Profit and loss only when it can be proven",
+    body: "Profit is worked out for one wallet in one token, in ETH, from the trades themselves — a swap prices itself, so no price feed is involved. It is realised profit on closed trades, before gas; unrealised gains on a position still open are not computed. And the figure is withheld outright whenever it cannot be proven: a history longer than could be read, or tokens that arrived with no purchase to price. A truncated history is not reported as “at least”, because the part not read holds purchases and sales both. An airdrop has no cost rather than a cost of zero, so free tokens are never reported as pure profit. You always get the trades; you get the total only when it is real.",
   },
   {
     kind: "Gap",

@@ -767,15 +767,13 @@ test("the prompt names profit and loss as a missing capability, never as a faile
   // so whether it is in profit is unknown." Nothing had failed — that history reads
   // in one call. There is no PnL tool, so a gap in the CATALOGUE was reported as a
   // gap in the DATA, which sends the reader off to retry working code forever.
-  assert.match(SYSTEM_PROMPT, /PROFIT AND LOSS IS NOT MEASURED HERE/);
+  assert.match(SYSTEM_PROMPT, /PROFIT AND LOSS IS wallet_pnl/);
   assert.match(SYSTEM_PROMPT, /cost basis/i);
-  assert.match(SYSTEM_PROMPT, /entry price/i);
   // The distinction itself has to be stated, not merely implied by the example.
-  assert.match(SYSTEM_PROMPT, /never reported as data that could not be read/i);
-  // And the refusal goes FIRST. "MISSING FIGURES GO LAST" would otherwise bury it
-  // under a full wallet read, which is exactly the shape the bad answer had: real
-  // figures, then an invented excuse in the closing clause.
-  assert.match(SYSTEM_PROMPT, /Say so in your FIRST sentence/);
+  assert.match(SYSTEM_PROMPT, /A limit on what is COMPUTED is never reported as a failure of what was FETCHED/);
+  // The two numbers that must never be invented to fill a withheld one.
+  assert.match(SYSTEM_PROMPT, /NOT A LOWER BOUND AND MUST NEVER BE REPORTED AS "AT LEAST"/);
+  assert.match(SYSTEM_PROMPT, /HAS NO COST, WHICH IS NOT A COST OF ZERO/);
   // The three-way split lives in the shared guidance, so every gap goes through it
   // and not just this one.
   assert.match(MISSING_INFO_GUIDANCE, /THREE KINDS OF GAP/);
