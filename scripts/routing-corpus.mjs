@@ -853,6 +853,24 @@ export const CORPUS = Object.freeze([
     why: "One wallet and one token, and only trace_wallet carries hasSold.",
   },
   {
+    id: "flows-1",
+    q: `where did the funds go from ${WALLET}`,
+    primary: "wallet_flows",
+    accept: [["wallet_flows"]],
+    source: "live",
+    why: "No token is named, so the single-token trace cannot answer it — funds leave in whatever they were last swapped into.",
+  },
+  {
+    id: "flows-2",
+    q: `my wallet ${WALLET_B} was drained, show me the last transfers out`,
+    primary: "wallet_flows",
+    // wallet_counterparties is defensible: same subject, ranks who it dealt with,
+    // and is the honest neighbour when the sequence matters less than the who.
+    accept: [["wallet_flows"], ["wallet_counterparties"]],
+    source: "live",
+    why: "The user's own phrasing. wallet_flows gives the sequence; wallet_counterparties gives the who, and both answer the question asked.",
+  },
+  {
     id: "pnl-1",
     q: `is ${WALLET} in profit on nvda`,
     primary: "wallet_pnl",

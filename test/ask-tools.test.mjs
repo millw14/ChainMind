@@ -121,7 +121,7 @@ test("TOOL_NAMES matches the catalogue exactly and is frozen", () => {
   assert.ok(Object.isFrozen(TOOL_SCHEMAS));
 });
 
-test("the catalogue covers all twenty-seven documented tools", () => {
+test("the catalogue covers all twenty-eight documented tools", () => {
   // Seven that answer a whole question, seven that go deeper into one token, two
   // that span TOKENS (holder_overlap, co_holdings — the relation the app was
   // missing when it answered a two-token question about one token), five on the
@@ -158,6 +158,7 @@ test("the catalogue covers all twenty-seven documented tools", () => {
     "top_movers",
     "trace_wallet",
     "wallet_counterparties",
+    "wallet_flows",
     "wallet_pnl",
     "wallet_portfolio",
     "whale_moves",
