@@ -853,6 +853,24 @@ export const CORPUS = Object.freeze([
     why: "One wallet and one token, and only trace_wallet carries hasSold.",
   },
   {
+    id: "trace-funds-1",
+    q: `trace the nvda that left ${WALLET} and tell me where it ended up`,
+    primary: "trace_funds",
+    accept: [["trace_funds"]],
+    source: "tool",
+    why: "A wallet and a token, and the question is where value ENDED rather than who it went to.",
+  },
+  {
+    id: "trace-funds-2",
+    q: `follow the tsla out of ${WALLET_B}, did any of it reach an exchange`,
+    primary: "trace_funds",
+    // wallet_flows is defensible: it names the counterparties and their labels,
+    // which is the other half of "did it reach an exchange".
+    accept: [["trace_funds"], ["wallet_flows"]],
+    source: "gap",
+    why: "trace_funds follows the hops; wallet_flows names and labels the counterparties, and both speak to where it went.",
+  },
+  {
     id: "flows-1",
     q: `where did the funds go from ${WALLET}`,
     primary: "wallet_flows",
