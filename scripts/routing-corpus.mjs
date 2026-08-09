@@ -853,6 +853,22 @@ export const CORPUS = Object.freeze([
     why: "One wallet and one token, and only trace_wallet carries hasSold.",
   },
   {
+    id: "flows-3",
+    q: `who did ${WALLET} send to`,
+    primary: "wallet_flows",
+    accept: [["wallet_flows"], ["wallet_counterparties"]],
+    source: "docs",
+    why: "Both answer who is on the other side; wallet_flows also carries the transfers, wallet_counterparties the ranking.",
+  },
+  {
+    id: "flows-4",
+    q: `a donde fueron los fondos de ${WALLET_B}`,
+    primary: "wallet_flows",
+    accept: [["wallet_flows"]],
+    source: "docs",
+    why: "The same question in Spanish, which must route the same way and be answered in Spanish.",
+  },
+  {
     id: "trace-funds-1",
     q: `trace the nvda that left ${WALLET} and tell me where it ended up`,
     primary: "trace_funds",
