@@ -162,6 +162,75 @@ test("all three refusal shapes give back the tool the model actually chose", () 
   assert.equal(three[0].args.minutes, "60", "passed on as sent; the coercers clamp it downstream");
 });
 
+/*
+ * THE gpt-oss SHAPE, verbatim from the first bench after Groq removed the Llama
+ * models. `failed_generation` is a JSON object with `arguments` NESTED rather than
+ * stringified, and pretty-printed. Every one of the run's five refusals was this
+ * shape; neither existing scanner matched it; all five scored as refusals.
+ */
+const GPTOSS_WHOLE = JSON.stringify({
+  error: {
+    message: "Tool call validation failed: tool call validation failed: parameters for tool recent_trades did not match schema: errors: [`/minutes`: must be <= 30 but found 60]",
+    type: "invalid_request_error",
+    code: "tool_use_failed",
+    failed_generation: '{"name": "recent_trades", "arguments": {\n  "minutes": 60,\n  "query": "0x0eb9960654d3661d551a4536d7d425184ec81756"\n}}',
+  },
+});
+
+const GPTOSS_MISSING_ARG = JSON.stringify({
+  error: {
+    message: "Tool call validation failed: tool call validation failed: parameters for tool trace_funds did not match schema: errors: [missing properties: 'token']",
+    type: "invalid_request_error",
+    code: "tool_use_failed",
+    failed_generation: '{"name": "trace_funds", "arguments": {\n  "address": "0x4783c67b63de2b358ac5951a7d41f47a38f3c046"\n}}',
+  },
+});
+
+/** Cut mid-object by Groq — "Failed to parse tool call arguments as JSON". */
+const GPTOSS_TRUNCATED = JSON.stringify({
+  error: {
+    message: "Failed to parse tool call arguments as JSON",
+    type: "invalid_request_error",
+    code: "tool_use_failed",
+    failed_generation:
+      '{"name": "ask_clarification", "arguments": {\n  "question": "Which token are you asking about?",\n  "options": [\n    {\n      "label": "Did they just buy NVDA?",\n      "hint": "trace_wallet for"}',
+  },
+});
+
+test("a JSON-object tool call is recovered whole, so the dispatcher can clamp it", () => {
+  // The model chose recent_trades correctly and asked for 60 minutes; the schema
+  // caps it at 30 and Groq refused server-side. Recovered, the existing coercer
+  // clamps 60 -> 30 and the question is answered. Scored as a refusal, it would
+  // have degraded to the keyword fallback for a choice that was right.
+  const calls = recoverRefusedToolCalls(GPTOSS_WHOLE);
+  assert.deepEqual(calls.map((c) => c.name), ["recent_trades"]);
+  assert.deepEqual(calls[0].args, { minutes: 60, query: "0x0eb9960654d3661d551a4536d7d425184ec81756" });
+  assert.equal(calls[0].argsError, null);
+});
+
+test("a JSON-object call missing a required argument still names its tool", () => {
+  const calls = recoverRefusedToolCalls(GPTOSS_MISSING_ARG);
+  assert.deepEqual(calls.map((c) => c.name), ["trace_funds"]);
+  assert.deepEqual(calls[0].args, { address: "0x4783c67b63de2b358ac5951a7d41f47a38f3c046" });
+});
+
+test("a JSON-object call cut mid-arguments still gives back the tool", () => {
+  // The name is the first thing in the text and survives any truncation. The
+  // arguments do not, and an empty object is what the coercers already turn into a
+  // sentence the model can act on — never a guess at what was cut.
+  const calls = recoverRefusedToolCalls(GPTOSS_TRUNCATED);
+  assert.deepEqual(calls.map((c) => c.name), ["ask_clarification"]);
+  assert.deepEqual(calls[0].args, {});
+  assert.equal(calls[0].argsError, null);
+});
+
+test("a JSON-object call naming a tool we do not have is not invented", () => {
+  const bogus = JSON.stringify({
+    error: { code: "tool_use_failed", failed_generation: '{"name": "summon_alpha", "arguments": {"query": "nvda"}}' },
+  });
+  assert.deepEqual(recoverRefusedToolCalls(bogus), []);
+});
+
 test("a truncated error body still gives the call back", () => {
   // The chat client caps `detail`. A body cut mid-JSON will not parse, so the
   // escapes are undone and the same scanners run over the fragment — one
